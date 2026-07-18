@@ -1,0 +1,31 @@
+{
+  "execution": {
+    "id": "exec-20260718-0042",
+    "workflow_name": "order-payment",
+    "started_at": "2026-07-18T09:14:02Z",
+    "finished_at": null,
+    "status": "failed"
+  },
+  "steps": [
+    {
+      "id": "step-1",
+      "name": "reserve-inventory",
+      "started_at": "2026-07-18T09:14:02Z",
+      "finished_at": "2026-07-18T09:14:05Z",
+      "status": "succeeded",
+      "attempt": 1
+    },
+    {
+      "id": "step-2",
+      "name": "charge-card",
+      "started_at": "2026-07-18T09:14:05Z",
+      "finished_at": null,
+      "status": "timeout",
+      "attempt": 1,
+      "error": {
+        "message": "payment gateway did not respond within 30s; the charge may have been submitted",
+        "kind": "timeout"
+      }
+    }
+  ]
+}
