@@ -33,6 +33,10 @@ class Step:
     status: str
     attempt: int
     error: StepError | None = None
+    # Tri-state, as declared by the source system: True — the step performs an
+    # external side effect (e.g. charging a card); False — explicitly declared
+    # side-effect-free; None — not declared, therefore unknown.
+    side_effect: bool | None = None
 
 
 @dataclass(frozen=True, slots=True)

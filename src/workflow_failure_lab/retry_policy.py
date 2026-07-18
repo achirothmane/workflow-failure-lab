@@ -24,6 +24,13 @@ class RetryDecision:
 
 
 def decide(classification: Classification) -> RetryDecision:
+    # Fail closed: anything that is not a Classification member — including
+    # None and raw strings — is rejected before any matching happens.
+    if not isinstance(classification, Classification):
+        raise TypeError(
+            "decide() requires a Classification member, got "
+            f"{type(classification).__name__}: {classification!r}"
+        )
     match classification:
         case Classification.FAILED_CONFIRMED:
             return RetryDecision(

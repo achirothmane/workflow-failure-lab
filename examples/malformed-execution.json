@@ -1,0 +1,18 @@
+{
+  "execution": {
+    "id": "exec-20260718-0091",
+    "workflow_name": "order-payment",
+    "started_at": "2026-07-18T08:00:00Z",
+    "finished_at": null
+  },
+  "steps": [
+    {
+      "id": "step-1",
+      "name": "charge-card",
+      "started_at": "2026-07-18T08:00:00Z",
+      "finished_at": null,
+      "status": "running",
+      "attempt": 1
+    }
+  ]
+}

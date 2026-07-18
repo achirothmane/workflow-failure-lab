@@ -1,0 +1,28 @@
+{
+  "execution": {
+    "id": "exec-20260716-0007",
+    "workflow_name": "nightly-export",
+    "started_at": "2026-07-16T01:00:00Z",
+    "finished_at": "2026-07-16T01:06:12Z",
+    "status": "succeeded"
+  },
+  "steps": [
+    {
+      "id": "step-1",
+      "name": "export-rows",
+      "started_at": "2026-07-16T01:00:00Z",
+      "finished_at": "2026-07-16T01:04:30Z",
+      "status": "succeeded",
+      "attempt": 1
+    },
+    {
+      "id": "step-2",
+      "name": "upload-file",
+      "started_at": "2026-07-16T01:04:30Z",
+      "finished_at": "2026-07-16T01:06:12Z",
+      "status": "completed",
+      "attempt": 1,
+      "side_effect": true
+    }
+  ]
+}

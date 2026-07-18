@@ -10,10 +10,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from workflow_failure_lab.domain import Classification, Evidence, Execution
+from workflow_failure_lab.domain import Classification, Evidence, Execution, Step
 
 _SUCCESS_STATUSES = frozenset({"succeeded", "success", "completed"})
 _CONFIRMED_FAILURE_STATUSES = frozenset({"failed", "error"})
+
+
+def _duplicate_side_effect_risk(where: str, step: Step) -> Evidence:
+    """Evidence for a step declared side_effect=true whose outcome is unproven."""
+    return Evidence(
+        f"{where}.side_effect",
+        "declared side_effect=true while the step outcome is unproven: "
+        f"attempt {step.attempt} may already have performed the external "
+        "side effect, so retrying risks duplicating it",
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +78,8 @@ def analyze(execution: Execution) -> AnalysisResult:
                         f"recorded error does not confirm the outcome: {step.error.message}",
                     )
                 )
+            if step.side_effect is True:
+                ambiguities.append(_duplicate_side_effect_risk(where, step))
         elif step_status in _SUCCESS_STATUSES:
             success_support.append(
                 Evidence(
@@ -92,6 +104,8 @@ def analyze(execution: Execution) -> AnalysisResult:
                         "the failure",
                     )
                 )
+                if step.side_effect is True:
+                    ambiguities.append(_duplicate_side_effect_risk(where, step))
         else:
             ambiguities.append(
                 Evidence(
@@ -99,6 +113,8 @@ def analyze(execution: Execution) -> AnalysisResult:
                     f"raw status '{step.status}' proves neither success nor confirmed failure",
                 )
             )
+            if step.side_effect is True:
+                ambiguities.append(_duplicate_side_effect_risk(where, step))
 
     if ambiguities:
         return AnalysisResult(Classification.INDETERMINATE, tuple(ambiguities))

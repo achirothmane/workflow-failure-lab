@@ -51,6 +51,15 @@ EXECUTION_SCHEMA: dict[str, Any] = {
                     "finished_at": {"type": ["string", "null"], "minLength": 1},
                     "status": {"type": "string", "minLength": 1},
                     "attempt": {"type": "integer", "minimum": 1},
+                    "side_effect": {
+                        "type": "boolean",
+                        "description": (
+                            "Declared by the source system: true when the step "
+                            "performs an external side effect (e.g. charging a "
+                            "card), false when explicitly side-effect-free. "
+                            "Absent means unknown."
+                        ),
+                    },
                     "error": {
                         "type": "object",
                         "required": ["message"],
@@ -118,4 +127,7 @@ def _step_to_domain(raw_step: dict[str, Any]) -> Step:
         status=raw_step["status"],
         attempt=raw_step["attempt"],
         error=error,
+        # .get without a bool default: an absent key stays None (unknown),
+        # preserving the tri-state declared in the domain model.
+        side_effect=raw_step.get("side_effect"),
     )

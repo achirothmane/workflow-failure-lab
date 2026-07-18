@@ -1,0 +1,33 @@
+{
+  "execution": {
+    "id": "exec-20260718-0057",
+    "workflow_name": "order-payment",
+    "started_at": "2026-07-18T10:30:00Z",
+    "finished_at": null,
+    "status": "failed"
+  },
+  "steps": [
+    {
+      "id": "step-1",
+      "name": "reserve-inventory",
+      "started_at": "2026-07-18T10:30:00Z",
+      "finished_at": "2026-07-18T10:30:03Z",
+      "status": "succeeded",
+      "attempt": 1,
+      "side_effect": true
+    },
+    {
+      "id": "step-2",
+      "name": "charge-card",
+      "started_at": "2026-07-18T10:30:03Z",
+      "finished_at": null,
+      "status": "in_flight",
+      "attempt": 2,
+      "side_effect": true,
+      "error": {
+        "message": "connection reset after the charge request was submitted; attempt 1 also ended without a recorded outcome",
+        "kind": "network"
+      }
+    }
+  ]
+}
