@@ -1,6 +1,6 @@
 # CI Retry Gate
 
-CI Retry Gate is a GitHub Action that inspects failed GitHub Actions jobs, decides whether a rerun is safe, can selectively rerun only safe transient jobs, fingerprints recurring failures, learns conservative retry-policy recommendations from real rerun history, and surfaces CI waste.
+CI Retry Gate is a GitHub Action that inspects failed GitHub Actions jobs, decides whether a rerun is safe, can selectively rerun only safe transient jobs, fingerprints recurring failures, learns conservative retry-policy recommendations from real rerun history, shadow-tests those policies, benchmarks them across repositories, and surfaces CI waste.
 
 It is deliberately conservative: code regressions, unknown or low-confidence failures, attempt caps, and deploy/publish/migration/release side-effect signals stay blocked.
 
@@ -63,6 +63,48 @@ Policy Learning turns fingerprint history into a conservative recommendation for
 Policy Learning is advisory only. It does not silently change the selective-rerun safety gate or enable reruns by itself.
 
 GitHub can copy an untouched job into a later workflow attempt when another job is rerun. CI Retry Gate therefore counts a rerun sample only when the same job has a genuinely different `started_at` time in a later attempt. This avoids learning policies from copied historical records.
+
+## Policy Shadow Mode
+
+`policy-shadow-mode: 'true'` runs a read-only retrospective backtest. For each historical point it uses only evidence older than that point, then checks whether a real later rerun recovered. Outcomes without an observed rerun remain `UNKNOWN` rather than being guessed.
+
+Shadow Mode reports decisions, evaluated decisions, recoveries, false positives, unknown outcomes, observed precision, and the failed-job runtime represented by observed recoveries. It never triggers a rerun.
+
+## Benchmark Mode
+
+`benchmark-mode: 'true'` extends the same shadow backtest across a list of repositories. It is read-only and keeps Policy Learning **repository-local**: evidence from repository A cannot promote a fingerprint in repository B.
+
+Benchmark Mode samples completed workflow runs, reads first-attempt failed jobs, detects real later attempts of the same job, and reports:
+
+- repositories and completed runs analyzed;
+- first-attempt failed jobs;
+- shadow `AUTO_RERUN_ONCE` decisions;
+- evaluated decisions with a real rerun outcome;
+- recoveries, false positives, and unknown outcomes;
+- observed precision;
+- decision coverage and evaluated coverage;
+- results broken down by failure category and repository.
+
+Example:
+
+```yaml
+- uses: othy19904-eng/workflow-failure-lab@v1
+  with:
+    github-token: ${{ github.token }}
+    benchmark-mode: 'true'
+    benchmark-repositories: |
+      owner/project-one
+      owner/project-two
+      another/project
+    benchmark-runs: '20'
+    auto-rerun: 'false'
+    selective-rerun: 'false'
+    comment-on-pr: 'false'
+```
+
+The repository list is capped at 50 and `benchmark-runs` is capped at 50 per repository. Public or otherwise token-accessible repositories can be analyzed; inaccessible repositories are reported as skipped instead of aborting the whole benchmark.
+
+**Observed precision is not overall classifier accuracy.** It is `recoveries / evaluated AUTO_RERUN_ONCE shadow decisions`. Unknown counterfactual outcomes are excluded rather than counted as successes or failures. Benchmark results describe only the sampled history and are not a guarantee of future behavior.
 
 ## Selective Safe Rerun
 
@@ -136,34 +178,37 @@ jobs:
 | `max-attempts` | `2` | Prevents rerun loops. |
 | `comment-on-pr` | `true` | Posts the current-run Markdown report to the associated PR when permitted. |
 | `history-runs` | `10` | Previous completed runs of the same workflow to inspect; capped at 50. |
+| `policy-shadow-mode` | `false` | Runs the read-only same-workflow retrospective backtest. |
+| `benchmark-mode` | `false` | Runs the read-only cross-repository backtest. |
+| `benchmark-repositories` | current repository | Comma-, space-, or newline-separated `owner/name` repositories; capped at 50. |
+| `benchmark-runs` | `20` | Completed workflow runs sampled per benchmark repository; capped at 50. |
 
 ## Outputs
 
+Core outputs include the current-run safety decision, selective-rerun counts, history/fingerprint metrics, and Policy Learning recommendations. Shadow Mode additionally emits `shadow-decisions`, `shadow-evaluated-decisions`, `shadow-recoveries`, `shadow-false-positives`, `shadow-unknown-outcomes`, `shadow-observed-precision`, and `shadow-recoverable-failed-minutes`.
+
+Benchmark Mode emits:
+
 | Output | Meaning |
 |---|---|
-| `safe-to-rerun` | `true` only when every failed job is a high-confidence transient failure and no side-effect signal is found. |
-| `rerun-triggered` | Whether legacy all-or-nothing rerun was requested. |
-| `failed-jobs` | Number of failed jobs assessed in the current run. |
-| `wasted-minutes` | Observed runtime across failed jobs in the current run. |
-| `selective-safe-jobs` | Number of failed jobs that qualify for selective safe rerun. |
-| `selective-blocked-jobs` | Number of failed jobs blocked from selective rerun. |
-| `selective-reruns-triggered` | Number of individual job reruns requested. |
-| `history-runs-analyzed` | Number of previous completed runs actually inspected. |
-| `historical-failed-minutes` | Runtime across failed jobs in sampled history; not all of this is necessarily waste. |
-| `historical-transient-waste-minutes` | Historical runtime from high-confidence runner/infrastructure or dependency/network failures. |
-| `recurring-failures` | Number of broader recurring job/category patterns seen at least twice. |
-| `failure-fingerprints` | Number of distinct normalized failure fingerprints observed. |
-| `recurring-fingerprints` | Number of exact normalized fingerprints seen at least twice. |
-| `rerun-recoveries` | Historical failed jobs that later succeeded after a real rerun. |
-| `policy-auto-rerun-fingerprints` | Fingerprints recommended as `AUTO_RERUN_ONCE`. |
-| `policy-manual-review-fingerprints` | Fingerprints recommended as `MANUAL_REVIEW`. |
-| `policy-blocked-fingerprints` | Fingerprints recommended as `DO_NOT_AUTO_RERUN`. |
+| `benchmark-repositories-analyzed` | Repositories successfully included. |
+| `benchmark-repositories-skipped` | Requested repositories that could not be analyzed. |
+| `benchmark-runs-analyzed` | Total completed workflow runs sampled. |
+| `benchmark-failed-jobs` | First-attempt failed jobs observed. |
+| `benchmark-shadow-decisions` | Simulated historical `AUTO_RERUN_ONCE` decisions. |
+| `benchmark-evaluated-decisions` | Shadow decisions with an observed historical rerun outcome. |
+| `benchmark-recoveries` | Evaluated decisions whose real rerun recovered. |
+| `benchmark-false-positives` | Evaluated decisions whose real rerun did not recover. |
+| `benchmark-unknown-outcomes` | Decisions without an observed rerun outcome. |
+| `benchmark-observed-precision` | Recoveries divided by evaluated decisions. |
+| `benchmark-decision-coverage` | Shadow decisions divided by first-attempt failed jobs. |
+| `benchmark-evaluated-coverage` | Evaluated decisions divided by first-attempt failed jobs. |
 
 ## Safety model
 
 The action fails closed. `UNKNOWN`, code failures, mixed evidence, low-confidence classifications, attempt caps, and side-effect signals block automatic reruns. Log evidence is redacted for common token/API-key patterns before it is included in reports or fingerprint inputs.
 
-History, fingerprinting, and Policy Learning are read-only. They read workflow runs, attempts, jobs, and logs through the GitHub API and do not persist them to an external database.
+History, fingerprinting, Policy Learning, Shadow Mode, and Benchmark Mode are read-only. They read workflow runs, attempts, jobs, and logs through the GitHub API and do not persist them to an external database.
 
 Policy recommendations do not override the runtime safety gate. A fingerprint with a historically strong recovery rate still cannot bypass side-effect protection or the attempt cap.
 
@@ -171,9 +216,11 @@ This tool cannot prove that rerunning arbitrary third-party workflows is safe. I
 
 ## Validation
 
-The action has unit coverage for transient failures, code failures, unknown failures, secret redaction, side-effect blocking, attempt caps, runtime accounting, historical transient-waste accounting, recurring failure detection, fingerprint stability under dynamic log values, fingerprint separation for different failures, real-vs-copied rerun detection, rerun-recovery metrics, and Policy Learning thresholds.
+The action has unit coverage for transient failures, code failures, unknown failures, secret redaction, side-effect blocking, attempt caps, runtime accounting, historical transient-waste accounting, recurring failure detection, fingerprint stability under dynamic log values, fingerprint separation for different failures, real-vs-copied rerun detection, rerun-recovery metrics, Policy Learning thresholds, Shadow Mode look-back isolation, Benchmark Mode repository isolation, unknown counterfactual handling, and benchmark precision/coverage aggregation.
 
 Selective Safe Rerun has also been tested end-to-end in GitHub Actions: a mixed run containing a transient network failure and a code regression caused only the transient job to execute again; the code-regression job remained blocked, and the attempt cap prevented a third loop.
+
+Policy Shadow Mode has also been tested end-to-end with real GitHub workflow attempts: five earlier transient failures with successful real reruns formed the prior evidence, and the sixth historical case produced one evaluated shadow decision, one recovery, zero false positives, and observed precision `1.0000` in that controlled test.
 
 ---
 
