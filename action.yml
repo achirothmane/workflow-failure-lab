@@ -39,7 +39,7 @@ inputs:
     required: false
     default: 'false'
   benchmark-mode:
-    description: 'Run a read-only cross-repository backtest. Policy evidence remains isolated per repository and no rerun is triggered.'
+    description: 'Run a read-only cross-repository benchmark with separate natural-coverage and rerun-enriched precision samples. No rerun is triggered.'
     required: false
     default: 'false'
   benchmark-repositories:
@@ -47,9 +47,17 @@ inputs:
     required: false
     default: ''
   benchmark-runs:
-    description: 'Maximum completed workflow runs to sample per benchmark repository. Capped at 50.'
+    description: 'Recent completed workflow runs per repository for the natural coverage sample. Capped at 50.'
     required: false
     default: '20'
+  benchmark-rerun-runs:
+    description: 'Maximum historical rerun runs per repository for the rerun-enriched precision sample. Capped at 50.'
+    required: false
+    default: '20'
+  benchmark-rerun-search-runs:
+    description: 'Completed-run history window searched for run_attempt > 1 when building the rerun-enriched sample. Capped at 500.'
+    required: false
+    default: '200'
 
 outputs:
   safe-to-rerun:
@@ -131,35 +139,62 @@ outputs:
     description: 'Number of requested repositories Benchmark Mode could not analyze.'
     value: ${{ steps.benchmark.outputs.benchmark-repositories-skipped }}
   benchmark-runs-analyzed:
-    description: 'Total completed workflow runs sampled across benchmark repositories.'
+    description: 'Natural-sample recent completed workflow runs analyzed across benchmark repositories.'
     value: ${{ steps.benchmark.outputs.benchmark-runs-analyzed }}
   benchmark-failed-jobs:
-    description: 'Total first-attempt failed jobs observed by Benchmark Mode.'
+    description: 'Natural-sample first-attempt failed jobs observed by Benchmark Mode.'
     value: ${{ steps.benchmark.outputs.benchmark-failed-jobs }}
   benchmark-shadow-decisions:
-    description: 'Historical AUTO_RERUN_ONCE decisions simulated across benchmark repositories.'
+    description: 'Natural-sample learned AUTO_RERUN_ONCE decisions simulated across benchmark repositories.'
     value: ${{ steps.benchmark.outputs.benchmark-shadow-decisions }}
   benchmark-evaluated-decisions:
-    description: 'Benchmark shadow decisions with an observed historical rerun outcome.'
+    description: 'Natural-sample shadow decisions with an observed historical rerun outcome.'
     value: ${{ steps.benchmark.outputs.benchmark-evaluated-decisions }}
   benchmark-recoveries:
-    description: 'Evaluated benchmark decisions whose real rerun recovered.'
+    description: 'Natural-sample evaluated benchmark decisions whose real rerun recovered.'
     value: ${{ steps.benchmark.outputs.benchmark-recoveries }}
   benchmark-false-positives:
-    description: 'Evaluated benchmark decisions whose real rerun did not recover.'
+    description: 'Natural-sample evaluated benchmark decisions whose real rerun did not recover.'
     value: ${{ steps.benchmark.outputs.benchmark-false-positives }}
   benchmark-unknown-outcomes:
-    description: 'Benchmark decisions without an observed real rerun outcome.'
+    description: 'Natural-sample benchmark decisions without an observed real rerun outcome.'
     value: ${{ steps.benchmark.outputs.benchmark-unknown-outcomes }}
   benchmark-observed-precision:
-    description: 'Benchmark recoveries divided by evaluated benchmark decisions, as a decimal from 0 to 1.'
+    description: 'Natural-sample learned-policy recoveries divided by evaluated decisions.'
     value: ${{ steps.benchmark.outputs.benchmark-observed-precision }}
   benchmark-decision-coverage:
-    description: 'Benchmark shadow decisions divided by observed first-attempt failed jobs.'
+    description: 'Natural-sample learned-policy decisions divided by observed first-attempt failed jobs.'
     value: ${{ steps.benchmark.outputs.benchmark-decision-coverage }}
   benchmark-evaluated-coverage:
-    description: 'Evaluated benchmark decisions divided by observed first-attempt failed jobs.'
+    description: 'Natural-sample evaluated learned-policy decisions divided by observed first-attempt failed jobs.'
     value: ${{ steps.benchmark.outputs.benchmark-evaluated-coverage }}
+  benchmark-rerun-runs-analyzed:
+    description: 'Historical run_attempt > 1 runs analyzed in the rerun-enriched precision sample.'
+    value: ${{ steps.benchmark.outputs.benchmark-rerun-runs-analyzed }}
+  benchmark-rerun-failed-jobs:
+    description: 'First-attempt failed jobs observed inside rerun-enriched runs.'
+    value: ${{ steps.benchmark.outputs.benchmark-rerun-failed-jobs }}
+  benchmark-rerun-candidates:
+    description: 'High-confidence transient rerun candidates with no workflow side-effect signal in the enriched sample.'
+    value: ${{ steps.benchmark.outputs.benchmark-rerun-candidates }}
+  benchmark-rerun-evaluated:
+    description: 'Rerun-enriched candidates for which a real execution outcome is observable.'
+    value: ${{ steps.benchmark.outputs.benchmark-rerun-evaluated }}
+  benchmark-rerun-recoveries:
+    description: 'Evaluated rerun-enriched candidates whose real rerun recovered.'
+    value: ${{ steps.benchmark.outputs.benchmark-rerun-recoveries }}
+  benchmark-rerun-false-positives:
+    description: 'Evaluated rerun-enriched candidates whose real rerun did not recover.'
+    value: ${{ steps.benchmark.outputs.benchmark-rerun-false-positives }}
+  benchmark-rerun-unknown-outcomes:
+    description: 'Rerun-enriched candidates that were copied into a later attempt but were not actually rerun.'
+    value: ${{ steps.benchmark.outputs.benchmark-rerun-unknown-outcomes }}
+  benchmark-rerun-observed-precision:
+    description: 'Rerun-enriched recoveries divided by evaluated candidates, as a decimal from 0 to 1.'
+    value: ${{ steps.benchmark.outputs.benchmark-rerun-observed-precision }}
+  benchmark-rerun-candidate-coverage:
+    description: 'High-confidence transient candidates divided by all first-attempt failures in the rerun-enriched sample.'
+    value: ${{ steps.benchmark.outputs.benchmark-rerun-candidate-coverage }}
 
 runs:
   using: 'composite'
@@ -224,6 +259,8 @@ runs:
         INPUT_REPOSITORY: ${{ inputs.repository }}
         INPUT_BENCHMARK_REPOSITORIES: ${{ inputs.benchmark-repositories }}
         INPUT_BENCHMARK_RUNS: ${{ inputs.benchmark-runs }}
+        INPUT_BENCHMARK_RERUN_RUNS: ${{ inputs.benchmark-rerun-runs }}
+        INPUT_BENCHMARK_RERUN_SEARCH_RUNS: ${{ inputs.benchmark-rerun-search-runs }}
       run: python3 "$GITHUB_ACTION_PATH/benchmark_mode.py"
 
 branding:

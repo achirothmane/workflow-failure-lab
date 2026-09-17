@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import os
 import re
-from collections import Counter, defaultdict
+from collections import Counter
 from dataclasses import dataclass
 
 from ci_retry_gate import (
     FAILURE_CONCLUSIONS,
+    TRANSIENT_CATEGORIES,
     GitHubAPI,
     classify_log,
     detect_side_effect_risk,
@@ -33,6 +34,13 @@ class RepositoryBenchmark:
     recoveries: int
     false_positives: int
     unknown_outcomes: int
+    rerun_runs_analyzed: int = 0
+    rerun_failed_jobs: int = 0
+    rerun_candidates: int = 0
+    rerun_evaluated: int = 0
+    rerun_recoveries: int = 0
+    rerun_false_positives: int = 0
+    rerun_unknown_outcomes: int = 0
 
     @property
     def observed_precision(self) -> float:
@@ -46,12 +54,18 @@ class RepositoryBenchmark:
             return 0.0
         return self.decisions / self.failed_jobs
 
+    @property
+    def rerun_observed_precision(self) -> float:
+        if self.rerun_evaluated <= 0:
+            return 0.0
+        return self.rerun_recoveries / self.rerun_evaluated
+
 
 @dataclass(frozen=True)
 class CategoryBenchmark:
     category: str
     failed_jobs: int
-    decisions: int
+    candidates: int
     evaluated: int
     recoveries: int
     false_positives: int
@@ -76,6 +90,13 @@ class BenchmarkSummary:
     recoveries: int
     false_positives: int
     unknown_outcomes: int
+    rerun_runs_analyzed: int
+    rerun_failed_jobs: int
+    rerun_candidates: int
+    rerun_evaluated: int
+    rerun_recoveries: int
+    rerun_false_positives: int
+    rerun_unknown_outcomes: int
     repositories: tuple[RepositoryBenchmark, ...]
     categories: tuple[CategoryBenchmark, ...]
     skipped: tuple[tuple[str, str], ...]
@@ -97,6 +118,18 @@ class BenchmarkSummary:
         if self.failed_jobs <= 0:
             return 0.0
         return self.evaluated / self.failed_jobs
+
+    @property
+    def rerun_observed_precision(self) -> float:
+        if self.rerun_evaluated <= 0:
+            return 0.0
+        return self.rerun_recoveries / self.rerun_evaluated
+
+    @property
+    def rerun_candidate_coverage(self) -> float:
+        if self.rerun_failed_jobs <= 0:
+            return 0.0
+        return self.rerun_candidates / self.rerun_failed_jobs
 
 
 def parse_repositories(raw: str, fallback: str = "") -> list[str]:
@@ -120,29 +153,43 @@ def parse_repositories(raw: str, fallback: str = "") -> list[str]:
     return items
 
 
-def collect_repository_history(
+def _list_completed_runs(api: GitHubAPI, repo: str, limit: int) -> list[dict]:
+    if limit <= 0:
+        return []
+
+    limit = min(limit, 500)
+    runs: list[dict] = []
+    page = 1
+    while len(runs) < limit:
+        per_page = min(100, limit - len(runs))
+        data = api.request(
+            "GET",
+            f"/repos/{repo}/actions/runs?status=completed&per_page={per_page}&page={page}",
+        )
+        batch = list(data.get("workflow_runs") or [])
+        if not batch:
+            break
+        runs.extend(batch)
+        if len(batch) < per_page:
+            break
+        page += 1
+    return runs[:limit]
+
+
+def _collect_failures_for_runs(
     api: GitHubAPI,
     repo: str,
-    run_limit: int,
-) -> tuple[list[HistoricalFailure], int]:
-    if run_limit <= 0:
-        return [], 0
-
-    per_page = min(max(run_limit, 1), 100)
-    data = api.request(
-        "GET",
-        f"/repos/{repo}/actions/runs?status=completed&per_page={per_page}",
-    )
-    runs = list(data.get("workflow_runs") or [])[:run_limit]
+    runs: list[dict],
+) -> list[HistoricalFailure]:
     failures: list[HistoricalFailure] = []
 
     for run in runs:
         run_id = int(run.get("id") or 0)
         if run_id <= 0:
             continue
+
         attempts = max(1, int(run.get("run_attempt") or 1))
         attempt_jobs: dict[int, list[dict]] = {}
-
         for attempt in range(1, attempts + 1):
             try:
                 attempt_jobs[attempt] = _jobs_for_attempt(api, repo, run_id, attempt)
@@ -155,7 +202,12 @@ def collect_repository_history(
                 else:
                     attempt_jobs[attempt] = []
 
-        for job in attempt_jobs.get(1, []):
+        first_attempt_jobs = attempt_jobs.get(1, [])
+        workflow_side_effect_risk = any(
+            detect_side_effect_risk(job)[0] for job in first_attempt_jobs
+        )
+
+        for job in first_attempt_jobs:
             conclusion = str(job.get("conclusion") or "").lower()
             if conclusion not in FAILURE_CONCLUSIONS:
                 continue
@@ -173,7 +225,7 @@ def collect_repository_history(
                 classification.category,
                 classification.evidence,
             )
-            side_effect_risk, _ = detect_side_effect_risk(job)
+            own_side_effect_risk, _ = detect_side_effect_risk(job)
             rerun_observed, recovered = _later_rerun_outcome(
                 attempt_jobs,
                 1,
@@ -192,23 +244,98 @@ def collect_repository_history(
                     signature=signature,
                     recovered_after_rerun=recovered,
                     rerun_observed=rerun_observed,
-                    side_effect_risk=side_effect_risk,
+                    side_effect_risk=(
+                        own_side_effect_risk or workflow_side_effect_risk
+                    ),
                     attempt=1,
                 )
             )
 
-    return failures, len(runs)
+    return failures
+
+
+def collect_repository_history(
+    api: GitHubAPI,
+    repo: str,
+    run_limit: int,
+) -> tuple[list[HistoricalFailure], int]:
+    """Backward-compatible natural sample collector."""
+    runs = _list_completed_runs(api, repo, run_limit)
+    return _collect_failures_for_runs(api, repo, runs), len(runs)
+
+
+def collect_repository_samples(
+    api: GitHubAPI,
+    repo: str,
+    natural_run_limit: int,
+    rerun_run_limit: int,
+    rerun_search_limit: int,
+) -> tuple[
+    tuple[list[HistoricalFailure], int],
+    tuple[list[HistoricalFailure], int],
+]:
+    """Collect separate natural and rerun-enriched benchmark samples.
+
+    The natural sample is the latest N completed runs and measures real-world
+    coverage. The enriched sample searches a larger history window for runs
+    whose run_attempt > 1 and excludes natural-sample run IDs so precision
+    evidence is not mixed into the coverage sample.
+    """
+    search_limit = max(natural_run_limit, rerun_search_limit)
+    runs = _list_completed_runs(api, repo, search_limit)
+
+    natural_runs = runs[:natural_run_limit]
+    natural_ids = {int(run.get("id") or 0) for run in natural_runs}
+    rerun_runs = [
+        run
+        for run in runs
+        if int(run.get("run_attempt") or 1) > 1
+        and int(run.get("id") or 0) not in natural_ids
+    ][:rerun_run_limit]
+
+    natural_failures = _collect_failures_for_runs(api, repo, natural_runs)
+    rerun_failures = _collect_failures_for_runs(api, repo, rerun_runs)
+    return (
+        (natural_failures, len(natural_runs)),
+        (rerun_failures, len(rerun_runs)),
+    )
+
+
+def _is_rerun_candidate(item: HistoricalFailure) -> bool:
+    return (
+        item.category in TRANSIENT_CATEGORIES
+        and item.confidence == "high"
+        and not item.side_effect_risk
+    )
+
+
+def _rerun_validation(
+    failures: list[HistoricalFailure],
+) -> tuple[int, int, int, int, int]:
+    candidates = [item for item in failures if _is_rerun_candidate(item)]
+    recoveries = sum(
+        item.rerun_observed and item.recovered_after_rerun for item in candidates
+    )
+    false_positives = sum(
+        item.rerun_observed and not item.recovered_after_rerun for item in candidates
+    )
+    unknown = sum(not item.rerun_observed for item in candidates)
+    evaluated = recoveries + false_positives
+    return len(candidates), evaluated, recoveries, false_positives, unknown
 
 
 def summarize_benchmark(
     histories: dict[str, tuple[list[HistoricalFailure], int]],
     *,
+    rerun_histories: dict[str, tuple[list[HistoricalFailure], int]] | None = None,
     repositories_requested: int | None = None,
     skipped: tuple[tuple[str, str], ...] = (),
 ) -> BenchmarkSummary:
+    rerun_histories = rerun_histories or {}
+
     repo_rows: list[RepositoryBenchmark] = []
-    category_failures: Counter[str] = Counter()
-    category_decisions: Counter[str] = Counter()
+    category_failed: Counter[str] = Counter()
+    category_candidates: Counter[str] = Counter()
     category_evaluated: Counter[str] = Counter()
     category_recoveries: Counter[str] = Counter()
     category_false_positives: Counter[str] = Counter()
@@ -222,19 +349,42 @@ def summarize_benchmark(
     total_false_positives = 0
     total_unknown = 0
 
-    for repo, (failures, runs_analyzed) in histories.items():
-        # Policy learning remains repository-local. Evidence from repository A must
-        # never promote a fingerprint in repository B.
+    total_rerun_runs = 0
+    total_rerun_failures = 0
+    total_rerun_candidates = 0
+    total_rerun_evaluated = 0
+    total_rerun_recoveries = 0
+    total_rerun_false_positives = 0
+    total_rerun_unknown = 0
+
+    repositories = sorted(set(histories) | set(rerun_histories))
+    for repo in repositories:
+        failures, runs_analyzed = histories.get(repo, ([], 0))
+        rerun_failures, rerun_runs_analyzed = rerun_histories.get(repo, ([], 0))
+
         shadow = simulate_shadow(failures)
         first_attempt_failures = [item for item in failures if item.attempt == 1]
-        for item in first_attempt_failures:
-            category_failures[item.category] += 1
-        for item in shadow.fingerprints:
-            category_decisions[item.category] += item.decisions
-            category_evaluated[item.category] += item.evaluated
-            category_recoveries[item.category] += item.recoveries
-            category_false_positives[item.category] += item.false_positives
-            category_unknown[item.category] += item.unknown_outcomes
+
+        (
+            rerun_candidates,
+            rerun_evaluated,
+            rerun_recoveries,
+            rerun_false_positives,
+            rerun_unknown,
+        ) = _rerun_validation(rerun_failures)
+
+        for item in rerun_failures:
+            category_failed[item.category] += 1
+            if _is_rerun_candidate(item):
+                category_candidates[item.category] += 1
+                if item.rerun_observed:
+                    category_evaluated[item.category] += 1
+                    if item.recovered_after_rerun:
+                        category_recoveries[item.category] += 1
+                    else:
+                        category_false_positives[item.category] += 1
+                else:
+                    category_unknown[item.category] += 1
 
         repo_rows.append(
             RepositoryBenchmark(
@@ -246,8 +396,16 @@ def summarize_benchmark(
                 recoveries=shadow.recoveries,
                 false_positives=shadow.false_positives,
                 unknown_outcomes=shadow.unknown_outcomes,
+                rerun_runs_analyzed=rerun_runs_analyzed,
+                rerun_failed_jobs=len(rerun_failures),
+                rerun_candidates=rerun_candidates,
+                rerun_evaluated=rerun_evaluated,
+                rerun_recoveries=rerun_recoveries,
+                rerun_false_positives=rerun_false_positives,
+                rerun_unknown_outcomes=rerun_unknown,
             )
         )
+
         total_runs += runs_analyzed
         total_failures += len(first_attempt_failures)
         total_decisions += shadow.decisions
@@ -256,31 +414,47 @@ def summarize_benchmark(
         total_false_positives += shadow.false_positives
         total_unknown += shadow.unknown_outcomes
 
-    repo_rows.sort(key=lambda item: (-item.evaluated, -item.decisions, item.repository))
+        total_rerun_runs += rerun_runs_analyzed
+        total_rerun_failures += len(rerun_failures)
+        total_rerun_candidates += rerun_candidates
+        total_rerun_evaluated += rerun_evaluated
+        total_rerun_recoveries += rerun_recoveries
+        total_rerun_false_positives += rerun_false_positives
+        total_rerun_unknown += rerun_unknown
 
-    categories = []
-    all_categories = sorted(set(category_failures) | set(category_decisions))
-    for category in all_categories:
+    repo_rows.sort(
+        key=lambda item: (
+            -item.rerun_evaluated,
+            -item.rerun_candidates,
+            -item.evaluated,
+            item.repository,
+        )
+    )
+
+    categories: list[CategoryBenchmark] = []
+    for category in sorted(category_failed):
         categories.append(
             CategoryBenchmark(
                 category=category,
-                failed_jobs=category_failures[category],
-                decisions=category_decisions[category],
+                failed_jobs=category_failed[category],
+                candidates=category_candidates[category],
                 evaluated=category_evaluated[category],
                 recoveries=category_recoveries[category],
                 false_positives=category_false_positives[category],
                 unknown_outcomes=category_unknown[category],
             )
         )
-    categories.sort(key=lambda item: (-item.evaluated, -item.failed_jobs, item.category))
+    categories.sort(
+        key=lambda item: (-item.evaluated, -item.candidates, -item.failed_jobs, item.category)
+    )
 
     requested = repositories_requested
     if requested is None:
-        requested = len(histories) + len(skipped)
+        requested = len(repositories) + len(skipped)
 
     return BenchmarkSummary(
         repositories_requested=requested,
-        repositories_analyzed=len(histories),
+        repositories_analyzed=len(repositories),
         repositories_skipped=len(skipped),
         runs_analyzed=total_runs,
         failed_jobs=total_failures,
@@ -289,6 +463,13 @@ def summarize_benchmark(
         recoveries=total_recoveries,
         false_positives=total_false_positives,
         unknown_outcomes=total_unknown,
+        rerun_runs_analyzed=total_rerun_runs,
+        rerun_failed_jobs=total_rerun_failures,
+        rerun_candidates=total_rerun_candidates,
+        rerun_evaluated=total_rerun_evaluated,
+        rerun_recoveries=total_rerun_recoveries,
+        rerun_false_positives=total_rerun_false_positives,
+        rerun_unknown_outcomes=total_rerun_unknown,
         repositories=tuple(repo_rows),
         categories=tuple(categories),
         skipped=skipped,
@@ -299,38 +480,48 @@ def render_benchmark_report(summary: BenchmarkSummary) -> str:
     lines = [
         "## CI Retry Gate Benchmark Mode",
         "",
-        "> Read-only cross-repository backtest. Learned policy is isolated per repository; no rerun is triggered.",
+        "> Read-only cross-repository backtest. Evidence stays isolated per repository; no rerun is triggered.",
         "",
         f"Repositories requested: **{summary.repositories_requested}**",
         f"Repositories analyzed: **{summary.repositories_analyzed}**",
         f"Repositories skipped: **{summary.repositories_skipped}**",
-        f"Completed workflow runs sampled: **{summary.runs_analyzed}**",
+        "",
+        "### Natural sample — coverage",
+        "",
+        f"Recent completed workflow runs sampled: **{summary.runs_analyzed}**",
         f"First-attempt failed jobs observed: **{summary.failed_jobs}**",
-        f"Shadow AUTO_RERUN_ONCE decisions: **{summary.decisions}**",
-        f"Decisions with observed rerun outcomes: **{summary.evaluated}**",
-        f"Observed recoveries: **{summary.recoveries}**",
-        f"Observed false positives: **{summary.false_positives}**",
-        f"Unknown outcomes: **{summary.unknown_outcomes}**",
-        f"Observed precision on evaluated decisions: **{summary.observed_precision:.1%}**",
-        f"Decision coverage over failed jobs: **{summary.decision_coverage:.1%}**",
-        f"Evaluated coverage over failed jobs: **{summary.evaluated_coverage:.1%}**",
+        f"Learned-policy shadow AUTO_RERUN_ONCE decisions: **{summary.decisions}**",
+        f"Policy decisions with observed rerun outcomes: **{summary.evaluated}**",
+        f"Natural-sample decision coverage: **{summary.decision_coverage:.1%}**",
+        "",
+        "### Rerun-enriched sample — precision",
+        "",
+        f"Historical rerun runs sampled: **{summary.rerun_runs_analyzed}**",
+        f"First-attempt failed jobs in rerun runs: **{summary.rerun_failed_jobs}**",
+        f"Base safety candidates (high-confidence transient, no side effects): **{summary.rerun_candidates}**",
+        f"Candidates with observed real rerun outcomes: **{summary.rerun_evaluated}**",
+        f"Observed recoveries: **{summary.rerun_recoveries}**",
+        f"Observed false positives: **{summary.rerun_false_positives}**",
+        f"Unknown candidate outcomes: **{summary.rerun_unknown_outcomes}**",
+        f"Observed candidate precision: **{summary.rerun_observed_precision:.1%}**",
+        f"Candidate coverage inside rerun-enriched failures: **{summary.rerun_candidate_coverage:.1%}**",
         "",
     ]
 
     if summary.categories:
         lines.extend(
             [
-                "### By failure category",
+                "### Rerun-enriched results by failure category",
                 "",
-                "| Category | Failed jobs | Decisions | Evaluated | Recoveries | False positives | Unknown | Precision |",
+                "| Category | Failed jobs | Candidates | Evaluated | Recoveries | False positives | Unknown | Precision |",
                 "|---|---:|---:|---:|---:|---:|---:|---:|",
             ]
         )
         for item in summary.categories:
             lines.append(
-                f"| `{item.category}` | {item.failed_jobs} | {item.decisions} | {item.evaluated} | "
-                f"{item.recoveries} | {item.false_positives} | {item.unknown_outcomes} | "
-                f"{item.observed_precision:.1%} |"
+                f"| `{item.category}` | {item.failed_jobs} | {item.candidates} | "
+                f"{item.evaluated} | {item.recoveries} | {item.false_positives} | "
+                f"{item.unknown_outcomes} | {item.observed_precision:.1%} |"
             )
 
     if summary.repositories:
@@ -339,26 +530,30 @@ def render_benchmark_report(summary: BenchmarkSummary) -> str:
                 "",
                 "### By repository",
                 "",
-                "| Repository | Runs | Failed jobs | Decisions | Evaluated | Recoveries | False positives | Precision |",
-                "|---|---:|---:|---:|---:|---:|---:|---:|",
+                "| Repository | Natural runs | Natural failures | Natural policy decisions | Rerun runs | Rerun failures | Candidates | Evaluated | Recoveries | False positives | Candidate precision |",
+                "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
             ]
         )
         for item in summary.repositories[:20]:
             lines.append(
-                f"| `{item.repository}` | {item.runs_analyzed} | {item.failed_jobs} | {item.decisions} | "
-                f"{item.evaluated} | {item.recoveries} | {item.false_positives} | "
-                f"{item.observed_precision:.1%} |"
+                f"| `{item.repository}` | {item.runs_analyzed} | {item.failed_jobs} | "
+                f"{item.decisions} | {item.rerun_runs_analyzed} | "
+                f"{item.rerun_failed_jobs} | {item.rerun_candidates} | "
+                f"{item.rerun_evaluated} | {item.rerun_recoveries} | "
+                f"{item.rerun_false_positives} | {item.rerun_observed_precision:.1%} |"
             )
 
     if summary.skipped:
         lines.extend(["", "### Skipped repositories", ""])
         for repo, reason in summary.skipped[:20]:
-            lines.append(f"- `{repo}` — {reason.replace('|', '/')}" )
+            lines.append(f"- `{repo}` — {reason.replace('|', '/')}")
 
     lines.extend(
         [
             "",
-            "> Precision is recoveries / evaluated shadow decisions. It is not overall classifier accuracy. UNKNOWN outcomes are excluded from precision rather than guessed.",
+            "> The natural sample measures how often the learned policy would act in ordinary recent CI history.",
+            "> The rerun-enriched sample deliberately over-samples runs that were actually rerun, so its precision must not be interpreted as prevalence or natural coverage.",
+            "> Candidate precision is recoveries / evaluated high-confidence transient candidates with no workflow side-effect signal. UNKNOWN outcomes are excluded rather than guessed.",
             "> Benchmark results describe only the sampled repositories and historical runs. They are not a guarantee of future production behavior.",
         ]
     )
@@ -374,7 +569,9 @@ def _write_output(name: str, value: str) -> None:
 
 def main() -> int:
     token = os.environ.get("INPUT_GITHUB_TOKEN") or os.environ.get("GITHUB_TOKEN")
-    fallback_repo = os.environ.get("INPUT_REPOSITORY") or os.environ.get("GITHUB_REPOSITORY") or ""
+    fallback_repo = (
+        os.environ.get("INPUT_REPOSITORY") or os.environ.get("GITHUB_REPOSITORY") or ""
+    )
     raw_repos = os.environ.get("INPUT_BENCHMARK_REPOSITORIES", "")
 
     if not token:
@@ -383,7 +580,19 @@ def main() -> int:
 
     try:
         repositories = parse_repositories(raw_repos, fallback_repo)
-        run_limit = max(1, min(int(os.environ.get("INPUT_BENCHMARK_RUNS", "20")), 50))
+        natural_run_limit = max(
+            1, min(int(os.environ.get("INPUT_BENCHMARK_RUNS", "20")), 50)
+        )
+        rerun_run_limit = max(
+            1, min(int(os.environ.get("INPUT_BENCHMARK_RERUN_RUNS", "20")), 50)
+        )
+        rerun_search_limit = max(
+            natural_run_limit,
+            min(
+                int(os.environ.get("INPUT_BENCHMARK_RERUN_SEARCH_RUNS", "200")),
+                500,
+            ),
+        )
     except ValueError as exc:
         print(f"::error::Benchmark configuration invalid: {exc}")
         return 2
@@ -394,16 +603,26 @@ def main() -> int:
 
     api = GitHubAPI(token, os.environ.get("GITHUB_API_URL", "https://api.github.com"))
     histories: dict[str, tuple[list[HistoricalFailure], int]] = {}
+    rerun_histories: dict[str, tuple[list[HistoricalFailure], int]] = {}
     skipped: list[tuple[str, str]] = []
 
     for repo in repositories:
         try:
-            histories[repo] = collect_repository_history(api, repo, run_limit)
+            natural, enriched = collect_repository_samples(
+                api,
+                repo,
+                natural_run_limit,
+                rerun_run_limit,
+                rerun_search_limit,
+            )
+            histories[repo] = natural
+            rerun_histories[repo] = enriched
         except RuntimeError as exc:
             skipped.append((repo, str(exc)[:240]))
 
     summary = summarize_benchmark(
         histories,
+        rerun_histories=rerun_histories,
         repositories_requested=len(repositories),
         skipped=tuple(skipped),
     )
@@ -427,6 +646,28 @@ def main() -> int:
     _write_output("benchmark-observed-precision", f"{summary.observed_precision:.4f}")
     _write_output("benchmark-decision-coverage", f"{summary.decision_coverage:.4f}")
     _write_output("benchmark-evaluated-coverage", f"{summary.evaluated_coverage:.4f}")
+
+    _write_output("benchmark-rerun-runs-analyzed", str(summary.rerun_runs_analyzed))
+    _write_output("benchmark-rerun-failed-jobs", str(summary.rerun_failed_jobs))
+    _write_output("benchmark-rerun-candidates", str(summary.rerun_candidates))
+    _write_output("benchmark-rerun-evaluated", str(summary.rerun_evaluated))
+    _write_output("benchmark-rerun-recoveries", str(summary.rerun_recoveries))
+    _write_output(
+        "benchmark-rerun-false-positives",
+        str(summary.rerun_false_positives),
+    )
+    _write_output(
+        "benchmark-rerun-unknown-outcomes",
+        str(summary.rerun_unknown_outcomes),
+    )
+    _write_output(
+        "benchmark-rerun-observed-precision",
+        f"{summary.rerun_observed_precision:.4f}",
+    )
+    _write_output(
+        "benchmark-rerun-candidate-coverage",
+        f"{summary.rerun_candidate_coverage:.4f}",
+    )
     return 0
 
 
