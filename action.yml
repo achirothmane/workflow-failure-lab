@@ -1,5 +1,5 @@
 name: 'CI Retry Gate'
-description: 'Classify failed GitHub Actions jobs, gate safe reruns, fingerprint recurring failures, learn conservative retry policies, shadow-test them, and surface CI waste.'
+description: 'Classify failed GitHub Actions jobs, gate safe reruns, fingerprint recurring failures, learn conservative retry policies, shadow-test them, benchmark across repositories, and surface CI waste.'
 author: 'othy19904-eng'
 
 inputs:
@@ -38,6 +38,18 @@ inputs:
     description: 'Run a read-only retrospective backtest of learned AUTO_RERUN_ONCE policies. Does not trigger reruns. Opt-in because it performs an additional history scan.'
     required: false
     default: 'false'
+  benchmark-mode:
+    description: 'Run a read-only cross-repository backtest. Policy evidence remains isolated per repository and no rerun is triggered.'
+    required: false
+    default: 'false'
+  benchmark-repositories:
+    description: 'Comma-, space-, or newline-separated owner/name repositories to benchmark. Capped at 50. Defaults to the current repository when empty.'
+    required: false
+    default: ''
+  benchmark-runs:
+    description: 'Maximum completed workflow runs to sample per benchmark repository. Capped at 50.'
+    required: false
+    default: '20'
 
 outputs:
   safe-to-rerun:
@@ -112,6 +124,42 @@ outputs:
   shadow-recoverable-failed-minutes:
     description: 'Failed-job runtime represented by observed shadow recoveries. This is evidence volume, not billed CI minutes saved.'
     value: ${{ steps.shadow.outputs.shadow-recoverable-failed-minutes }}
+  benchmark-repositories-analyzed:
+    description: 'Number of repositories successfully included in Benchmark Mode.'
+    value: ${{ steps.benchmark.outputs.benchmark-repositories-analyzed }}
+  benchmark-repositories-skipped:
+    description: 'Number of requested repositories Benchmark Mode could not analyze.'
+    value: ${{ steps.benchmark.outputs.benchmark-repositories-skipped }}
+  benchmark-runs-analyzed:
+    description: 'Total completed workflow runs sampled across benchmark repositories.'
+    value: ${{ steps.benchmark.outputs.benchmark-runs-analyzed }}
+  benchmark-failed-jobs:
+    description: 'Total first-attempt failed jobs observed by Benchmark Mode.'
+    value: ${{ steps.benchmark.outputs.benchmark-failed-jobs }}
+  benchmark-shadow-decisions:
+    description: 'Historical AUTO_RERUN_ONCE decisions simulated across benchmark repositories.'
+    value: ${{ steps.benchmark.outputs.benchmark-shadow-decisions }}
+  benchmark-evaluated-decisions:
+    description: 'Benchmark shadow decisions with an observed historical rerun outcome.'
+    value: ${{ steps.benchmark.outputs.benchmark-evaluated-decisions }}
+  benchmark-recoveries:
+    description: 'Evaluated benchmark decisions whose real rerun recovered.'
+    value: ${{ steps.benchmark.outputs.benchmark-recoveries }}
+  benchmark-false-positives:
+    description: 'Evaluated benchmark decisions whose real rerun did not recover.'
+    value: ${{ steps.benchmark.outputs.benchmark-false-positives }}
+  benchmark-unknown-outcomes:
+    description: 'Benchmark decisions without an observed real rerun outcome.'
+    value: ${{ steps.benchmark.outputs.benchmark-unknown-outcomes }}
+  benchmark-observed-precision:
+    description: 'Benchmark recoveries divided by evaluated benchmark decisions, as a decimal from 0 to 1.'
+    value: ${{ steps.benchmark.outputs.benchmark-observed-precision }}
+  benchmark-decision-coverage:
+    description: 'Benchmark shadow decisions divided by observed first-attempt failed jobs.'
+    value: ${{ steps.benchmark.outputs.benchmark-decision-coverage }}
+  benchmark-evaluated-coverage:
+    description: 'Evaluated benchmark decisions divided by observed first-attempt failed jobs.'
+    value: ${{ steps.benchmark.outputs.benchmark-evaluated-coverage }}
 
 runs:
   using: 'composite'
@@ -166,6 +214,17 @@ runs:
         INPUT_REPOSITORY: ${{ inputs.repository }}
         INPUT_HISTORY_RUNS: ${{ inputs.history-runs }}
       run: python3 "$GITHUB_ACTION_PATH/policy_shadow.py"
+
+    - id: benchmark
+      name: Benchmark learned retry policies across repositories
+      if: ${{ inputs.benchmark-mode == 'true' }}
+      shell: bash
+      env:
+        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
+        INPUT_REPOSITORY: ${{ inputs.repository }}
+        INPUT_BENCHMARK_REPOSITORIES: ${{ inputs.benchmark-repositories }}
+        INPUT_BENCHMARK_RUNS: ${{ inputs.benchmark-runs }}
+      run: python3 "$GITHUB_ACTION_PATH/benchmark_mode.py"
 
 branding:
   icon: 'shield'
