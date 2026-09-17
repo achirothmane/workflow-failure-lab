@@ -1,0 +1,58 @@
+name: Rerun Enriched Benchmark E2E
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/rerun-enriched-benchmark-trigger.txt'
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: gate
+        uses: ./
+        with:
+          github-token: ${{ github.token }}
+          auto-rerun: 'false'
+          selective-rerun: 'false'
+          policy-shadow-mode: 'false'
+          history-runs: '0'
+          comment-on-pr: 'false'
+          benchmark-mode: 'true'
+          benchmark-runs: '10'
+          benchmark-rerun-runs: '20'
+          benchmark-rerun-search-runs: '200'
+          benchmark-repositories: |
+            pallets/flask
+            psf/requests
+            pytest-dev/pytest
+            axios/axios
+            pnpm/pnpm
+            docker/compose
+            golangci/golangci-lint
+            astral-sh/ruff
+            serde-rs/serde
+            hashicorp/terraform
+      - name: Show benchmark outputs
+        shell: bash
+        run: |
+          echo "repositories_analyzed=${{ steps.gate.outputs.benchmark-repositories-analyzed }}"
+          echo "repositories_skipped=${{ steps.gate.outputs.benchmark-repositories-skipped }}"
+          echo "natural_runs=${{ steps.gate.outputs.benchmark-runs-analyzed }}"
+          echo "natural_failed_jobs=${{ steps.gate.outputs.benchmark-failed-jobs }}"
+          echo "natural_policy_decisions=${{ steps.gate.outputs.benchmark-shadow-decisions }}"
+          echo "rerun_runs=${{ steps.gate.outputs.benchmark-rerun-runs-analyzed }}"
+          echo "rerun_failed_jobs=${{ steps.gate.outputs.benchmark-rerun-failed-jobs }}"
+          echo "rerun_candidates=${{ steps.gate.outputs.benchmark-rerun-candidates }}"
+          echo "rerun_evaluated=${{ steps.gate.outputs.benchmark-rerun-evaluated }}"
+          echo "rerun_recoveries=${{ steps.gate.outputs.benchmark-rerun-recoveries }}"
+          echo "rerun_false_positives=${{ steps.gate.outputs.benchmark-rerun-false-positives }}"
+          echo "rerun_unknown=${{ steps.gate.outputs.benchmark-rerun-unknown-outcomes }}"
+          echo "rerun_precision=${{ steps.gate.outputs.benchmark-rerun-observed-precision }}"
+          echo "rerun_candidate_coverage=${{ steps.gate.outputs.benchmark-rerun-candidate-coverage }}"
