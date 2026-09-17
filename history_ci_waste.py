@@ -11,6 +11,7 @@ from ci_retry_gate import (
     TRANSIENT_CATEGORIES,
     GitHubAPI,
     classify_log,
+    detect_side_effect_risk,
     job_duration_minutes,
 )
 
@@ -23,6 +24,14 @@ _DYNAMIC_PATTERNS = (
     (re.compile(r"\s+"), " "),
 )
 
+POLICY_AUTO_RERUN_ONCE = "AUTO_RERUN_ONCE"
+POLICY_MANUAL_REVIEW = "MANUAL_REVIEW"
+POLICY_DO_NOT_AUTO_RERUN = "DO_NOT_AUTO_RERUN"
+MIN_POLICY_RERUN_SAMPLES = 5
+MIN_AUTO_RECOVERY_RATE = 0.80
+MAX_BLOCK_RECOVERY_RATE = 0.20
+MIN_HIGH_CONFIDENCE_RATE = 0.80
+
 
 @dataclass(frozen=True)
 class HistoricalFailure:
@@ -34,6 +43,8 @@ class HistoricalFailure:
     fingerprint: str = ""
     signature: str = ""
     recovered_after_rerun: bool = False
+    rerun_observed: bool = False
+    side_effect_risk: bool = False
     attempt: int = 1
 
 
@@ -53,13 +64,32 @@ class FingerprintSummary:
     signature: str
     occurrences: int
     failed_minutes: float
+    rerun_observations: int
     rerun_recoveries: int
+    high_confidence_occurrences: int
+    side_effect_seen: bool
 
     @property
     def rerun_recovery_rate(self) -> float:
+        if self.rerun_observations <= 0:
+            return 0.0
+        return self.rerun_recoveries / self.rerun_observations
+
+    @property
+    def high_confidence_rate(self) -> float:
         if self.occurrences <= 0:
             return 0.0
-        return self.rerun_recoveries / self.occurrences
+        return self.high_confidence_occurrences / self.occurrences
+
+
+@dataclass(frozen=True)
+class PolicyRecommendation:
+    fingerprint: str
+    policy: str
+    reason: str
+    rerun_samples: int
+    recovery_rate: float
+    high_confidence_rate: float
 
 
 @dataclass(frozen=True)
@@ -70,6 +100,7 @@ class HistorySummary:
     transient_waste_minutes: float
     recurring: tuple[RecurringFailure, ...]
     fingerprints: tuple[FingerprintSummary, ...] = ()
+    policies: tuple[PolicyRecommendation, ...] = ()
     rerun_recoveries: int = 0
 
 
@@ -88,6 +119,87 @@ def failure_fingerprint(job_name: str, category: str, evidence: tuple[str, ...])
     raw = f"{normalized_job}\n{category}\n{signature}".encode("utf-8")
     digest = hashlib.sha256(raw).hexdigest()[:12].upper()
     return f"FG-{digest}", signature
+
+
+def recommend_policy(item: FingerprintSummary) -> PolicyRecommendation:
+    if item.side_effect_seen:
+        return PolicyRecommendation(
+            item.fingerprint,
+            POLICY_DO_NOT_AUTO_RERUN,
+            "A deploy/publish/migrate or other side-effect signal was observed for this fingerprint.",
+            item.rerun_observations,
+            item.rerun_recovery_rate,
+            item.high_confidence_rate,
+        )
+
+    if item.category == "CODE_REGRESSION":
+        return PolicyRecommendation(
+            item.fingerprint,
+            POLICY_DO_NOT_AUTO_RERUN,
+            "Code regressions require a code change rather than automatic retries.",
+            item.rerun_observations,
+            item.rerun_recovery_rate,
+            item.high_confidence_rate,
+        )
+
+    if item.category not in TRANSIENT_CATEGORIES:
+        return PolicyRecommendation(
+            item.fingerprint,
+            POLICY_MANUAL_REVIEW,
+            f"{item.category} is not in the conservative transient allow-list.",
+            item.rerun_observations,
+            item.rerun_recovery_rate,
+            item.high_confidence_rate,
+        )
+
+    if item.rerun_observations < MIN_POLICY_RERUN_SAMPLES:
+        return PolicyRecommendation(
+            item.fingerprint,
+            POLICY_MANUAL_REVIEW,
+            f"Only {item.rerun_observations} real rerun samples are available; at least {MIN_POLICY_RERUN_SAMPLES} are required.",
+            item.rerun_observations,
+            item.rerun_recovery_rate,
+            item.high_confidence_rate,
+        )
+
+    if item.high_confidence_rate < MIN_HIGH_CONFIDENCE_RATE:
+        return PolicyRecommendation(
+            item.fingerprint,
+            POLICY_MANUAL_REVIEW,
+            f"High-confidence classification rate is {item.high_confidence_rate:.0%}, below the {MIN_HIGH_CONFIDENCE_RATE:.0%} threshold.",
+            item.rerun_observations,
+            item.rerun_recovery_rate,
+            item.high_confidence_rate,
+        )
+
+    if item.rerun_recovery_rate >= MIN_AUTO_RECOVERY_RATE:
+        return PolicyRecommendation(
+            item.fingerprint,
+            POLICY_AUTO_RERUN_ONCE,
+            f"Recovered after {item.rerun_recoveries}/{item.rerun_observations} observed reruns ({item.rerun_recovery_rate:.0%}).",
+            item.rerun_observations,
+            item.rerun_recovery_rate,
+            item.high_confidence_rate,
+        )
+
+    if item.rerun_recovery_rate <= MAX_BLOCK_RECOVERY_RATE:
+        return PolicyRecommendation(
+            item.fingerprint,
+            POLICY_DO_NOT_AUTO_RERUN,
+            f"Only {item.rerun_recoveries}/{item.rerun_observations} observed reruns recovered ({item.rerun_recovery_rate:.0%}).",
+            item.rerun_observations,
+            item.rerun_recovery_rate,
+            item.high_confidence_rate,
+        )
+
+    return PolicyRecommendation(
+        item.fingerprint,
+        POLICY_MANUAL_REVIEW,
+        f"Observed rerun recovery rate is {item.rerun_recovery_rate:.0%}; evidence is not decisive enough for automatic policy.",
+        item.rerun_observations,
+        item.rerun_recovery_rate,
+        item.high_confidence_rate,
+    )
 
 
 def summarize_history(
@@ -126,15 +238,24 @@ def summarize_history(
 
     fp_counts: Counter[str] = Counter()
     fp_minutes: defaultdict[str, float] = defaultdict(float)
+    fp_reruns: Counter[str] = Counter()
     fp_recoveries: Counter[str] = Counter()
+    fp_high_confidence: Counter[str] = Counter()
+    fp_side_effect: dict[str, bool] = defaultdict(bool)
     fp_example: dict[str, HistoricalFailure] = {}
     for item in failures:
         if not item.fingerprint:
             continue
         fp_counts[item.fingerprint] += 1
         fp_minutes[item.fingerprint] += item.duration_minutes
+        if item.rerun_observed:
+            fp_reruns[item.fingerprint] += 1
         if item.recovered_after_rerun:
             fp_recoveries[item.fingerprint] += 1
+        if item.confidence == "high":
+            fp_high_confidence[item.fingerprint] += 1
+        if item.side_effect_risk:
+            fp_side_effect[item.fingerprint] = True
         fp_example.setdefault(item.fingerprint, item)
 
     fingerprints = [
@@ -145,7 +266,10 @@ def summarize_history(
             signature=fp_example[fingerprint].signature,
             occurrences=count,
             failed_minutes=round(fp_minutes[fingerprint], 2),
+            rerun_observations=fp_reruns[fingerprint],
             rerun_recoveries=fp_recoveries[fingerprint],
+            high_confidence_occurrences=fp_high_confidence[fingerprint],
+            side_effect_seen=fp_side_effect[fingerprint],
         )
         for fingerprint, count in fp_counts.items()
     ]
@@ -157,6 +281,7 @@ def summarize_history(
             item.fingerprint,
         )
     )
+    policies = tuple(recommend_policy(item) for item in fingerprints)
 
     return HistorySummary(
         runs_analyzed=runs_analyzed,
@@ -165,14 +290,20 @@ def summarize_history(
         transient_waste_minutes=transient_waste_minutes,
         recurring=tuple(recurring),
         fingerprints=tuple(fingerprints),
+        policies=policies,
         rerun_recoveries=sum(1 for item in failures if item.recovered_after_rerun),
     )
 
 
 def render_history_report(summary: HistorySummary) -> str:
     recurring_fingerprints = [item for item in summary.fingerprints if item.occurrences >= 2]
+    auto_count = sum(1 for item in summary.policies if item.policy == POLICY_AUTO_RERUN_ONCE)
+    manual_count = sum(1 for item in summary.policies if item.policy == POLICY_MANUAL_REVIEW)
+    blocked_count = sum(1 for item in summary.policies if item.policy == POLICY_DO_NOT_AUTO_RERUN)
+    policy_by_fp = {item.fingerprint: item for item in summary.policies}
+
     lines = [
-        "## CI History & Waste",
+        "## CI History, Fingerprints & Policy Learning",
         "",
         f"Historical runs analyzed: **{summary.runs_analyzed}**",
         f"Failed jobs observed: **{summary.failure_records}**",
@@ -180,6 +311,7 @@ def render_history_report(summary: HistorySummary) -> str:
         f"High-confidence transient CI waste: **{summary.transient_waste_minutes:.2f} min**",
         f"Failure fingerprints observed: **{len(summary.fingerprints)}**",
         f"Failures recovered by a later rerun: **{summary.rerun_recoveries}**",
+        f"Learned policy recommendations: **{auto_count} auto-rerun · {manual_count} manual-review · {blocked_count} blocked**",
         "",
     ]
 
@@ -188,16 +320,18 @@ def render_history_report(summary: HistorySummary) -> str:
             [
                 "### Recurring failure fingerprints",
                 "",
-                "| Fingerprint | Job | Category | Occurrences | Rerun recoveries | Failed runtime |",
-                "|---|---|---|---:|---:|---:|",
+                "| Fingerprint | Job | Category | Occurrences | Real reruns | Recoveries | Suggested policy | Failed runtime |",
+                "|---|---|---|---:|---:|---:|---|---:|",
             ]
         )
         for item in recurring_fingerprints[:10]:
+            policy = policy_by_fp[item.fingerprint]
             lines.append(
                 f"| `{item.fingerprint}` | {item.job_name.replace('|', '/')} | `{item.category}` | "
-                f"{item.occurrences} | {item.rerun_recoveries} | {item.failed_minutes:.2f} min |"
+                f"{item.occurrences} | {item.rerun_observations} | {item.rerun_recoveries} | "
+                f"`{policy.policy}` | {item.failed_minutes:.2f} min |"
             )
-            lines.append(f"|  | Signature | `{item.signature.replace('`', "'")}` |  |  |  |")
+            lines.append(f"|  | Signature | `{item.signature.replace('`', "'")}` |  |  |  | {policy.reason.replace('|', '/')} |  |")
     else:
         lines.append("No exact failure fingerprint appeared at least twice in the sampled history.")
 
@@ -220,6 +354,7 @@ def render_history_report(summary: HistorySummary) -> str:
     lines.extend(
         [
             "",
+            "> Policy Learning is advisory only. AUTO_RERUN_ONCE is suggested only for transient fingerprints with at least 5 real rerun samples, at least 80% recovery, at least 80% high-confidence classifications, and no observed side-effect signal.",
             "> Fingerprints are deterministic hashes of the job, failure category, and normalized evidence lines. Timestamps, IP addresses, long hex IDs, and standalone numbers are normalized so the same underlying failure can match across runs.",
             "> Failed-job runtime is not automatically waste. The transient-waste figure counts only jobs whose logs match a high-confidence runner/infrastructure or dependency/network signature.",
         ]
@@ -240,6 +375,28 @@ def _jobs_for_attempt(api: GitHubAPI, repo: str, run_id: int, attempt: int) -> l
         f"/repos/{repo}/actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100",
     )
     return list(data.get("jobs") or [])
+
+
+def _later_rerun_outcome(
+    attempt_jobs: dict[int, list[dict]],
+    current_attempt: int,
+    attempts: int,
+    job_name: str,
+    original_started_at: str,
+) -> tuple[bool, bool]:
+    """Return (rerun_observed, recovered) while ignoring GitHub's copied untouched jobs."""
+    observed = False
+    for later_attempt in range(current_attempt + 1, attempts + 1):
+        for candidate in attempt_jobs.get(later_attempt, []):
+            if str(candidate.get("name") or "") != job_name:
+                continue
+            later_started_at = str(candidate.get("started_at") or "")
+            if not later_started_at or later_started_at == original_started_at:
+                continue
+            observed = True
+            if str(candidate.get("conclusion") or "").lower() == "success":
+                return True, True
+    return observed, False
 
 
 def collect_history(
@@ -282,14 +439,6 @@ def collect_history(
                 else:
                     attempt_jobs[attempt] = []
 
-        later_successes: dict[int, set[str]] = {}
-        successes: set[str] = set()
-        for attempt in range(attempts, 0, -1):
-            later_successes[attempt] = set(successes)
-            for job in attempt_jobs.get(attempt, []):
-                if str(job.get("conclusion") or "").lower() == "success":
-                    successes.add(str(job.get("name") or ""))
-
         for attempt in range(1, attempts + 1):
             for job in attempt_jobs.get(attempt, []):
                 conclusion = str(job.get("conclusion") or "").lower()
@@ -297,6 +446,7 @@ def collect_history(
                     continue
 
                 job_id = int(job.get("id") or 0)
+                job_name = str(job.get("name") or f"job-{job_id}")
                 try:
                     log_text = api.get_job_logs(repo, job_id)
                 except RuntimeError:
@@ -304,11 +454,18 @@ def collect_history(
 
                 classification = classify_log(log_text)
                 fingerprint, signature = failure_fingerprint(
-                    str(job.get("name") or f"job-{job_id}"),
+                    job_name,
                     classification.category,
                     classification.evidence,
                 )
-                job_name = str(job.get("name") or f"job-{job_id}")
+                side_effect_risk, _ = detect_side_effect_risk(job)
+                rerun_observed, recovered = _later_rerun_outcome(
+                    attempt_jobs,
+                    attempt,
+                    attempts,
+                    job_name,
+                    str(job.get("started_at") or ""),
+                )
                 failures.append(
                     HistoricalFailure(
                         run_id=run_id,
@@ -318,7 +475,9 @@ def collect_history(
                         duration_minutes=job_duration_minutes(job),
                         fingerprint=fingerprint,
                         signature=signature,
-                        recovered_after_rerun=job_name in later_successes.get(attempt, set()),
+                        recovered_after_rerun=recovered,
+                        rerun_observed=rerun_observed,
+                        side_effect_risk=side_effect_risk,
                         attempt=attempt,
                     )
                 )
@@ -361,6 +520,9 @@ def main() -> int:
         print(report)
 
     recurring_fingerprints = sum(1 for item in summary.fingerprints if item.occurrences >= 2)
+    auto_policies = sum(1 for item in summary.policies if item.policy == POLICY_AUTO_RERUN_ONCE)
+    manual_policies = sum(1 for item in summary.policies if item.policy == POLICY_MANUAL_REVIEW)
+    blocked_policies = sum(1 for item in summary.policies if item.policy == POLICY_DO_NOT_AUTO_RERUN)
     _write_output("history-runs-analyzed", str(summary.runs_analyzed))
     _write_output("historical-failed-minutes", f"{summary.failed_minutes:.2f}")
     _write_output(
@@ -371,6 +533,9 @@ def main() -> int:
     _write_output("failure-fingerprints", str(len(summary.fingerprints)))
     _write_output("recurring-fingerprints", str(recurring_fingerprints))
     _write_output("rerun-recoveries", str(summary.rerun_recoveries))
+    _write_output("policy-auto-rerun-fingerprints", str(auto_policies))
+    _write_output("policy-manual-review-fingerprints", str(manual_policies))
+    _write_output("policy-blocked-fingerprints", str(blocked_policies))
     return 0
 
 
