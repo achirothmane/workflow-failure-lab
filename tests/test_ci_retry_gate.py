@@ -21,6 +21,34 @@ def test_network_transient_high_confidence():
     assert result.confidence == "high"
 
 
+def test_single_read_tcp_connection_reset_is_high_confidence():
+    result = classify_log(
+        "read tcp 10.1.1.37:36338->13.226.53.57:443: read: connection reset by peer\n"
+        "Process completed with exit code 1"
+    )
+    assert result.category == "DEPENDENCY_NETWORK"
+    assert result.confidence == "high"
+
+
+def test_single_npm_econnreset_is_high_confidence():
+    result = classify_log(
+        "npm error code ECONNRESET\n"
+        "Process completed with exit code 1"
+    )
+    assert result.category == "DEPENDENCY_NETWORK"
+    assert result.confidence == "high"
+
+
+def test_documentation_connect_timeout_does_not_become_high_confidence():
+    result = classify_log(
+        "data before giving up, as a float, or a (connect timeout, read timeout) tuple\n"
+        "data before giving up, as a float, or a (connect timeout, read timeout) tuple\n"
+        "Process completed with exit code 1"
+    )
+    assert result.category == "DEPENDENCY_NETWORK"
+    assert result.confidence != "high"
+
+
 def test_code_failure_is_not_transient():
     result = classify_log("AssertionError: expected 2 == 3\nTests failed\nProcess completed with exit code 1")
     assert result.category == "CODE_REGRESSION"
