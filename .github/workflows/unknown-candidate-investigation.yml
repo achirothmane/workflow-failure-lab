@@ -1,0 +1,67 @@
+name: Investigate UNKNOWN Candidate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/unknown-candidate-investigation-trigger.txt'
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  investigate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: gate
+        uses: ./
+        with:
+          github-token: ${{ github.token }}
+          auto-rerun: 'false'
+          selective-rerun: 'false'
+          policy-shadow-mode: 'false'
+          history-runs: '0'
+          comment-on-pr: 'false'
+          benchmark-mode: 'true'
+          benchmark-runs: '5'
+          benchmark-rerun-runs: '20'
+          benchmark-rerun-search-runs: '150'
+          benchmark-repositories: |
+            pallets/flask
+            psf/requests
+            pytest-dev/pytest
+            axios/axios
+            pnpm/pnpm
+            docker/compose
+            golangci/golangci-lint
+            astral-sh/ruff
+            serde-rs/serde
+            hashicorp/terraform
+            django/django
+            fastapi/fastapi
+            encode/httpx
+            tiangolo/sqlmodel
+            numpy/numpy
+            pandas-dev/pandas
+            pydantic/pydantic
+            nodejs/node
+            denoland/deno
+            vitejs/vite
+            vercel/next.js
+            microsoft/TypeScript
+            rust-lang/cargo
+            tokio-rs/tokio
+            BurntSushi/ripgrep
+            kubernetes/kubernetes
+            helm/helm
+            prometheus/prometheus
+            grafana/grafana
+            hashicorp/vault
+      - name: Show UNKNOWN candidate report rows
+        shell: bash
+        run: |
+          echo "candidate_ids=${{ steps.gate.outputs.benchmark-unknown-promotion-candidate-ids }}"
+          echo "--- unknown intelligence report ---"
+          sed -n '/### Unknown Failure Intelligence/,/### Rerun-enriched results by failure category/p' "$GITHUB_STEP_SUMMARY"
