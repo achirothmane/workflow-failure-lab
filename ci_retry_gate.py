@@ -23,6 +23,10 @@ _SECRET_PATTERNS = [
     re.compile(r"(?i)\b(api[_-]?key|token|secret|password)\s*[:=]\s*[^\s]+"),
 ]
 
+# GitHub logs can contain terminal color/control sequences inside error lines.
+# Strip them before matching so operational signatures are not split by escape bytes.
+_ANSI_ESCAPE_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+
 _CATEGORY_RULES: dict[str, tuple[tuple[int, re.Pattern[str]], ...]] = {
     "RUNNER_INFRA": tuple(
         (weight, re.compile(pattern, re.IGNORECASE))
@@ -153,7 +157,7 @@ def redact(text: str) -> str:
 
 
 def _useful_line(line: str) -> str:
-    line = redact(line).strip()
+    line = _ANSI_ESCAPE_RE.sub("", redact(line)).strip()
     if len(line) > 300:
         line = line[:297] + "..."
     return line

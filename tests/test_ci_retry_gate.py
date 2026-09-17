@@ -30,6 +30,18 @@ def test_single_read_tcp_connection_reset_is_high_confidence():
     assert result.confidence == "high"
 
 
+def test_ansi_colored_read_tcp_connection_reset_is_high_confidence():
+    result = classify_log(
+        "\x1b[31m│\x1b[0m \x1b[0mread tcp 10.1.1.37:36338->13.226.53.57:443: "
+        "read: connection reset by peer\n"
+        "\x1b[31m╵\x1b[0m\n"
+        "Process completed with exit code 1"
+    )
+    assert result.category == "DEPENDENCY_NETWORK"
+    assert result.confidence == "high"
+    assert all("\x1b" not in line for line in result.evidence)
+
+
 def test_single_npm_econnreset_is_high_confidence():
     result = classify_log(
         "npm error code ECONNRESET\n"
