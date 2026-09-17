@@ -1,5 +1,5 @@
 name: 'CI Retry Gate'
-description: 'Classify failed GitHub Actions jobs, gate safe reruns, fingerprint recurring failures, and surface CI waste from recent history.'
+description: 'Classify failed GitHub Actions jobs, gate safe reruns, fingerprint recurring failures, learn conservative retry policies, and surface CI waste from recent history.'
 author: 'othy19904-eng'
 
 inputs:
@@ -31,7 +31,7 @@ inputs:
     required: false
     default: 'true'
   history-runs:
-    description: 'Number of previous completed runs of the same workflow to inspect for recurring failures, fingerprints, rerun recovery, and CI waste. Capped at 50.'
+    description: 'Number of previous completed runs of the same workflow to inspect for recurring failures, fingerprints, rerun recovery, policy learning, and CI waste. Capped at 50.'
     required: false
     default: '10'
 
@@ -76,8 +76,17 @@ outputs:
     description: 'Number of exact normalized failure fingerprints seen at least twice in sampled history.'
     value: ${{ steps.history.outputs.recurring-fingerprints }}
   rerun-recoveries:
-    description: 'Number of historical failed jobs that later succeeded in a subsequent attempt of the same workflow run.'
+    description: 'Number of historical failed jobs that later succeeded in a real subsequent execution of the same job.'
     value: ${{ steps.history.outputs.rerun-recoveries }}
+  policy-auto-rerun-fingerprints:
+    description: 'Number of fingerprints for which Policy Learning recommends AUTO_RERUN_ONCE.'
+    value: ${{ steps.history.outputs.policy-auto-rerun-fingerprints }}
+  policy-manual-review-fingerprints:
+    description: 'Number of fingerprints for which Policy Learning recommends MANUAL_REVIEW.'
+    value: ${{ steps.history.outputs.policy-manual-review-fingerprints }}
+  policy-blocked-fingerprints:
+    description: 'Number of fingerprints for which Policy Learning recommends DO_NOT_AUTO_RERUN.'
+    value: ${{ steps.history.outputs.policy-blocked-fingerprints }}
 
 runs:
   using: 'composite'
@@ -113,7 +122,7 @@ runs:
       run: python3 "$GITHUB_ACTION_PATH/selective_rerun.py"
 
     - id: history
-      name: Analyze CI history, fingerprints, and waste
+      name: Analyze CI history, fingerprints, policies, and waste
       shell: bash
       env:
         INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
