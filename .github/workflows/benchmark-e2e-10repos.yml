@@ -26,7 +26,7 @@ jobs:
           history-runs: '0'
           comment-on-pr: 'false'
           benchmark-mode: 'true'
-          benchmark-runs: '10'
+          benchmark-runs: '25'
           benchmark-repositories: |
             pallets/flask
             psf/requests
