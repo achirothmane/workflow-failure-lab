@@ -1,7 +1,13 @@
 from history_ci_waste import (
+    POLICY_AUTO_RERUN_ONCE,
+    POLICY_DO_NOT_AUTO_RERUN,
+    POLICY_MANUAL_REVIEW,
+    FingerprintSummary,
     HistoricalFailure,
+    _later_rerun_outcome,
     failure_fingerprint,
     normalize_signature_line,
+    recommend_policy,
     render_history_report,
     summarize_history,
 )
@@ -17,6 +23,8 @@ def failure(
     fingerprint="",
     signature="",
     recovered=False,
+    rerun=False,
+    side_effect=False,
     attempt=1,
 ):
     return HistoricalFailure(
@@ -28,7 +36,32 @@ def failure(
         fingerprint=fingerprint,
         signature=signature,
         recovered_after_rerun=recovered,
+        rerun_observed=rerun,
+        side_effect_risk=side_effect,
         attempt=attempt,
+    )
+
+
+def fp_summary(
+    *,
+    category="DEPENDENCY_NETWORK",
+    occurrences=5,
+    reruns=5,
+    recoveries=4,
+    high_confidence=5,
+    side_effect=False,
+):
+    return FingerprintSummary(
+        fingerprint="FG-TEST",
+        job_name="install dependencies",
+        category=category,
+        signature="npm err code etimedout",
+        occurrences=occurrences,
+        failed_minutes=10.0,
+        rerun_observations=reruns,
+        rerun_recoveries=recoveries,
+        high_confidence_occurrences=high_confidence,
+        side_effect_seen=side_effect,
     )
 
 
@@ -131,7 +164,7 @@ def test_different_failure_evidence_gets_different_fingerprint():
     assert network_fp != runner_fp
 
 
-def test_fingerprint_summary_counts_occurrences_minutes_and_rerun_recoveries():
+def test_fingerprint_summary_counts_real_reruns_and_recoveries():
     fp, signature = failure_fingerprint(
         "install dependencies",
         "DEPENDENCY_NETWORK",
@@ -148,6 +181,7 @@ def test_fingerprint_summary_counts_occurrences_minutes_and_rerun_recoveries():
                 fingerprint=fp,
                 signature=signature,
                 recovered=True,
+                rerun=True,
             ),
             failure(
                 2,
@@ -158,6 +192,7 @@ def test_fingerprint_summary_counts_occurrences_minutes_and_rerun_recoveries():
                 fingerprint=fp,
                 signature=signature,
                 recovered=False,
+                rerun=True,
             ),
         ],
         runs_analyzed=2,
@@ -168,30 +203,138 @@ def test_fingerprint_summary_counts_occurrences_minutes_and_rerun_recoveries():
     assert item.fingerprint == fp
     assert item.occurrences == 2
     assert item.failed_minutes == 9.5
+    assert item.rerun_observations == 2
     assert item.rerun_recoveries == 1
     assert item.rerun_recovery_rate == 0.5
+    assert item.high_confidence_rate == 1.0
     assert summary.rerun_recoveries == 1
 
 
-def test_report_contains_recurring_fingerprint_and_recovery_count():
+def test_copied_untouched_job_is_not_counted_as_real_rerun():
+    attempts = {
+        1: [
+            {
+                "name": "code-regression",
+                "started_at": "2026-09-17T08:51:54Z",
+                "conclusion": "failure",
+            }
+        ],
+        2: [
+            {
+                "name": "code-regression",
+                "started_at": "2026-09-17T08:51:54Z",
+                "conclusion": "failure",
+            }
+        ],
+    }
+
+    observed, recovered = _later_rerun_outcome(
+        attempts,
+        current_attempt=1,
+        attempts=2,
+        job_name="code-regression",
+        original_started_at="2026-09-17T08:51:54Z",
+    )
+
+    assert observed is False
+    assert recovered is False
+
+
+def test_later_job_with_new_start_time_is_real_rerun_and_recovery():
+    attempts = {
+        1: [],
+        2: [
+            {
+                "name": "install",
+                "started_at": "2026-09-17T08:52:16Z",
+                "conclusion": "success",
+            }
+        ],
+    }
+
+    observed, recovered = _later_rerun_outcome(
+        attempts,
+        current_attempt=1,
+        attempts=2,
+        job_name="install",
+        original_started_at="2026-09-17T08:51:55Z",
+    )
+
+    assert observed is True
+    assert recovered is True
+
+
+def test_policy_auto_rerun_once_requires_five_samples_and_80_percent_recovery():
+    policy = recommend_policy(fp_summary(reruns=5, recoveries=4))
+
+    assert policy.policy == POLICY_AUTO_RERUN_ONCE
+    assert policy.recovery_rate == 0.8
+
+
+def test_policy_stays_manual_with_too_few_rerun_samples():
+    policy = recommend_policy(fp_summary(occurrences=4, reruns=4, recoveries=4, high_confidence=4))
+
+    assert policy.policy == POLICY_MANUAL_REVIEW
+    assert "at least 5" in policy.reason
+
+
+def test_policy_blocks_code_regression_even_when_reruns_recovered():
+    policy = recommend_policy(
+        fp_summary(category="CODE_REGRESSION", reruns=5, recoveries=5)
+    )
+
+    assert policy.policy == POLICY_DO_NOT_AUTO_RERUN
+
+
+def test_policy_blocks_any_fingerprint_with_side_effect_history():
+    policy = recommend_policy(fp_summary(side_effect=True, reruns=10, recoveries=10))
+
+    assert policy.policy == POLICY_DO_NOT_AUTO_RERUN
+    assert "side-effect" in policy.reason
+
+
+def test_policy_blocks_transient_fingerprint_with_very_low_recovery():
+    policy = recommend_policy(fp_summary(reruns=5, recoveries=1))
+
+    assert policy.policy == POLICY_DO_NOT_AUTO_RERUN
+    assert policy.recovery_rate == 0.2
+
+
+def test_policy_requires_high_confidence_history():
+    policy = recommend_policy(
+        fp_summary(occurrences=10, reruns=10, recoveries=9, high_confidence=7)
+    )
+
+    assert policy.policy == POLICY_MANUAL_REVIEW
+    assert "High-confidence" in policy.reason
+
+
+def test_report_contains_policy_recommendation():
     fp, signature = failure_fingerprint(
         "install",
         "DEPENDENCY_NETWORK",
         ("npm ERR! code ETIMEDOUT", "connection reset by peer"),
     )
-    summary = summarize_history(
-        [
-            failure(1, "install", "DEPENDENCY_NETWORK", "high", 4.0, fingerprint=fp, signature=signature, recovered=True),
-            failure(2, "install", "DEPENDENCY_NETWORK", "high", 5.0, fingerprint=fp, signature=signature, recovered=True),
-        ],
-        runs_analyzed=2,
-    )
+    records = [
+        failure(
+            i,
+            "install",
+            "DEPENDENCY_NETWORK",
+            "high",
+            2.0,
+            fingerprint=fp,
+            signature=signature,
+            recovered=i <= 4,
+            rerun=True,
+        )
+        for i in range(1, 6)
+    ]
+    summary = summarize_history(records, runs_analyzed=5)
     report = render_history_report(summary)
 
-    assert "Recurring failure fingerprints" in report
-    assert fp in report
-    assert "Failures recovered by a later rerun: **2**" in report
-    assert "| 2 | 2 | 9.00 min |" in report
+    assert "Policy Learning" in report
+    assert POLICY_AUTO_RERUN_ONCE in report
+    assert "4/5" in report
 
 
 def test_report_labels_failed_runtime_separately_from_transient_waste():
@@ -217,4 +360,5 @@ def test_empty_history_is_valid():
     assert summary.transient_waste_minutes == 0
     assert summary.recurring == ()
     assert summary.fingerprints == ()
+    assert summary.policies == ()
     assert summary.rerun_recoveries == 0
