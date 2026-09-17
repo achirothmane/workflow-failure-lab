@@ -1,5 +1,5 @@
 name: 'CI Retry Gate'
-description: 'Classify failed GitHub Actions jobs and rerun only high-confidence transient failures when no side-effect risk is detected.'
+description: 'Classify failed GitHub Actions jobs, gate safe reruns, and surface recurring CI waste from recent history.'
 author: 'othy19904-eng'
 
 inputs:
@@ -26,6 +26,10 @@ inputs:
     description: 'Post the gate report to the pull request when one is associated with the failed run.'
     required: false
     default: 'true'
+  history-runs:
+    description: 'Number of previous completed runs of the same workflow to inspect for recurring failures and CI waste. Capped at 50.'
+    required: false
+    default: '10'
 
 outputs:
   safe-to-rerun:
@@ -35,11 +39,23 @@ outputs:
     description: 'true when auto-rerun was enabled and a rerun was triggered.'
     value: ${{ steps.gate.outputs.rerun-triggered }}
   failed-jobs:
-    description: 'Number of failed jobs assessed.'
+    description: 'Number of failed jobs assessed in the current run.'
     value: ${{ steps.gate.outputs.failed-jobs }}
   wasted-minutes:
-    description: 'Observed runtime in minutes across failed jobs.'
+    description: 'Observed runtime in minutes across failed jobs in the current run.'
     value: ${{ steps.gate.outputs.wasted-minutes }}
+  history-runs-analyzed:
+    description: 'Number of previous workflow runs inspected.'
+    value: ${{ steps.history.outputs.history-runs-analyzed }}
+  historical-failed-minutes:
+    description: 'Runtime in minutes across failed jobs in sampled historical runs; not all of this is necessarily waste.'
+    value: ${{ steps.history.outputs.historical-failed-minutes }}
+  historical-transient-waste-minutes:
+    description: 'Historical failed-job runtime classified as high-confidence runner/infrastructure or dependency/network failure.'
+    value: ${{ steps.history.outputs.historical-transient-waste-minutes }}
+  recurring-failures:
+    description: 'Number of recurring job/category failure patterns seen at least twice in sampled history.'
+    value: ${{ steps.history.outputs.recurring-failures }}
 
 runs:
   using: 'composite'
@@ -55,6 +71,16 @@ runs:
         INPUT_MAX_ATTEMPTS: ${{ inputs.max-attempts }}
         INPUT_COMMENT_ON_PR: ${{ inputs.comment-on-pr }}
       run: python3 "$GITHUB_ACTION_PATH/ci_retry_gate.py"
+
+    - id: history
+      name: Analyze CI history and waste
+      shell: bash
+      env:
+        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
+        INPUT_RUN_ID: ${{ inputs.run-id }}
+        INPUT_REPOSITORY: ${{ inputs.repository }}
+        INPUT_HISTORY_RUNS: ${{ inputs.history-runs }}
+      run: python3 "$GITHUB_ACTION_PATH/history_ci_waste.py"
 
 branding:
   icon: 'shield'
