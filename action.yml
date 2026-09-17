@@ -1,0 +1,61 @@
+name: 'CI Retry Gate'
+description: 'Classify failed GitHub Actions jobs and rerun only high-confidence transient failures when no side-effect risk is detected.'
+author: 'othy19904-eng'
+
+inputs:
+  github-token:
+    description: 'GitHub token. actions:read is required; actions:write is required only when auto-rerun=true.'
+    required: true
+  run-id:
+    description: 'Workflow run ID to inspect. Defaults to github.event.workflow_run.id.'
+    required: false
+    default: ''
+  repository:
+    description: 'Repository in owner/name form. Defaults to github.repository.'
+    required: false
+    default: ''
+  auto-rerun:
+    description: 'Actually rerun failed jobs when the safety gate passes.'
+    required: false
+    default: 'false'
+  max-attempts:
+    description: 'Maximum total attempts for the target workflow run.'
+    required: false
+    default: '2'
+  comment-on-pr:
+    description: 'Post the gate report to the pull request when one is associated with the failed run.'
+    required: false
+    default: 'true'
+
+outputs:
+  safe-to-rerun:
+    description: 'true only when every failed job is a high-confidence transient failure and no side-effect signal is present.'
+    value: ${{ steps.gate.outputs.safe-to-rerun }}
+  rerun-triggered:
+    description: 'true when auto-rerun was enabled and a rerun was triggered.'
+    value: ${{ steps.gate.outputs.rerun-triggered }}
+  failed-jobs:
+    description: 'Number of failed jobs assessed.'
+    value: ${{ steps.gate.outputs.failed-jobs }}
+  wasted-minutes:
+    description: 'Observed runtime in minutes across failed jobs.'
+    value: ${{ steps.gate.outputs.wasted-minutes }}
+
+runs:
+  using: 'composite'
+  steps:
+    - id: gate
+      name: Assess retry safety
+      shell: bash
+      env:
+        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
+        INPUT_RUN_ID: ${{ inputs.run-id }}
+        INPUT_REPOSITORY: ${{ inputs.repository }}
+        INPUT_AUTO_RERUN: ${{ inputs.auto-rerun }}
+        INPUT_MAX_ATTEMPTS: ${{ inputs.max-attempts }}
+        INPUT_COMMENT_ON_PR: ${{ inputs.comment-on-pr }}
+      run: python3 "$GITHUB_ACTION_PATH/ci_retry_gate.py"
+
+branding:
+  icon: 'shield'
+  color: 'blue'
