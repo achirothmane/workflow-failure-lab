@@ -4,7 +4,7 @@ from benchmark_mode import _list_completed_runs
 class _PagingDuplicateAPI:
     def request(self, method: str, path: str, payload=None, accept=None):
         assert method == "GET"
-        if "page=1" in path:
+        if "&page=1" in path:
             # Full first page with an intra-page duplicate. Three unique runs remain.
             return {
                 "workflow_runs": [
@@ -14,10 +14,10 @@ class _PagingDuplicateAPI:
                     {"id": 2, "run_attempt": 2},
                 ]
             }
-        if "page=2" in path:
+        if "&page=2" in path:
             # Simulate offset pagination shifting while new runs arrive: run 2 repeats.
             return {"workflow_runs": [{"id": 2, "run_attempt": 2}]}
-        if "page=3" in path:
+        if "&page=3" in path:
             return {"workflow_runs": [{"id": 1, "run_attempt": 1}]}
         return {"workflow_runs": []}
 
