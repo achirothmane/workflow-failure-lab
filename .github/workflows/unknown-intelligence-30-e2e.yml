@@ -1,0 +1,74 @@
+name: 30-Repo Unknown Failure Intelligence
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/unknown-intelligence-30-trigger.txt'
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: gate
+        uses: ./
+        with:
+          github-token: ${{ github.token }}
+          auto-rerun: 'false'
+          selective-rerun: 'false'
+          policy-shadow-mode: 'false'
+          history-runs: '0'
+          comment-on-pr: 'false'
+          benchmark-mode: 'true'
+          benchmark-runs: '5'
+          benchmark-rerun-runs: '20'
+          benchmark-rerun-search-runs: '150'
+          benchmark-repositories: |
+            pallets/flask
+            psf/requests
+            pytest-dev/pytest
+            axios/axios
+            pnpm/pnpm
+            docker/compose
+            golangci/golangci-lint
+            astral-sh/ruff
+            serde-rs/serde
+            hashicorp/terraform
+            django/django
+            fastapi/fastapi
+            encode/httpx
+            tiangolo/sqlmodel
+            numpy/numpy
+            pandas-dev/pandas
+            pydantic/pydantic
+            nodejs/node
+            denoland/deno
+            vitejs/vite
+            vercel/next.js
+            microsoft/TypeScript
+            rust-lang/cargo
+            tokio-rs/tokio
+            BurntSushi/ripgrep
+            kubernetes/kubernetes
+            helm/helm
+            prometheus/prometheus
+            grafana/grafana
+            hashicorp/vault
+      - name: Show unknown intelligence outputs
+        shell: bash
+        run: |
+          echo "repositories=${{ steps.gate.outputs.benchmark-repositories-analyzed }}"
+          echo "unknown_classification=${{ steps.gate.outputs.benchmark-rejection-unknown-classification }}"
+          echo "unknown_patterns=${{ steps.gate.outputs.benchmark-unknown-patterns }}"
+          echo "unknown_repeated_patterns=${{ steps.gate.outputs.benchmark-unknown-repeated-patterns }}"
+          echo "unknown_evaluated_reruns=${{ steps.gate.outputs.benchmark-unknown-evaluated-reruns }}"
+          echo "unknown_recoveries=${{ steps.gate.outputs.benchmark-unknown-recoveries }}"
+          echo "unknown_failed_again=${{ steps.gate.outputs.benchmark-unknown-failed-again }}"
+          echo "unknown_promotion_candidates=${{ steps.gate.outputs.benchmark-unknown-promotion-candidates }}"
+          echo "unknown_candidate_ids=${{ steps.gate.outputs.benchmark-unknown-promotion-candidate-ids }}"
+          test "${{ steps.gate.outputs.benchmark-repositories-analyzed }}" -ge "20"
