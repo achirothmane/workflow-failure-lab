@@ -1,0 +1,22 @@
+name: Policy Shadow E2E Fixture
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/shadow-e2e-trigger.txt'
+
+jobs:
+  transient-network:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Controlled transient failure
+        shell: bash
+        run: |
+          if [ "${GITHUB_RUN_ATTEMPT}" = "1" ]; then
+            echo "npm ERR! code ETIMEDOUT"
+            echo "connect ETIMEDOUT 104.20.22.46:443"
+            echo "Error: connection reset by peer"
+            exit 1
+          fi
+          echo "Recovered on rerun"
