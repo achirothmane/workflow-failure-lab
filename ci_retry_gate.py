@@ -79,6 +79,34 @@ _CATEGORY_RULES: dict[str, tuple[tuple[int, re.Pattern[str]], ...]] = {
     ),
 }
 
+# These signatures are intentionally narrower than the scoring rules above.
+# A single occurrence may be enough for high confidence only when it looks like
+# an operational failure emitted by a network/client stack, rather than prose,
+# documentation, a source fixture, or a generic timeout word.
+_HIGH_SPECIFICITY_TRANSIENT_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
+    "RUNNER_INFRA": tuple(
+        re.compile(pattern, re.IGNORECASE)
+        for pattern in [
+            r"lost communication with the server",
+            r"the runner has received a shutdown signal",
+            r"hosted runner .* (shutdown|unavailable|failed)",
+        ]
+    ),
+    "DEPENDENCY_NETWORK": tuple(
+        re.compile(pattern, re.IGNORECASE)
+        for pattern in [
+            r"\bnpm (?:err!|error) code (?:econnreset|etimedout|eai_again)\b",
+            r"\bread tcp\b.*\bread:\s*connection reset by peer\b",
+            r"\bdial tcp\b.*(?:i/o timeout|connect:\s*(?:connection timed out|network is unreachable|connection refused))",
+            r"\bcurl:\s*\((?:6|7|28|35|56)\)\b",
+            r"\bfatal: unable to access\b.*(?:could not resolve host|recv failure: connection reset by peer|failed to connect|operation timed out)",
+            r"\b(?:error|fatal):\s*connection reset by peer\b",
+            r"\bconnect etimedout\b",
+            r"\btls handshake timeout\b",
+        ]
+    ),
+}
+
 _SIDE_EFFECT_PATTERNS = tuple(
     re.compile(pattern, re.IGNORECASE)
     for pattern in [
@@ -96,12 +124,14 @@ _SIDE_EFFECT_PATTERNS = tuple(
     ]
 )
 
+
 @dataclass(frozen=True)
 class Classification:
     category: str
     confidence: str
     score: int
     evidence: tuple[str, ...]
+
 
 @dataclass(frozen=True)
 class JobAssessment:
@@ -132,6 +162,9 @@ def _useful_line(line: str) -> str:
 def classify_log(log_text: str) -> Classification:
     scores: dict[str, int] = {name: 0 for name in _CATEGORY_RULES}
     evidence: dict[str, list[str]] = {name: [] for name in _CATEGORY_RULES}
+    strong_transient_evidence: dict[str, list[str]] = {
+        name: [] for name in _HIGH_SPECIFICITY_TRANSIENT_RULES
+    }
 
     for raw_line in log_text.splitlines():
         line = _useful_line(raw_line)
@@ -144,6 +177,10 @@ def classify_log(log_text: str) -> Classification:
                     if len(evidence[category]) < 3 and line not in evidence[category]:
                         evidence[category].append(line)
                     break
+        for category, patterns in _HIGH_SPECIFICITY_TRANSIENT_RULES.items():
+            if any(pattern.search(line) for pattern in patterns):
+                if len(strong_transient_evidence[category]) < 3 and line not in strong_transient_evidence[category]:
+                    strong_transient_evidence[category].append(line)
 
     ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)
     top_category, top_score = ranked[0]
@@ -159,6 +196,13 @@ def classify_log(log_text: str) -> Classification:
         confidence = "medium"
     else:
         confidence = "low"
+
+    if (
+        top_category in TRANSIENT_CATEGORIES
+        and strong_transient_evidence.get(top_category)
+        and second_score <= 2
+    ):
+        confidence = "high"
 
     if top_category == "CODE_REGRESSION" and top_score < 7:
         confidence = "medium" if top_score >= 4 else "low"
