@@ -83,6 +83,9 @@ Benchmark Mode samples completed workflow runs, reads first-attempt failed jobs,
 - recoveries, false positives, and unknown outcomes;
 - observed precision;
 - decision coverage and evaluated coverage;
+- **rejection intelligence** for failures that were blocked from auto-rerun;
+- blocked failures that later recovered, failed again, or had no observable rerun outcome;
+- rejection reasons such as side-effect risk, code regression, low-confidence transient, unknown classification, and other non-transient categories;
 - results broken down by failure category and repository.
 
 Example:
@@ -105,6 +108,8 @@ Example:
 The repository list is capped at 50 and `benchmark-runs` is capped at 50 per repository. Public or otherwise token-accessible repositories can be analyzed; inaccessible repositories are reported as skipped instead of aborting the whole benchmark.
 
 **Observed precision is not overall classifier accuracy.** It is `recoveries / evaluated AUTO_RERUN_ONCE shadow decisions`. Unknown counterfactual outcomes are excluded rather than counted as successes or failures. Benchmark results describe only the sampled history and are not a guarantee of future behavior.
+
+A **blocked recovery** is also not evidence that the block was wrong. A code regression, side-effect workflow, or ambiguous failure can succeed on a later rerun for unrelated reasons. Rejection Intelligence treats recovered blocked cases as places to investigate for safer coverage improvements, not as automatic promotion evidence.
 
 ## Selective Safe Rerun
 
@@ -203,6 +208,15 @@ Benchmark Mode emits:
 | `benchmark-observed-precision` | Recoveries divided by evaluated decisions. |
 | `benchmark-decision-coverage` | Shadow decisions divided by first-attempt failed jobs. |
 | `benchmark-evaluated-coverage` | Evaluated decisions divided by first-attempt failed jobs. |
+| `benchmark-rerun-blocked` | Rerun-enriched failures blocked from becoming safe candidates. |
+| `benchmark-rerun-blocked-recovered` | Blocked failures that later recovered after a real rerun. |
+| `benchmark-rerun-blocked-failed-again` | Blocked failures that failed again after a real rerun. |
+| `benchmark-rerun-blocked-unknown` | Blocked failures without an observable real rerun outcome. |
+| `benchmark-rejection-side-effect` | Failures blocked by workflow/job side-effect risk. |
+| `benchmark-rejection-code-regression` | Failures blocked as code regressions. |
+| `benchmark-rejection-low-confidence-transient` | Transient-category failures blocked because confidence was not high. |
+| `benchmark-rejection-unknown-classification` | Failures blocked because classification stayed UNKNOWN. |
+| `benchmark-rejection-non-transient` | Other non-auto-rerun categories such as resource/flaky-test classes. |
 
 ## Safety model
 

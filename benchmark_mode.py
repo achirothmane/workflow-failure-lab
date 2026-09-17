@@ -23,6 +23,12 @@ from policy_shadow import simulate_shadow
 
 _REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
+REJECTION_SIDE_EFFECT = "SIDE_EFFECT_RISK"
+REJECTION_CODE_REGRESSION = "CODE_REGRESSION"
+REJECTION_LOW_CONFIDENCE_TRANSIENT = "LOW_CONFIDENCE_TRANSIENT"
+REJECTION_UNKNOWN = "UNKNOWN_CLASSIFICATION"
+REJECTION_NON_TRANSIENT = "NON_TRANSIENT_CATEGORY"
+
 
 @dataclass(frozen=True)
 class RepositoryBenchmark:
@@ -79,6 +85,22 @@ class CategoryBenchmark:
 
 
 @dataclass(frozen=True)
+class RejectionBenchmark:
+    reason: str
+    blocked: int
+    recovered: int
+    failed_again: int
+    unknown_outcomes: int
+
+    @property
+    def observed_recovery_rate(self) -> float:
+        evaluated = self.recovered + self.failed_again
+        if evaluated <= 0:
+            return 0.0
+        return self.recovered / evaluated
+
+
+@dataclass(frozen=True)
 class BenchmarkSummary:
     repositories_requested: int
     repositories_analyzed: int
@@ -97,8 +119,13 @@ class BenchmarkSummary:
     rerun_recoveries: int
     rerun_false_positives: int
     rerun_unknown_outcomes: int
+    rerun_blocked: int
+    rerun_blocked_recovered: int
+    rerun_blocked_failed_again: int
+    rerun_blocked_unknown: int
     repositories: tuple[RepositoryBenchmark, ...]
     categories: tuple[CategoryBenchmark, ...]
+    rejections: tuple[RejectionBenchmark, ...]
     skipped: tuple[tuple[str, str], ...]
 
     @property
@@ -320,6 +347,20 @@ def _is_rerun_candidate(item: HistoricalFailure) -> bool:
     )
 
 
+def _rejection_reason(item: HistoricalFailure) -> str | None:
+    if _is_rerun_candidate(item):
+        return None
+    if item.side_effect_risk:
+        return REJECTION_SIDE_EFFECT
+    if item.category == "CODE_REGRESSION":
+        return REJECTION_CODE_REGRESSION
+    if item.category in TRANSIENT_CATEGORIES and item.confidence != "high":
+        return REJECTION_LOW_CONFIDENCE_TRANSIENT
+    if item.category == "UNKNOWN":
+        return REJECTION_UNKNOWN
+    return REJECTION_NON_TRANSIENT
+
+
 def _rerun_validation(
     failures: list[HistoricalFailure],
 ) -> tuple[int, int, int, int, int]:
@@ -351,6 +392,10 @@ def summarize_benchmark(
     category_recoveries: Counter[str] = Counter()
     category_false_positives: Counter[str] = Counter()
     category_unknown: Counter[str] = Counter()
+    rejection_blocked: Counter[str] = Counter()
+    rejection_recovered: Counter[str] = Counter()
+    rejection_failed_again: Counter[str] = Counter()
+    rejection_unknown: Counter[str] = Counter()
 
     total_runs = 0
     total_failures = 0
@@ -396,6 +441,17 @@ def summarize_benchmark(
                         category_false_positives[item.category] += 1
                 else:
                     category_unknown[item.category] += 1
+            else:
+                reason = _rejection_reason(item)
+                if reason is None:
+                    continue
+                rejection_blocked[reason] += 1
+                if not item.rerun_observed:
+                    rejection_unknown[reason] += 1
+                elif item.recovered_after_rerun:
+                    rejection_recovered[reason] += 1
+                else:
+                    rejection_failed_again[reason] += 1
 
         repo_rows.append(
             RepositoryBenchmark(
@@ -459,6 +515,23 @@ def summarize_benchmark(
         key=lambda item: (-item.evaluated, -item.candidates, -item.failed_jobs, item.category)
     )
 
+    rejections = [
+        RejectionBenchmark(
+            reason=reason,
+            blocked=rejection_blocked[reason],
+            recovered=rejection_recovered[reason],
+            failed_again=rejection_failed_again[reason],
+            unknown_outcomes=rejection_unknown[reason],
+        )
+        for reason in sorted(rejection_blocked)
+    ]
+    rejections.sort(key=lambda item: (-item.blocked, item.reason))
+
+    total_rerun_blocked = sum(item.blocked for item in rejections)
+    total_rerun_blocked_recovered = sum(item.recovered for item in rejections)
+    total_rerun_blocked_failed_again = sum(item.failed_again for item in rejections)
+    total_rerun_blocked_unknown = sum(item.unknown_outcomes for item in rejections)
+
     requested = repositories_requested
     if requested is None:
         requested = len(repositories) + len(skipped)
@@ -481,8 +554,13 @@ def summarize_benchmark(
         rerun_recoveries=total_rerun_recoveries,
         rerun_false_positives=total_rerun_false_positives,
         rerun_unknown_outcomes=total_rerun_unknown,
+        rerun_blocked=total_rerun_blocked,
+        rerun_blocked_recovered=total_rerun_blocked_recovered,
+        rerun_blocked_failed_again=total_rerun_blocked_failed_again,
+        rerun_blocked_unknown=total_rerun_blocked_unknown,
         repositories=tuple(repo_rows),
         categories=tuple(categories),
+        rejections=tuple(rejections),
         skipped=skipped,
     )
 
@@ -518,6 +596,34 @@ def render_benchmark_report(summary: BenchmarkSummary) -> str:
         f"Candidate coverage inside rerun-enriched failures: **{summary.rerun_candidate_coverage:.1%}**",
         "",
     ]
+
+    if summary.rejections:
+        lines.extend(
+            [
+                "### Blocked / missed-recovery intelligence",
+                "",
+                f"Blocked non-candidates: **{summary.rerun_blocked}**",
+                f"Blocked failures that later recovered after a real rerun: **{summary.rerun_blocked_recovered}**",
+                f"Blocked failures that failed again after a real rerun: **{summary.rerun_blocked_failed_again}**",
+                f"Blocked failures without an observable real rerun outcome: **{summary.rerun_blocked_unknown}**",
+                "",
+                "| Rejection reason | Blocked | Recovered later | Failed again | Unknown | Observed recovery rate |",
+                "|---|---:|---:|---:|---:|---:|",
+            ]
+        )
+        for item in summary.rejections:
+            lines.append(
+                f"| `{item.reason}` | {item.blocked} | {item.recovered} | "
+                f"{item.failed_again} | {item.unknown_outcomes} | "
+                f"{item.observed_recovery_rate:.1%} |"
+            )
+        lines.extend(
+            [
+                "",
+                "> A blocked failure recovering after a rerun is a coverage signal, not proof that automatic rerun was safe. Side effects, code-regression evidence, and low confidence remain blocking evidence.",
+                "",
+            ]
+        )
 
     if summary.categories:
         lines.extend(
@@ -678,6 +784,39 @@ def main() -> int:
     _write_output(
         "benchmark-rerun-candidate-coverage",
         f"{summary.rerun_candidate_coverage:.4f}",
+    )
+    _write_output("benchmark-rerun-blocked", str(summary.rerun_blocked))
+    _write_output(
+        "benchmark-rerun-blocked-recovered",
+        str(summary.rerun_blocked_recovered),
+    )
+    _write_output(
+        "benchmark-rerun-blocked-failed-again",
+        str(summary.rerun_blocked_failed_again),
+    )
+    _write_output(
+        "benchmark-rerun-blocked-unknown",
+        str(summary.rerun_blocked_unknown),
+    )
+    _write_output(
+        "benchmark-rejection-side-effect",
+        str(next((item.blocked for item in summary.rejections if item.reason == REJECTION_SIDE_EFFECT), 0)),
+    )
+    _write_output(
+        "benchmark-rejection-code-regression",
+        str(next((item.blocked for item in summary.rejections if item.reason == REJECTION_CODE_REGRESSION), 0)),
+    )
+    _write_output(
+        "benchmark-rejection-low-confidence-transient",
+        str(next((item.blocked for item in summary.rejections if item.reason == REJECTION_LOW_CONFIDENCE_TRANSIENT), 0)),
+    )
+    _write_output(
+        "benchmark-rejection-unknown-classification",
+        str(next((item.blocked for item in summary.rejections if item.reason == REJECTION_UNKNOWN), 0)),
+    )
+    _write_output(
+        "benchmark-rejection-non-transient",
+        str(next((item.blocked for item in summary.rejections if item.reason == REJECTION_NON_TRANSIENT), 0)),
     )
     return 0
 

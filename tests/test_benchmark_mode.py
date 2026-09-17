@@ -3,6 +3,12 @@ from __future__ import annotations
 import pytest
 
 from benchmark_mode import (
+    REJECTION_CODE_REGRESSION,
+    REJECTION_LOW_CONFIDENCE_TRANSIENT,
+    REJECTION_NON_TRANSIENT,
+    REJECTION_SIDE_EFFECT,
+    REJECTION_UNKNOWN,
+    _rejection_reason,
     collect_repository_history,
     collect_repository_samples,
     parse_repositories,
@@ -302,3 +308,90 @@ def test_workflow_wide_side_effect_blocks_rerun_candidate():
         rerun_histories={"acme/repo": (failures, 1)},
     )
     assert summary.rerun_candidates == 0
+
+
+def test_rejection_reason_explains_why_non_candidates_are_blocked():
+    assert _rejection_reason(_failure(1, side_effect=True)) == REJECTION_SIDE_EFFECT
+    assert _rejection_reason(
+        _failure(2, category="CODE_REGRESSION", recovered=False)
+    ) == REJECTION_CODE_REGRESSION
+    assert _rejection_reason(
+        _failure(3, confidence="medium")
+    ) == REJECTION_LOW_CONFIDENCE_TRANSIENT
+    assert _rejection_reason(
+        _failure(4, category="UNKNOWN", confidence="low")
+    ) == REJECTION_UNKNOWN
+    assert _rejection_reason(
+        _failure(5, category="RESOURCE_TIMEOUT", confidence="high")
+    ) == REJECTION_NON_TRANSIENT
+    assert _rejection_reason(_failure(6)) is None
+
+
+def test_benchmark_counts_blocked_recoveries_by_rejection_reason():
+    rerun = {
+        "acme/one": (
+            [
+                _failure(1, recovered=True),
+                _failure(2, side_effect=True, recovered=True),
+                _failure(3, category="CODE_REGRESSION", recovered=True),
+                _failure(4, confidence="medium", recovered=True),
+                _failure(
+                    5,
+                    category="UNKNOWN",
+                    confidence="low",
+                    recovered=False,
+                    observed=True,
+                ),
+                _failure(
+                    6,
+                    category="RESOURCE_TIMEOUT",
+                    confidence="high",
+                    recovered=False,
+                    observed=False,
+                ),
+            ],
+            6,
+        )
+    }
+
+    summary = summarize_benchmark(
+        {"acme/one": ([], 0)},
+        rerun_histories=rerun,
+    )
+
+    assert summary.rerun_candidates == 1
+    assert summary.rerun_blocked == 5
+    assert summary.rerun_blocked_recovered == 3
+    assert summary.rerun_blocked_failed_again == 1
+    assert summary.rerun_blocked_unknown == 1
+
+    by_reason = {item.reason: item for item in summary.rejections}
+    assert by_reason[REJECTION_SIDE_EFFECT].recovered == 1
+    assert by_reason[REJECTION_CODE_REGRESSION].recovered == 1
+    assert by_reason[REJECTION_LOW_CONFIDENCE_TRANSIENT].recovered == 1
+    assert by_reason[REJECTION_UNKNOWN].failed_again == 1
+    assert by_reason[REJECTION_NON_TRANSIENT].unknown_outcomes == 1
+
+    assert summary.rerun_candidates + summary.rerun_blocked == summary.rerun_failed_jobs
+
+
+def test_benchmark_report_surfaces_blocked_and_missed_recovery_intelligence():
+    summary = summarize_benchmark(
+        {"acme/one": ([], 0)},
+        rerun_histories={
+            "acme/one": (
+                [
+                    _failure(1, side_effect=True, recovered=True),
+                    _failure(2, category="CODE_REGRESSION", recovered=False),
+                ],
+                2,
+            )
+        },
+    )
+
+    report = render_benchmark_report(summary)
+    assert "Blocked / missed-recovery intelligence" in report
+    assert "Blocked failures that later recovered after a real rerun: **1**" in report
+    assert "`SIDE_EFFECT_RISK`" in report
+    assert "`CODE_REGRESSION`" in report
+    assert "coverage signal, not proof that automatic rerun was safe" in report

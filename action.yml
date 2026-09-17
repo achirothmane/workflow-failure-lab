@@ -195,6 +195,33 @@ outputs:
   benchmark-rerun-candidate-coverage:
     description: 'High-confidence transient candidates divided by all first-attempt failures in the rerun-enriched sample.'
     value: ${{ steps.benchmark.outputs.benchmark-rerun-candidate-coverage }}
+  benchmark-rerun-blocked:
+    description: 'Rerun-enriched failures blocked from becoming safe candidates.'
+    value: ${{ steps.benchmark.outputs.benchmark-rerun-blocked }}
+  benchmark-rerun-blocked-recovered:
+    description: 'Blocked rerun-enriched failures that later recovered after a real rerun.'
+    value: ${{ steps.benchmark.outputs.benchmark-rerun-blocked-recovered }}
+  benchmark-rerun-blocked-failed-again:
+    description: 'Blocked rerun-enriched failures that failed again after a real rerun.'
+    value: ${{ steps.benchmark.outputs.benchmark-rerun-blocked-failed-again }}
+  benchmark-rerun-blocked-unknown:
+    description: 'Blocked rerun-enriched failures without an observable real rerun outcome.'
+    value: ${{ steps.benchmark.outputs.benchmark-rerun-blocked-unknown }}
+  benchmark-rejection-side-effect:
+    description: 'Blocked rerun-enriched failures carrying a workflow or job side-effect risk.'
+    value: ${{ steps.benchmark.outputs.benchmark-rejection-side-effect }}
+  benchmark-rejection-code-regression:
+    description: 'Blocked rerun-enriched failures classified as code regressions.'
+    value: ${{ steps.benchmark.outputs.benchmark-rejection-code-regression }}
+  benchmark-rejection-low-confidence-transient:
+    description: 'Blocked transient-category failures that did not reach high confidence.'
+    value: ${{ steps.benchmark.outputs.benchmark-rejection-low-confidence-transient }}
+  benchmark-rejection-unknown-classification:
+    description: 'Blocked rerun-enriched failures classified as UNKNOWN.'
+    value: ${{ steps.benchmark.outputs.benchmark-rejection-unknown-classification }}
+  benchmark-rejection-non-transient:
+    description: 'Blocked rerun-enriched failures in other non-auto-rerun categories.'
+    value: ${{ steps.benchmark.outputs.benchmark-rejection-non-transient }}
 
 runs:
   using: 'composite'
