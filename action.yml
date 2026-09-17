@@ -4,7 +4,7 @@ author: 'othy19904-eng'
 
 inputs:
   github-token:
-    description: 'GitHub token. actions:read is required; actions:write is required only when auto-rerun=true.'
+    description: 'GitHub token. actions:read is required; actions:write is required only when a rerun mode is enabled.'
     required: true
   run-id:
     description: 'Workflow run ID to inspect. Defaults to github.event.workflow_run.id.'
@@ -15,7 +15,11 @@ inputs:
     required: false
     default: ''
   auto-rerun:
-    description: 'Actually rerun failed jobs when the safety gate passes.'
+    description: 'Legacy all-or-nothing rerun mode. Reruns failed jobs only when every failed job passes the safety gate.'
+    required: false
+    default: 'false'
+  selective-rerun:
+    description: 'Rerun only individually safe high-confidence transient failed jobs. Cannot be combined with auto-rerun.'
     required: false
     default: 'false'
   max-attempts:
@@ -36,7 +40,7 @@ outputs:
     description: 'true only when every failed job is a high-confidence transient failure and no side-effect signal is present.'
     value: ${{ steps.gate.outputs.safe-to-rerun }}
   rerun-triggered:
-    description: 'true when auto-rerun was enabled and a rerun was triggered.'
+    description: 'true when legacy auto-rerun was enabled and a rerun was triggered.'
     value: ${{ steps.gate.outputs.rerun-triggered }}
   failed-jobs:
     description: 'Number of failed jobs assessed in the current run.'
@@ -44,6 +48,15 @@ outputs:
   wasted-minutes:
     description: 'Observed runtime in minutes across failed jobs in the current run.'
     value: ${{ steps.gate.outputs.wasted-minutes }}
+  selective-safe-jobs:
+    description: 'Number of failed jobs that qualified for selective safe rerun.'
+    value: ${{ steps.selective.outputs.selective-safe-jobs }}
+  selective-blocked-jobs:
+    description: 'Number of failed jobs blocked from selective rerun.'
+    value: ${{ steps.selective.outputs.selective-blocked-jobs }}
+  selective-reruns-triggered:
+    description: 'Number of individual job reruns requested by selective mode.'
+    value: ${{ steps.selective.outputs.selective-reruns-triggered }}
   history-runs-analyzed:
     description: 'Number of previous workflow runs inspected.'
     value: ${{ steps.history.outputs.history-runs-analyzed }}
@@ -60,6 +73,13 @@ outputs:
 runs:
   using: 'composite'
   steps:
+    - name: Validate rerun mode
+      if: ${{ inputs.auto-rerun == 'true' && inputs.selective-rerun == 'true' }}
+      shell: bash
+      run: |
+        echo "::error::auto-rerun and selective-rerun cannot both be true"
+        exit 2
+
     - id: gate
       name: Assess retry safety
       shell: bash
@@ -71,6 +91,17 @@ runs:
         INPUT_MAX_ATTEMPTS: ${{ inputs.max-attempts }}
         INPUT_COMMENT_ON_PR: ${{ inputs.comment-on-pr }}
       run: python3 "$GITHUB_ACTION_PATH/ci_retry_gate.py"
+
+    - id: selective
+      name: Selectively rerun safe failed jobs
+      if: ${{ inputs.selective-rerun == 'true' }}
+      shell: bash
+      env:
+        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
+        INPUT_RUN_ID: ${{ inputs.run-id }}
+        INPUT_REPOSITORY: ${{ inputs.repository }}
+        INPUT_MAX_ATTEMPTS: ${{ inputs.max-attempts }}
+      run: python3 "$GITHUB_ACTION_PATH/selective_rerun.py"
 
     - id: history
       name: Analyze CI history and waste
