@@ -1,6 +1,6 @@
 # CI Retry Gate
 
-CI Retry Gate is a GitHub Action that inspects failed GitHub Actions jobs, decides whether a rerun is safe, can selectively rerun only safe transient jobs, and analyzes recent workflow history for recurring failure fingerprints and CI waste.
+CI Retry Gate is a GitHub Action that inspects failed GitHub Actions jobs, decides whether a rerun is safe, can selectively rerun only safe transient jobs, fingerprints recurring failures, learns conservative retry-policy recommendations from real rerun history, and surfaces CI waste.
 
 It is deliberately conservative: code regressions, unknown or low-confidence failures, attempt caps, and deploy/publish/migration/release side-effect signals stay blocked.
 
@@ -25,7 +25,7 @@ For the same workflow, the action can inspect recent completed runs and report:
 
 - deterministic fingerprints for normalized failure signatures;
 - exact fingerprints that recur across runs or attempts;
-- whether a failed job later succeeded in a subsequent attempt of the same workflow run;
+- whether a failed job was actually rerun and whether that rerun recovered;
 - total runtime spent in failed jobs;
 - high-confidence transient failure runtime, treated as a CI-waste signal;
 - broader recurring job/category patterns.
@@ -37,12 +37,32 @@ Example:
 ```text
 FG-4A92F6D13C21
 install dependencies · DEPENDENCY_NETWORK
-3 occurrences · 2 rerun recoveries · 14.50 failed minutes
+8 occurrences · 5 real reruns · 4 recoveries · 31.20 failed minutes
 ```
 
 This distinction is intentional: **failed runtime is not automatically waste**. A real code regression can be useful CI work. `historical-transient-waste-minutes` counts only failures classified with high confidence as runner/infrastructure or dependency/network failures.
 
 The default history window is 10 previous completed runs and can be increased up to 50.
+
+## Policy Learning
+
+Policy Learning turns fingerprint history into a conservative recommendation for each fingerprint:
+
+- `AUTO_RERUN_ONCE`
+- `MANUAL_REVIEW`
+- `DO_NOT_AUTO_RERUN`
+
+`AUTO_RERUN_ONCE` is recommended only when all of the following are true:
+
+- the fingerprint belongs to `RUNNER_INFRA` or `DEPENDENCY_NETWORK`;
+- at least 5 **real** reruns were observed;
+- at least 80% of those reruns recovered;
+- at least 80% of the fingerprint occurrences were classified with high confidence;
+- no side-effect signal was observed.
+
+Policy Learning is advisory only. It does not silently change the selective-rerun safety gate or enable reruns by itself.
+
+GitHub can copy an untouched job into a later workflow attempt when another job is rerun. CI Retry Gate therefore counts a rerun sample only when the same job has a genuinely different `started_at` time in a later attempt. This avoids learning policies from copied historical records.
 
 ## Selective Safe Rerun
 
@@ -134,19 +154,24 @@ jobs:
 | `recurring-failures` | Number of broader recurring job/category patterns seen at least twice. |
 | `failure-fingerprints` | Number of distinct normalized failure fingerprints observed. |
 | `recurring-fingerprints` | Number of exact normalized fingerprints seen at least twice. |
-| `rerun-recoveries` | Historical failed jobs that later succeeded in a subsequent attempt of the same run. |
+| `rerun-recoveries` | Historical failed jobs that later succeeded after a real rerun. |
+| `policy-auto-rerun-fingerprints` | Fingerprints recommended as `AUTO_RERUN_ONCE`. |
+| `policy-manual-review-fingerprints` | Fingerprints recommended as `MANUAL_REVIEW`. |
+| `policy-blocked-fingerprints` | Fingerprints recommended as `DO_NOT_AUTO_RERUN`. |
 
 ## Safety model
 
 The action fails closed. `UNKNOWN`, code failures, mixed evidence, low-confidence classifications, attempt caps, and side-effect signals block automatic reruns. Log evidence is redacted for common token/API-key patterns before it is included in reports or fingerprint inputs.
 
-History and fingerprint analysis are read-only. They read workflow runs, attempts, jobs, and logs through the GitHub API and do not persist them to an external database.
+History, fingerprinting, and Policy Learning are read-only. They read workflow runs, attempts, jobs, and logs through the GitHub API and do not persist them to an external database.
+
+Policy recommendations do not override the runtime safety gate. A fingerprint with a historically strong recovery rate still cannot bypass side-effect protection or the attempt cap.
 
 This tool cannot prove that rerunning arbitrary third-party workflows is safe. Its output is a conservative heuristic based on available GitHub job metadata and logs; evaluate it read-only before enabling reruns on important repositories.
 
 ## Validation
 
-The action has unit coverage for transient failures, code failures, unknown failures, secret redaction, side-effect blocking, attempt caps, runtime accounting, historical transient-waste accounting, recurring failure detection, fingerprint stability under dynamic log values, fingerprint separation for different failures, and rerun-recovery metrics.
+The action has unit coverage for transient failures, code failures, unknown failures, secret redaction, side-effect blocking, attempt caps, runtime accounting, historical transient-waste accounting, recurring failure detection, fingerprint stability under dynamic log values, fingerprint separation for different failures, real-vs-copied rerun detection, rerun-recovery metrics, and Policy Learning thresholds.
 
 Selective Safe Rerun has also been tested end-to-end in GitHub Actions: a mixed run containing a transient network failure and a code regression caused only the transient job to execute again; the code-regression job remained blocked, and the attempt cap prevented a third loop.
 
