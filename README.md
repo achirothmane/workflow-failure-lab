@@ -111,6 +111,23 @@ The repository list is capped at 50 and `benchmark-runs` is capped at 50 per rep
 
 A **blocked recovery** is also not evidence that the block was wrong. A code regression, side-effect workflow, or ambiguous failure can succeed on a later rerun for unrelated reasons. Rejection Intelligence treats recovered blocked cases as places to investigate for safer coverage improvements, not as automatic promotion evidence.
 
+## Unknown Failure Intelligence
+
+Benchmark Mode now extracts redacted, normalized error-like signatures from failures that remain `UNKNOWN`, instead of treating every unknown case as one opaque bucket. It groups recurring signatures across the sampled repositories and compares them with observed real rerun outcomes.
+
+For each UNKNOWN pattern it reports:
+
+- stable pattern ID and normalized signature;
+- occurrences and number of repositories;
+- observed real reruns;
+- recoveries, repeated failures, and unknown outcomes;
+- side-effect occurrences;
+- an advisory status.
+
+`INVESTIGATE_TRANSIENT_PATTERN` is emitted only when the UNKNOWN signature is stable, appears at least 3 times, has at least 3 observed real reruns, at least 80% of those reruns recover, and no side-effect occurrence is present. This status is **research evidence only**: it does not change the runtime classifier and never grants rerun authority.
+
+This creates a controlled path from `UNKNOWN` → repeated evidence → candidate classifier rule → separate testing, rather than weakening the production safety gate from a handful of recoveries.
+
 ## Selective Safe Rerun
 
 `selective-rerun: 'true'` reruns only failed jobs that are high-confidence transient failures. Code regressions, unknown failures, low-confidence failures, and side-effect jobs remain blocked. The attempt cap prevents rerun loops.
@@ -217,6 +234,13 @@ Benchmark Mode emits:
 | `benchmark-rejection-low-confidence-transient` | Transient-category failures blocked because confidence was not high. |
 | `benchmark-rejection-unknown-classification` | Failures blocked because classification stayed UNKNOWN. |
 | `benchmark-rejection-non-transient` | Other non-auto-rerun categories such as resource/flaky-test classes. |
+| `benchmark-unknown-patterns` | Distinct normalized UNKNOWN signatures found in the benchmark samples. |
+| `benchmark-unknown-repeated-patterns` | UNKNOWN signatures observed at least twice. |
+| `benchmark-unknown-evaluated-reruns` | UNKNOWN cases with an observed real rerun outcome. |
+| `benchmark-unknown-recoveries` | UNKNOWN cases whose real rerun recovered. |
+| `benchmark-unknown-failed-again` | UNKNOWN cases whose real rerun failed again. |
+| `benchmark-unknown-promotion-candidates` | Advisory UNKNOWN patterns meeting the conservative investigation threshold. |
+| `benchmark-unknown-promotion-candidate-ids` | Comma-separated IDs of those advisory patterns. |
 
 ## Safety model
 
@@ -230,7 +254,7 @@ This tool cannot prove that rerunning arbitrary third-party workflows is safe. I
 
 ## Validation
 
-The action has unit coverage for transient failures, code failures, unknown failures, secret redaction, side-effect blocking, attempt caps, runtime accounting, historical transient-waste accounting, recurring failure detection, fingerprint stability under dynamic log values, fingerprint separation for different failures, real-vs-copied rerun detection, rerun-recovery metrics, Policy Learning thresholds, Shadow Mode look-back isolation, Benchmark Mode repository isolation, unknown counterfactual handling, and benchmark precision/coverage aggregation.
+The action has unit coverage for transient failures, code failures, unknown failures, secret redaction, side-effect blocking, attempt caps, runtime accounting, historical transient-waste accounting, recurring failure detection, fingerprint stability under dynamic log values, fingerprint separation for different failures, real-vs-copied rerun detection, rerun-recovery metrics, Policy Learning thresholds, Shadow Mode look-back isolation, Benchmark Mode repository isolation, unknown counterfactual handling, benchmark precision/coverage aggregation, UNKNOWN signature extraction, cross-repository UNKNOWN clustering, promotion thresholds, and UNKNOWN side-effect guards.
 
 Selective Safe Rerun has also been tested end-to-end in GitHub Actions: a mixed run containing a transient network failure and a code regression caused only the transient job to execute again; the code-regression job remained blocked, and the attempt cap prevented a third loop.
 

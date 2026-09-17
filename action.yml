@@ -222,6 +222,27 @@ outputs:
   benchmark-rejection-non-transient:
     description: 'Blocked rerun-enriched failures in other non-auto-rerun categories.'
     value: ${{ steps.benchmark.outputs.benchmark-rejection-non-transient }}
+  benchmark-unknown-patterns:
+    description: 'Distinct UNKNOWN failure signatures found across natural and rerun-enriched benchmark samples.'
+    value: ${{ steps.benchmark.outputs.benchmark-unknown-patterns }}
+  benchmark-unknown-repeated-patterns:
+    description: 'UNKNOWN signatures observed at least twice.'
+    value: ${{ steps.benchmark.outputs.benchmark-unknown-repeated-patterns }}
+  benchmark-unknown-evaluated-reruns:
+    description: 'UNKNOWN cases with an observed real rerun outcome.'
+    value: ${{ steps.benchmark.outputs.benchmark-unknown-evaluated-reruns }}
+  benchmark-unknown-recoveries:
+    description: 'UNKNOWN cases whose observed real rerun recovered.'
+    value: ${{ steps.benchmark.outputs.benchmark-unknown-recoveries }}
+  benchmark-unknown-failed-again:
+    description: 'UNKNOWN cases whose observed real rerun failed again.'
+    value: ${{ steps.benchmark.outputs.benchmark-unknown-failed-again }}
+  benchmark-unknown-promotion-candidates:
+    description: 'Stable UNKNOWN patterns that meet the conservative investigation threshold for a possible future transient classifier rule.'
+    value: ${{ steps.benchmark.outputs.benchmark-unknown-promotion-candidates }}
+  benchmark-unknown-promotion-candidate-ids:
+    description: 'Comma-separated advisory UNKNOWN pattern IDs meeting the investigation threshold.'
+    value: ${{ steps.benchmark.outputs.benchmark-unknown-promotion-candidate-ids }}
 
 runs:
   using: 'composite'

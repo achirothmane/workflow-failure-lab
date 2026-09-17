@@ -20,6 +20,11 @@ from history_ci_waste import (
     failure_fingerprint,
 )
 from policy_shadow import simulate_shadow
+from unknown_failure_intelligence import (
+    UnknownIntelligenceSummary,
+    summarize_unknown_patterns,
+    unknown_signature,
+)
 
 _REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
@@ -126,6 +131,7 @@ class BenchmarkSummary:
     repositories: tuple[RepositoryBenchmark, ...]
     categories: tuple[CategoryBenchmark, ...]
     rejections: tuple[RejectionBenchmark, ...]
+    unknown_intelligence: UnknownIntelligenceSummary
     skipped: tuple[tuple[str, str], ...]
 
     @property
@@ -258,11 +264,22 @@ def _collect_failures_for_runs(
                 log_text = ""
 
             classification = classify_log(log_text)
-            fingerprint, signature = failure_fingerprint(
-                job_name,
-                classification.category,
-                classification.evidence,
-            )
+            if classification.category == "UNKNOWN":
+                signature = unknown_signature(log_text)
+                unknown_evidence = (
+                    tuple() if signature == "unknown without stable evidence" else (signature,)
+                )
+                fingerprint, _ = failure_fingerprint(
+                    job_name,
+                    classification.category,
+                    unknown_evidence,
+                )
+            else:
+                fingerprint, signature = failure_fingerprint(
+                    job_name,
+                    classification.category,
+                    classification.evidence,
+                )
             own_side_effect_risk, _ = detect_side_effect_risk(job)
             rerun_observed, recovered = _later_rerun_outcome(
                 attempt_jobs,
@@ -532,6 +549,8 @@ def summarize_benchmark(
     total_rerun_blocked_failed_again = sum(item.failed_again for item in rejections)
     total_rerun_blocked_unknown = sum(item.unknown_outcomes for item in rejections)
 
+    unknown_intelligence = summarize_unknown_patterns(histories, rerun_histories)
+
     requested = repositories_requested
     if requested is None:
         requested = len(repositories) + len(skipped)
@@ -561,6 +580,7 @@ def summarize_benchmark(
         repositories=tuple(repo_rows),
         categories=tuple(categories),
         rejections=tuple(rejections),
+        unknown_intelligence=unknown_intelligence,
         skipped=skipped,
     )
 
@@ -621,6 +641,39 @@ def render_benchmark_report(summary: BenchmarkSummary) -> str:
             [
                 "",
                 "> A blocked failure recovering after a rerun is a coverage signal, not proof that automatic rerun was safe. Side effects, code-regression evidence, and low confidence remain blocking evidence.",
+                "",
+            ]
+        )
+
+    if summary.unknown_intelligence.patterns:
+        unknown = summary.unknown_intelligence
+        lines.extend(
+            [
+                "### Unknown Failure Intelligence",
+                "",
+                f"UNKNOWN failures across natural + rerun-enriched samples: **{unknown.unknown_failures}**",
+                f"Distinct UNKNOWN signatures: **{len(unknown.patterns)}**",
+                f"Repeated UNKNOWN signatures: **{unknown.repeated_patterns}**",
+                f"UNKNOWN cases with observed real reruns: **{unknown.evaluated_reruns}**",
+                f"Observed UNKNOWN recoveries: **{unknown.recoveries}**",
+                f"Observed UNKNOWN failures after rerun: **{unknown.failed_again}**",
+                f"Investigation candidates for a possible future transient classifier rule: **{len(unknown.promotion_candidates)}**",
+                "",
+                "| Pattern | Occurrences | Repositories | Real reruns | Recoveries | Failed again | Recovery rate | Status | Signature |",
+                "|---|---:|---:|---:|---:|---:|---:|---|---|",
+            ]
+        )
+        for item in unknown.patterns[:20]:
+            safe_signature = item.signature.replace("|", "/")
+            lines.append(
+                f"| `{item.pattern_id}` | {item.occurrences} | {item.repositories} | "
+                f"{item.rerun_observations} | {item.recoveries} | {item.failed_again} | "
+                f"{item.recovery_rate:.1%} | `{item.status}` | {safe_signature} |"
+            )
+        lines.extend(
+            [
+                "",
+                "> INVESTIGATE_TRANSIENT_PATTERN is advisory only. It requires a stable repeated signature, at least 3 observed real reruns, at least 80% recovery, and no side-effect occurrence. It does not modify the runtime classifier or authorize reruns.",
                 "",
             ]
         )
@@ -817,6 +870,34 @@ def main() -> int:
     _write_output(
         "benchmark-rejection-non-transient",
         str(next((item.blocked for item in summary.rejections if item.reason == REJECTION_NON_TRANSIENT), 0)),
+    )
+    _write_output(
+        "benchmark-unknown-patterns",
+        str(len(summary.unknown_intelligence.patterns)),
+    )
+    _write_output(
+        "benchmark-unknown-repeated-patterns",
+        str(summary.unknown_intelligence.repeated_patterns),
+    )
+    _write_output(
+        "benchmark-unknown-evaluated-reruns",
+        str(summary.unknown_intelligence.evaluated_reruns),
+    )
+    _write_output(
+        "benchmark-unknown-recoveries",
+        str(summary.unknown_intelligence.recoveries),
+    )
+    _write_output(
+        "benchmark-unknown-failed-again",
+        str(summary.unknown_intelligence.failed_again),
+    )
+    _write_output(
+        "benchmark-unknown-promotion-candidates",
+        str(len(summary.unknown_intelligence.promotion_candidates)),
+    )
+    _write_output(
+        "benchmark-unknown-promotion-candidate-ids",
+        ",".join(item.pattern_id for item in summary.unknown_intelligence.promotion_candidates),
     )
     return 0
 
