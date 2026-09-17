@@ -1,0 +1,65 @@
+name: Benchmark Diagnostics E2E
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/benchmark-diagnostics-trigger.txt'
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Diagnose benchmark evidence
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          from collections import Counter
+          from ci_retry_gate import GitHubAPI, TRANSIENT_CATEGORIES
+          from benchmark_mode import collect_repository_history
+
+          repos = [
+              'pallets/flask', 'psf/requests', 'pytest-dev/pytest', 'axios/axios',
+              'pnpm/pnpm', 'docker/compose', 'golangci/golangci-lint',
+              'astral-sh/ruff', 'serde-rs/serde', 'hashicorp/terraform',
+          ]
+          api = GitHubAPI(__import__('os').environ['GITHUB_TOKEN'])
+          totals = Counter()
+          for repo in repos:
+              failures, runs = collect_repository_history(api, repo, 10)
+              categories = Counter(x.category for x in failures)
+              confidences = Counter(x.confidence for x in failures)
+              reruns = sum(x.rerun_observed for x in failures)
+              recoveries = sum(x.recovered_after_rerun for x in failures)
+              transient_high = sum(
+                  x.category in TRANSIENT_CATEGORIES and x.confidence == 'high'
+                  for x in failures
+              )
+              fp_occ = Counter(x.fingerprint for x in failures)
+              fp_reruns = Counter()
+              for x in failures:
+                  if x.rerun_observed:
+                      fp_reruns[x.fingerprint] += 1
+              max_occ = max(fp_occ.values(), default=0)
+              max_reruns = max(fp_reruns.values(), default=0)
+              print(
+                  f"DIAG repo={repo} runs={runs} failures={len(failures)} "
+                  f"categories={dict(categories)} confidences={dict(confidences)} "
+                  f"rerun_observed={reruns} recoveries={recoveries} "
+                  f"transient_high={transient_high} max_fp_occurrences={max_occ} "
+                  f"max_fp_rerun_samples={max_reruns}"
+              )
+              totals['failures'] += len(failures)
+              totals['reruns'] += reruns
+              totals['recoveries'] += recoveries
+              totals['transient_high'] += transient_high
+          print(f"DIAG_TOTAL {dict(totals)}")
+          PY
