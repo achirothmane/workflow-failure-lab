@@ -1,4 +1,7 @@
-from ci_retry_gate import assess_job, classify_log, detect_side_effect_risk, rerun_decision
+import http.client
+
+import ci_retry_gate
+from ci_retry_gate import GitHubAPI, assess_job, classify_log, detect_side_effect_risk, rerun_decision
 
 
 def fake_job(name="tests", steps=None, start="2026-09-17T01:00:00Z", end="2026-09-17T01:04:30Z"):
@@ -123,3 +126,71 @@ def test_attempt_cap_blocks_loop():
 def test_duration_is_measured():
     a = assess_job(fake_job(), "ETIMEDOUT\nconnection reset by peer\ncould not resolve host")
     assert a.duration_minutes == 4.5
+
+
+class _FakeHTTPResponse:
+    def __init__(self, body: bytes | None = None, error: BaseException | None = None):
+        self.body = body
+        self.error = error
+        self.headers = {"Content-Type": "application/json"}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def read(self):
+        if self.error is not None:
+            raise self.error
+        return self.body or b"{}"
+
+
+class _SequenceOpener:
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.calls = 0
+
+    def open(self, req, timeout=30):
+        self.calls += 1
+        return self.responses.pop(0)
+
+
+def test_github_api_retries_incomplete_get_response(monkeypatch):
+    api = GitHubAPI("token")
+    api.opener = _SequenceOpener(
+        [
+            _FakeHTTPResponse(
+                error=http.client.IncompleteRead(b'{"partial":', 10)
+            ),
+            _FakeHTTPResponse(body=b'{"ok": true}'),
+        ]
+    )
+    monkeypatch.setattr(ci_retry_gate.time, "sleep", lambda _seconds: None)
+
+    result = api.request("GET", "/repos/acme/repo/actions/runs")
+
+    assert result == {"ok": True}
+    assert api.opener.calls == 2
+
+
+def test_github_api_does_not_retry_post_on_incomplete_response(monkeypatch):
+    api = GitHubAPI("token")
+    api.opener = _SequenceOpener(
+        [
+            _FakeHTTPResponse(
+                error=http.client.IncompleteRead(b"", 10)
+            ),
+            _FakeHTTPResponse(body=b'{"unexpected": true}'),
+        ]
+    )
+    monkeypatch.setattr(ci_retry_gate.time, "sleep", lambda _seconds: None)
+
+    try:
+        api.request("POST", "/repos/acme/repo/actions/runs/1/rerun", payload={})
+    except RuntimeError as exc:
+        assert "after 1 transport attempts" in str(exc)
+    else:
+        raise AssertionError("POST transport interruption must fail closed")
+
+    assert api.opener.calls == 1
