@@ -1,0 +1,45 @@
+name: Policy Shadow E2E Validate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/shadow-e2e-validate.txt'
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  validate-shadow:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: gate
+        uses: ./
+        with:
+          github-token: ${{ github.token }}
+          run-id: '35204192530'
+          auto-rerun: 'false'
+          selective-rerun: 'false'
+          policy-shadow-mode: 'true'
+          history-runs: '10'
+          comment-on-pr: 'false'
+
+      - name: Verify shadow backtest outputs
+        shell: bash
+        run: |
+          echo "decisions=${{ steps.gate.outputs.shadow-decisions }}"
+          echo "evaluated=${{ steps.gate.outputs.shadow-evaluated-decisions }}"
+          echo "recoveries=${{ steps.gate.outputs.shadow-recoveries }}"
+          echo "false_positives=${{ steps.gate.outputs.shadow-false-positives }}"
+          echo "unknown=${{ steps.gate.outputs.shadow-unknown-outcomes }}"
+          echo "precision=${{ steps.gate.outputs.shadow-observed-precision }}"
+          echo "recoverable_failed_minutes=${{ steps.gate.outputs.shadow-recoverable-failed-minutes }}"
+          test "${{ steps.gate.outputs.shadow-decisions }}" = "1"
+          test "${{ steps.gate.outputs.shadow-evaluated-decisions }}" = "1"
+          test "${{ steps.gate.outputs.shadow-recoveries }}" = "1"
+          test "${{ steps.gate.outputs.shadow-false-positives }}" = "0"
+          test "${{ steps.gate.outputs.shadow-unknown-outcomes }}" = "0"
+          test "${{ steps.gate.outputs.shadow-observed-precision }}" = "1.0000"
