@@ -159,6 +159,7 @@ def _list_completed_runs(api: GitHubAPI, repo: str, limit: int) -> list[dict]:
 
     limit = min(limit, 500)
     runs: list[dict] = []
+    seen_run_ids: set[int] = set()
     page = 1
     while len(runs) < limit:
         per_page = min(100, limit - len(runs))
@@ -169,7 +170,17 @@ def _list_completed_runs(api: GitHubAPI, repo: str, limit: int) -> list[dict]:
         batch = list(data.get("workflow_runs") or [])
         if not batch:
             break
-        runs.extend(batch)
+
+        for run in batch:
+            run_id = int(run.get("id") or 0)
+            if run_id > 0:
+                if run_id in seen_run_ids:
+                    continue
+                seen_run_ids.add(run_id)
+            runs.append(run)
+            if len(runs) >= limit:
+                break
+
         if len(batch) < per_page:
             break
         page += 1
