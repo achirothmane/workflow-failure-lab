@@ -1,0 +1,82 @@
+name: Classifier Coverage Diagnostics
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/classifier-coverage-diagnostics-trigger.txt'
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect rerun-enriched failures
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import re
+          from ci_retry_gate import GitHubAPI, classify_log, detect_side_effect_risk, redact, FAILURE_CONCLUSIONS
+          from benchmark_mode import _list_completed_runs
+          from history_ci_waste import _jobs_for_attempt, _later_rerun_outcome
+
+          repos = [
+              'pallets/flask', 'psf/requests', 'pytest-dev/pytest', 'axios/axios',
+              'pnpm/pnpm', 'docker/compose', 'golangci/golangci-lint',
+              'astral-sh/ruff', 'serde-rs/serde', 'hashicorp/terraform',
+          ]
+          api = GitHubAPI(__import__('os').environ['GITHUB_TOKEN'])
+          interesting = re.compile(r'(?i)(error|fail|timeout|timed out|connection|network|resolve|reset|unavailable|rate.?limit|429|5\d\d|exception|cancel|socket|dns|tls|http)')
+          total = 0
+          for repo in repos:
+              runs = _list_completed_runs(api, repo, 200)
+              natural_ids = {int(r.get('id') or 0) for r in runs[:10]}
+              rerun_runs = [r for r in runs if int(r.get('run_attempt') or 1) > 1 and int(r.get('id') or 0) not in natural_ids][:20]
+              for run in rerun_runs:
+                  run_id = int(run.get('id') or 0)
+                  attempts = int(run.get('run_attempt') or 1)
+                  attempt_jobs = {}
+                  for attempt in range(1, attempts + 1):
+                      try:
+                          attempt_jobs[attempt] = _jobs_for_attempt(api, repo, run_id, attempt)
+                      except RuntimeError:
+                          attempt_jobs[attempt] = []
+                  first = attempt_jobs.get(1, [])
+                  workflow_side_effect = any(detect_side_effect_risk(j)[0] for j in first)
+                  for job in first:
+                      if str(job.get('conclusion') or '').lower() not in FAILURE_CONCLUSIONS:
+                          continue
+                      job_id = int(job.get('id') or 0)
+                      name = str(job.get('name') or f'job-{job_id}')
+                      try:
+                          log = api.get_job_logs(repo, job_id)
+                      except RuntimeError as exc:
+                          log = ''
+                      c = classify_log(log)
+                      own_side_effect = detect_side_effect_risk(job)[0]
+                      observed, recovered = _later_rerun_outcome(
+                          attempt_jobs, 1, attempts, name, str(job.get('started_at') or '')
+                      )
+                      print(f"CASE repo={repo} run={run_id} job={name!r} category={c.category} confidence={c.confidence} score={c.score} rerun_observed={observed} recovered={recovered} side_effect={own_side_effect or workflow_side_effect}")
+                      if c.evidence:
+                          for e in c.evidence:
+                              print('  EVIDENCE ' + e[:260])
+                      lines = []
+                      for raw in log.splitlines():
+                          clean = redact(raw).strip()
+                          if clean and interesting.search(clean):
+                              if clean not in lines:
+                                  lines.append(clean[:300])
+                          if len(lines) >= 8:
+                              break
+                      for line in lines:
+                          print('  LOG ' + line)
+                      total += 1
+          print(f'DIAGNOSTIC_CASES={total}')
+          PY
