@@ -1,5 +1,5 @@
 name: 'CI Retry Gate'
-description: 'Classify failed GitHub Actions jobs, gate safe reruns, and surface recurring CI waste from recent history.'
+description: 'Classify failed GitHub Actions jobs, gate safe reruns, fingerprint recurring failures, and surface CI waste from recent history.'
 author: 'othy19904-eng'
 
 inputs:
@@ -31,7 +31,7 @@ inputs:
     required: false
     default: 'true'
   history-runs:
-    description: 'Number of previous completed runs of the same workflow to inspect for recurring failures and CI waste. Capped at 50.'
+    description: 'Number of previous completed runs of the same workflow to inspect for recurring failures, fingerprints, rerun recovery, and CI waste. Capped at 50.'
     required: false
     default: '10'
 
@@ -67,8 +67,17 @@ outputs:
     description: 'Historical failed-job runtime classified as high-confidence runner/infrastructure or dependency/network failure.'
     value: ${{ steps.history.outputs.historical-transient-waste-minutes }}
   recurring-failures:
-    description: 'Number of recurring job/category failure patterns seen at least twice in sampled history.'
+    description: 'Number of broader recurring job/category failure patterns seen at least twice in sampled history.'
     value: ${{ steps.history.outputs.recurring-failures }}
+  failure-fingerprints:
+    description: 'Number of distinct normalized failure fingerprints observed in sampled history.'
+    value: ${{ steps.history.outputs.failure-fingerprints }}
+  recurring-fingerprints:
+    description: 'Number of exact normalized failure fingerprints seen at least twice in sampled history.'
+    value: ${{ steps.history.outputs.recurring-fingerprints }}
+  rerun-recoveries:
+    description: 'Number of historical failed jobs that later succeeded in a subsequent attempt of the same workflow run.'
+    value: ${{ steps.history.outputs.rerun-recoveries }}
 
 runs:
   using: 'composite'
@@ -104,7 +113,7 @@ runs:
       run: python3 "$GITHUB_ACTION_PATH/selective_rerun.py"
 
     - id: history
-      name: Analyze CI history and waste
+      name: Analyze CI history, fingerprints, and waste
       shell: bash
       env:
         INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
