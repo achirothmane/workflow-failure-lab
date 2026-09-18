@@ -8,6 +8,7 @@ from dataclasses import dataclass
 
 from ci_retry_gate import (
     FAILURE_CONCLUSIONS,
+    PROVENANCE_CONFIRMED,
     TRANSIENT_CATEGORIES,
     GitHubAPI,
     JobAssessment,
@@ -51,6 +52,13 @@ def selective_plan(
             blocked.append(BlockedJob(item, f"{item.category} is not a transient category."))
         elif item.confidence != "high":
             blocked.append(BlockedJob(item, f"Transient classification confidence is {item.confidence}, not high."))
+        elif item.provenance_status != PROVENANCE_CONFIRMED:
+            blocked.append(
+                BlockedJob(
+                    item,
+                    f"Execution provenance is {item.provenance_status}, not confirmed.",
+                )
+            )
         else:
             safe.append(item)
     return safe, blocked
@@ -108,9 +116,12 @@ def render_selective_report(
             lines.append(f"- `{hit.replace('`', "'")}`")
 
     if safe:
-        lines.extend(["", "### Safe candidates", "", "| Job | Category | Confidence |", "|---|---|---|"])
+        lines.extend(["", "### Safe candidates", "", "| Job | Category | Confidence | Provenance |", "|---|---|---|---|"])
         for item in safe:
-            lines.append(f"| {item.name.replace('|', '/')} | `{item.category}` | {item.confidence} |")
+            lines.append(
+                f"| {item.name.replace('|', '/')} | `{item.category}` | {item.confidence} | "
+                f"`{item.provenance_status}` |"
+            )
 
     if blocked:
         lines.extend(["", "### Blocked", "", "| Job | Category | Reason |", "|---|---|---|"])

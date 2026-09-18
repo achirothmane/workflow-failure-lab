@@ -7,8 +7,10 @@ from dataclasses import dataclass
 
 from ci_retry_gate import (
     FAILURE_CONCLUSIONS,
+    PROVENANCE_CONFIRMED,
     TRANSIENT_CATEGORIES,
     GitHubAPI,
+    assess_execution_provenance,
     classify_log,
     detect_side_effect_risk,
     job_duration_minutes,
@@ -31,6 +33,7 @@ _REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 REJECTION_SIDE_EFFECT = "SIDE_EFFECT_RISK"
 REJECTION_CODE_REGRESSION = "CODE_REGRESSION"
 REJECTION_LOW_CONFIDENCE_TRANSIENT = "LOW_CONFIDENCE_TRANSIENT"
+REJECTION_UNCONFIRMED_PROVENANCE = "UNCONFIRMED_EXECUTION_PROVENANCE"
 REJECTION_UNKNOWN = "UNKNOWN_CLASSIFICATION"
 REJECTION_NON_TRANSIENT = "NON_TRANSIENT_CATEGORY"
 
@@ -264,6 +267,7 @@ def _collect_failures_for_runs(
                 log_text = ""
 
             classification = classify_log(log_text)
+            provenance = assess_execution_provenance(job, log_text, classification)
             if classification.category == "UNKNOWN":
                 signature = unknown_signature(log_text)
                 unknown_evidence = (
@@ -303,6 +307,7 @@ def _collect_failures_for_runs(
                         own_side_effect_risk or workflow_side_effect_risk
                     ),
                     attempt=1,
+                    provenance_status=provenance.status,
                 )
             )
 
@@ -360,6 +365,7 @@ def _is_rerun_candidate(item: HistoricalFailure) -> bool:
     return (
         item.category in TRANSIENT_CATEGORIES
         and item.confidence == "high"
+        and item.provenance_status == PROVENANCE_CONFIRMED
         and not item.side_effect_risk
     )
 
@@ -373,6 +379,12 @@ def _rejection_reason(item: HistoricalFailure) -> str | None:
         return REJECTION_CODE_REGRESSION
     if item.category in TRANSIENT_CATEGORIES and item.confidence != "high":
         return REJECTION_LOW_CONFIDENCE_TRANSIENT
+    if (
+        item.category in TRANSIENT_CATEGORIES
+        and item.confidence == "high"
+        and item.provenance_status != PROVENANCE_CONFIRMED
+    ):
+        return REJECTION_UNCONFIRMED_PROVENANCE
     if item.category == "UNKNOWN":
         return REJECTION_UNKNOWN
     return REJECTION_NON_TRANSIENT
@@ -607,7 +619,7 @@ def render_benchmark_report(summary: BenchmarkSummary) -> str:
         "",
         f"Historical rerun runs sampled: **{summary.rerun_runs_analyzed}**",
         f"First-attempt failed jobs in rerun runs: **{summary.rerun_failed_jobs}**",
-        f"Base safety candidates (high-confidence transient, no side effects): **{summary.rerun_candidates}**",
+        f"Base safety candidates (high-confidence transient, confirmed execution provenance, no side effects): **{summary.rerun_candidates}**",
         f"Candidates with observed real rerun outcomes: **{summary.rerun_evaluated}**",
         f"Observed recoveries: **{summary.rerun_recoveries}**",
         f"Observed false positives: **{summary.rerun_false_positives}**",
@@ -640,7 +652,7 @@ def render_benchmark_report(summary: BenchmarkSummary) -> str:
         lines.extend(
             [
                 "",
-                "> A blocked failure recovering after a rerun is a coverage signal, not proof that automatic rerun was safe. Side effects, code-regression evidence, and low confidence remain blocking evidence.",
+                "> A blocked failure recovering after a rerun is a coverage signal, not proof that automatic rerun was safe. Side effects, code-regression evidence, low confidence, and unconfirmed execution provenance remain blocking evidence.",
                 "",
             ]
         )
@@ -723,7 +735,7 @@ def render_benchmark_report(summary: BenchmarkSummary) -> str:
             "",
             "> The natural sample measures how often the learned policy would act in ordinary recent CI history.",
             "> The rerun-enriched sample deliberately over-samples runs that were actually rerun, so its precision must not be interpreted as prevalence or natural coverage.",
-            "> Candidate precision is recoveries / evaluated high-confidence transient candidates with no workflow side-effect signal. UNKNOWN outcomes are excluded rather than guessed.",
+            "> Candidate precision is recoveries / evaluated high-confidence transient candidates with confirmed failed-step provenance and no workflow side-effect signal. UNKNOWN outcomes are excluded rather than guessed.",
             "> Benchmark results describe only the sampled repositories and historical runs. They are not a guarantee of future production behavior.",
         ]
     )
@@ -862,6 +874,10 @@ def main() -> int:
     _write_output(
         "benchmark-rejection-low-confidence-transient",
         str(next((item.blocked for item in summary.rejections if item.reason == REJECTION_LOW_CONFIDENCE_TRANSIENT), 0)),
+    )
+    _write_output(
+        "benchmark-rejection-unconfirmed-provenance",
+        str(next((item.blocked for item in summary.rejections if item.reason == REJECTION_UNCONFIRMED_PROVENANCE), 0)),
     )
     _write_output(
         "benchmark-rejection-unknown-classification",

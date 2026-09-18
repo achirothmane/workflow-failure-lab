@@ -8,8 +8,10 @@ from dataclasses import dataclass
 
 from ci_retry_gate import (
     FAILURE_CONCLUSIONS,
+    PROVENANCE_CONFIRMED,
     TRANSIENT_CATEGORIES,
     GitHubAPI,
+    assess_execution_provenance,
     classify_log,
     detect_side_effect_risk,
     job_duration_minutes,
@@ -46,6 +48,7 @@ class HistoricalFailure:
     rerun_observed: bool = False
     side_effect_risk: bool = False
     attempt: int = 1
+    provenance_status: str = PROVENANCE_CONFIRMED
 
 
 @dataclass(frozen=True)
@@ -453,6 +456,7 @@ def collect_history(
                     log_text = ""
 
                 classification = classify_log(log_text)
+                provenance = assess_execution_provenance(job, log_text, classification)
                 fingerprint, signature = failure_fingerprint(
                     job_name,
                     classification.category,
@@ -479,6 +483,7 @@ def collect_history(
                         rerun_observed=rerun_observed,
                         side_effect_risk=side_effect_risk,
                         attempt=attempt,
+                        provenance_status=provenance.status,
                     )
                 )
 

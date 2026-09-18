@@ -216,6 +216,9 @@ outputs:
   benchmark-rejection-low-confidence-transient:
     description: 'Blocked transient-category failures that did not reach high confidence.'
     value: ${{ steps.benchmark.outputs.benchmark-rejection-low-confidence-transient }}
+  benchmark-rejection-unconfirmed-provenance:
+    description: 'High-confidence transient failures blocked because evidence could not be bound to the failed execution step.'
+    value: ${{ steps.benchmark.outputs.benchmark-rejection-unconfirmed-provenance }}
   benchmark-rejection-unknown-classification:
     description: 'Blocked rerun-enriched failures classified as UNKNOWN.'
     value: ${{ steps.benchmark.outputs.benchmark-rejection-unknown-classification }}
