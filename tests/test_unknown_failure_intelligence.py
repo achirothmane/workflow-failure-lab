@@ -14,6 +14,7 @@ from recovery_ground_truth import (
 )
 from unknown_failure_intelligence import (
     PROMOTION_BLOCKER_INSUFFICIENT_GT_RERUNS,
+    PROMOTION_BLOCKER_INDEPENDENT_REPLICATION,
     PROMOTION_BLOCKER_INSUFFICIENT_OCCURRENCES,
     PROMOTION_BLOCKER_MECHANISM_CAUSALITY,
     PROMOTION_BLOCKER_NO_STABLE_SIGNATURE,
@@ -757,4 +758,76 @@ def test_all_ground_truth_reruns_require_causal_mechanism_binding():
     assert pattern.rerun_observations == 3
     assert pattern.mechanism_causal_gt_reruns == 2
     assert pattern.promotion_blockers == (PROMOTION_BLOCKER_MECHANISM_CAUSALITY,)
+
+
+def test_same_run_repeated_samples_do_not_satisfy_independent_replication():
+    signature = "fatal: connection reset by peer"
+    reruns = {
+        "acme/repo": (
+            [
+                _unknown(42, signature=signature, recovered=True),
+                _unknown(42, signature=signature, recovered=True),
+                _unknown(42, signature=signature, recovered=True),
+            ],
+            3,
+        )
+    }
+
+    pattern = summarize_unknown_patterns({}, reruns).patterns[0]
+
+    assert pattern.rerun_observations == 3
+    assert pattern.mechanism_causal_gt_reruns == 3
+    assert pattern.independent_runs == 1
+    assert pattern.replication_run_ids == (42,)
+    assert pattern.independent_run_deficit == 1
+    assert pattern.promotion_candidate is False
+    assert pattern.promotion_blockers == (PROMOTION_BLOCKER_INDEPENDENT_REPLICATION,)
+
+
+def test_two_independent_runs_inside_one_repository_satisfy_replication_gate():
+    signature = "fatal: connection reset by peer"
+    reruns = {
+        "acme/repo": (
+            [
+                _unknown(101, signature=signature, recovered=True),
+                _unknown(202, signature=signature, recovered=True),
+                _unknown(303, signature=signature, recovered=True),
+            ],
+            3,
+        )
+    }
+
+    pattern = summarize_unknown_patterns({}, reruns).patterns[0]
+
+    assert pattern.independent_runs == 3
+    assert pattern.independent_repositories == 1
+    assert pattern.replication_run_ids == (101, 202, 303)
+    assert pattern.independent_run_deficit == 0
+    assert pattern.promotion_candidate is True
+
+
+def test_cross_repository_replication_is_tracked_without_becoming_mandatory():
+    signature = "fatal: connection reset by peer"
+    reruns = {
+        "acme/repo": (
+            [
+                _unknown(101, signature=signature, recovered=True),
+                _unknown(202, signature=signature, recovered=True),
+            ],
+            2,
+        ),
+        "other/project": (
+            [
+                _unknown(303, signature=signature, recovered=True),
+            ],
+            1,
+        ),
+    }
+
+    pattern = summarize_unknown_patterns({}, reruns).patterns[0]
+
+    assert pattern.independent_runs == 3
+    assert pattern.independent_repositories == 2
+    assert pattern.replication_repositories == ("acme/repo", "other/project")
+    assert pattern.promotion_candidate is True
 
