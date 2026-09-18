@@ -223,6 +223,7 @@ Promotion readiness is decomposed into explicit blockers:
 - `INSUFFICIENT_GT_RERUNS`
 - `RECOVERY_RATE_BELOW_THRESHOLD`
 - `SEMANTIC_EVIDENCE_QUALITY`
+- `TRANSIENT_MECHANISM_EVIDENCE`
 - `SIDE_EFFECT_CONTAMINATION`
 - `ELIGIBLE_FOR_CLASSIFIER_RESEARCH` when no blocker remains.
 
@@ -239,7 +240,23 @@ Promotion also requires at least one signature segment that describes a **specif
 
 Mixed signatures are not discarded if they still contain a specific failure segment. This gate is research-only and does not modify runtime classification or rerun authority.
 
-`INVESTIGATE_TRANSIENT_PATTERN` is emitted only when the UNKNOWN signature is stable, semantically specific, appears at least 3 times, has at least 3 ground-truth-evaluable reruns, at least 80% validated recovery, and no side-effect occurrence is present. This status is **research evidence only**: it does not change the runtime classifier and never grants rerun authority.
+### Transient Mechanism Gate
+
+Semantic specificity is still not proof of transience. Promotion therefore requires **positive evidence of a temporary failure mechanism** such as:
+
+- timeout / deadline exceeded;
+- connection reset/refused/broken pipe;
+- DNS resolution failure;
+- HTTP 5xx server failure;
+- rate limiting / HTTP 429;
+- temporary/service unavailability;
+- network EOF / TLS handshake timeout.
+
+Diagnostic cause families that usually indicate deterministic state — `AUTH_PERMISSION`, `COMMAND_CONFIG`, `TEST_BUILD`, and `GIT_VCS` — are blocked unless the signature itself contains stronger direct transient-mechanism evidence. Other specific failures without transient evidence remain `TRANSIENT_MECHANISM_UNPROVEN`.
+
+The gate is research-only: it neither changes runtime classification nor grants rerun authority.
+
+`INVESTIGATE_TRANSIENT_PATTERN` is emitted only when the UNKNOWN signature is stable, semantically specific, has positive transient-mechanism evidence, appears at least 3 times, has at least 3 ground-truth-evaluable reruns, at least 80% validated recovery, and no side-effect occurrence is present. This status is **research evidence only**: it does not change the runtime classifier and never grants rerun authority.
 
 This creates a controlled path from `UNKNOWN` → repeated evidence → candidate classifier rule → separate testing, rather than weakening the production safety gate from a handful of recoveries.
 
@@ -371,6 +388,7 @@ Benchmark Mode emits:
 | `benchmark-unknown-promotion-blocker-insufficient-gt-reruns` | Patterns blocked because fewer than three ground-truth-evaluable reruns are available. |
 | `benchmark-unknown-promotion-blocker-recovery-rate-below-threshold` | Patterns blocked because validated recovery rate is below 80%. |
 | `benchmark-unknown-promotion-blocker-semantic-evidence-quality` | Patterns blocked because the signature lacks specific failure semantics after filtering wrappers, successful test lines, and command-source text. |
+| `benchmark-unknown-promotion-blocker-transient-mechanism-evidence` | Patterns blocked because no independent transient mechanism such as timeout, reset, DNS failure, 5xx, rate limiting, or temporary unavailability is evidenced. |
 | `benchmark-unknown-promotion-blocker-side-effect-contamination` | Patterns blocked because at least one occurrence crossed a side-effect boundary. |
 | `benchmark-unknown-promotion-blocker-eligible-for-classifier-research` | Patterns satisfying all advisory evidence thresholds for classifier research. |
 | `benchmark-unknown-cause-no-stable-error-evidence` | UNKNOWN failures with no stable error-like evidence after semantic filtering. |
@@ -394,7 +412,7 @@ This tool cannot prove that rerunning arbitrary third-party workflows is safe. I
 
 ## Validation
 
-The action has unit coverage for transient failures, code failures, unknown failures, causal-vs-non-causal log evidence, retry-authority execution provenance, classification-independent failure-step outcome provenance, recovery ground-truth validation, unverified/inconsistent recovery exclusion, first-gate coverage attribution, evidence-gap versus authority-boundary separation, UNKNOWN cause decomposition, cause-family aggregation, UNKNOWN promotion blocker attribution, Semantic Promotion Gate filtering, promotion-distance accounting, weak transient evidence discounting, secret redaction, side-effect blocking, attempt caps, runtime accounting, historical transient-waste accounting, recurring failure detection, fingerprint stability under dynamic log values, fingerprint separation for different failures, real-vs-copied rerun detection, Policy Learning thresholds, Shadow Mode look-back isolation, Benchmark Mode repository isolation, unknown counterfactual handling, benchmark precision/coverage aggregation, UNKNOWN signature extraction, cross-repository UNKNOWN clustering, promotion thresholds, and UNKNOWN side-effect guards.
+The action has unit coverage for transient failures, code failures, unknown failures, causal-vs-non-causal log evidence, retry-authority execution provenance, classification-independent failure-step outcome provenance, recovery ground-truth validation, unverified/inconsistent recovery exclusion, first-gate coverage attribution, evidence-gap versus authority-boundary separation, UNKNOWN cause decomposition, cause-family aggregation, UNKNOWN promotion blocker attribution, Semantic Promotion Gate filtering, Transient Mechanism Gate evidence, deterministic-mechanism blocking, promotion-distance accounting, weak transient evidence discounting, secret redaction, side-effect blocking, attempt caps, runtime accounting, historical transient-waste accounting, recurring failure detection, fingerprint stability under dynamic log values, fingerprint separation for different failures, real-vs-copied rerun detection, Policy Learning thresholds, Shadow Mode look-back isolation, Benchmark Mode repository isolation, unknown counterfactual handling, benchmark precision/coverage aggregation, UNKNOWN signature extraction, cross-repository UNKNOWN clustering, promotion thresholds, and UNKNOWN side-effect guards.
 
 Selective Safe Rerun has also been tested end-to-end in GitHub Actions: a mixed run containing a transient network failure and a code regression caused only the transient job to execute again; the code-regression job remained blocked, and the attempt cap prevented a third loop.
 
