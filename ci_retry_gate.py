@@ -42,7 +42,7 @@ PROVENANCE_MISMATCH = "MISMATCH"
 PROVENANCE_NOT_APPLICABLE = "NOT_APPLICABLE"
 
 _RUNNER_TIMESTAMP_CAPTURE_RE = re.compile(
-    r"^(?P<timestamp>\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z)\\s+"
+    r"^(?P<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)\s+"
 )
 
 _NON_CAUSAL_LOG_PATTERNS = tuple(
