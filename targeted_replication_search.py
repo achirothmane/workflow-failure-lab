@@ -118,3 +118,40 @@ def search_targeted_replication(
         repositories=repositories,
         run_ids=run_ids,
     )
+
+
+
+def render_targeted_replication_report(summary: TargetedReplicationSummary) -> str:
+    lines = [
+        "## Targeted Replication Search",
+        "",
+        f"- Mechanism: `{summary.mechanism_reason}`",
+        f"- Usable causal GT matches: **{len(summary.usable_matches)}**",
+        f"- Independent workflow runs: **{summary.independent_runs}**",
+        f"- Independent repositories: **{summary.independent_repositories}**",
+        f"- Validated recoveries: **{summary.validated_recoveries}**",
+        f"- Failed again: **{summary.failed_again}**",
+        f"- Ground-truth recovery rate: **{summary.recovery_rate:.1%}**",
+        f"- Side-effect contaminated matches excluded from replication: **{summary.side_effect_contaminated}**",
+        f"- Independent replication confirmed: **{'YES' if summary.replicated else 'no'}**",
+        f"- Cross-repository replication: **{'YES' if summary.cross_repository_replicated else 'no'}**",
+        "",
+        "| Repository | Run | Job | Pattern | Outcome | Signature |",
+        "|---|---:|---|---|---|---|",
+    ]
+    for item in summary.usable_matches:
+        signature = item.signature.replace("|", "/")
+        lines.append(
+            f"| {item.repository} | {item.run_id} | {item.job_name.replace('|', '/')} | "
+            f"`{item.pattern_id}` | `{item.recovery_status}` | {signature} |"
+        )
+    if not summary.usable_matches:
+        lines.append("| — | — | — | — | — | No qualifying causal ground-truth match found |")
+    lines.extend(
+        [
+            "",
+            "> Mechanism-family replication is research evidence only. It does not "
+            "promote a runtime classifier rule and does not grant rerun authority.",
+        ]
+    )
+    return "\n".join(lines) + "\n"
