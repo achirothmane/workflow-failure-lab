@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ci_retry_gate import PROVENANCE_CONFIRMED
+from ci_retry_gate import FAILURE_STEP_CONFIRMED
 
 
 RECOVERY_VALIDATED = "VALIDATED_RECOVERY"
@@ -43,8 +43,8 @@ def later_rerun_result(
 def assess_recovery_ground_truth(
     *,
     original_job: dict,
-    provenance_status: str,
-    provenance_step: str,
+    failure_step_status: str,
+    failure_step: str,
     rerun_observed: bool,
     recovered: bool,
     rerun_job: dict | None,
@@ -62,7 +62,7 @@ def assess_recovery_ground_truth(
             ("A genuine later execution was observed, but it did not succeed.",),
         )
 
-    if provenance_status != PROVENANCE_CONFIRMED or not provenance_step:
+    if failure_step_status != FAILURE_STEP_CONFIRMED or not failure_step:
         return RecoveryGroundTruth(
             RECOVERY_UNVERIFIED,
             (
@@ -87,14 +87,14 @@ def assess_recovery_ground_truth(
     matching_steps = [
         step
         for step in rerun_steps
-        if str(step.get("name") or "") == provenance_step
+        if str(step.get("name") or "") == failure_step
     ]
     if not matching_steps:
         return RecoveryGroundTruth(
             RECOVERY_INCONSISTENT,
             (
                 f"The later job succeeded, but the original failed step "
-                f"{provenance_step!r} was not re-executed.",
+                f"{failure_step!r} was not re-executed.",
             ),
         )
 
@@ -103,7 +103,7 @@ def assess_recovery_ground_truth(
             return RecoveryGroundTruth(
                 RECOVERY_VALIDATED,
                 (
-                    f"Original failed step: {provenance_step}",
+                    f"Original failed step: {failure_step}",
                     "The same step was re-executed in the later attempt and succeeded.",
                 ),
             )
