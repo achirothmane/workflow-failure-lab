@@ -15,14 +15,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Print recovered low-confidence transient failures
+      - name: Find first safe-context low-confidence transient
         shell: bash
         env:
           INPUT_GITHUB_TOKEN: ${{ github.token }}
         run: |
           python3 - <<'PY'
-          from benchmark_mode import collect_repository_samples
-          from ci_retry_gate import GitHubAPI, TRANSIENT_CATEGORIES
+          import os
+          from benchmark_mode import _list_completed_runs
+          from ci_retry_gate import (
+              FAILURE_CONCLUSIONS, GitHubAPI, TRANSIENT_CATEGORIES,
+              classify_log, detect_side_effect_risk,
+          )
+          from history_ci_waste import _jobs_for_attempt, _later_rerun_outcome
 
           repos = [
               "pallets/flask","psf/requests","pytest-dev/pytest","axios/axios","pnpm/pnpm",
@@ -33,28 +38,52 @@ jobs:
               "rust-lang/cargo","tokio-rs/tokio","BurntSushi/ripgrep","kubernetes/kubernetes",
               "helm/helm","prometheus/prometheus","grafana/grafana","hashicorp/vault"
           ]
-          api = GitHubAPI(__import__("os").environ["INPUT_GITHUB_TOKEN"])
-          found = 0
+          api = GitHubAPI(os.environ["INPUT_GITHUB_TOKEN"])
+          checked = 0
           for repo in repos:
-              (_natural, _nruns), (reruns, _rruns) = collect_repository_samples(
-                  api, repo, natural_run_limit=5, rerun_run_limit=20, rerun_search_limit=150
-              )
-              for item in reruns:
-                  if (
-                      item.category in TRANSIENT_CATEGORIES
-                      and item.confidence != "high"
-                      and not item.side_effect_risk
-                  ):
-                      found += 1
-                      print("LOW_CONF_TRANSIENT")
-                      print(f"repo={repo}")
-                      print(f"run_id={item.run_id}")
-                      print(f"job={item.job_name}")
-                      print(f"category={item.category}")
-                      print(f"confidence={item.confidence}")
-                      print(f"signature={item.signature}")
-                      print(f"rerun_observed={item.rerun_observed}")
-                      print(f"recovered={item.recovered_after_rerun}")
-                      print("---")
-          print(f"found={found}")
+              runs = _list_completed_runs(api, repo, 150)
+              natural_ids = {int(r.get("id") or 0) for r in runs[:5]}
+              reruns = [
+                  r for r in runs
+                  if int(r.get("run_attempt") or 1) > 1
+                  and int(r.get("id") or 0) not in natural_ids
+              ][:20]
+              for run in reruns:
+                  run_id = int(run["id"])
+                  attempts = max(2, int(run.get("run_attempt") or 2))
+                  attempt_jobs = {
+                      a: _jobs_for_attempt(api, repo, run_id, a)
+                      for a in range(1, attempts + 1)
+                  }
+                  jobs = attempt_jobs.get(1, [])
+                  if any(detect_side_effect_risk(j)[0] for j in jobs):
+                      continue
+                  for job in jobs:
+                      if str(job.get("conclusion") or "").lower() not in FAILURE_CONCLUSIONS:
+                          continue
+                      if detect_side_effect_risk(job)[0]:
+                          continue
+                      checked += 1
+                      log = api.get_job_logs(repo, int(job["id"]))
+                      c = classify_log(log)
+                      if c.category in TRANSIENT_CATEGORIES and c.confidence != "high":
+                          observed, recovered = _later_rerun_outcome(
+                              attempt_jobs, 1, attempts,
+                              str(job.get("name") or ""),
+                              str(job.get("started_at") or ""),
+                          )
+                          print("FOUND_LOW_CONF_TRANSIENT")
+                          print(f"repo={repo}")
+                          print(f"run_id={run_id}")
+                          print(f"job_id={job['id']}")
+                          print(f"job={job.get('name')}")
+                          print(f"category={c.category}")
+                          print(f"confidence={c.confidence}")
+                          print(f"score={c.score}")
+                          print(f"evidence={c.evidence}")
+                          print(f"rerun_observed={observed}")
+                          print(f"recovered={recovered}")
+                          print(f"checked_non_side_effect_failures={checked}")
+                          raise SystemExit(0)
+          print(f"NO_LOW_CONF_TRANSIENT checked={checked}")
           PY
