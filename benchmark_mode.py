@@ -685,12 +685,12 @@ def render_benchmark_report(summary: BenchmarkSummary) -> str:
                 f"UNKNOWN failures across natural + rerun-enriched samples: **{unknown.unknown_failures}**",
                 f"Distinct UNKNOWN signatures: **{len(unknown.patterns)}**",
                 f"Repeated UNKNOWN signatures: **{unknown.repeated_patterns}**",
-                f"UNKNOWN cases with observed real reruns: **{unknown.evaluated_reruns}**",
-                f"Observed UNKNOWN recoveries: **{unknown.recoveries}**",
+                f"UNKNOWN cases with ground-truth-evaluable reruns: **{unknown.evaluated_reruns}**",
+                f"Validated UNKNOWN recoveries: **{unknown.recoveries}**",
                 f"Observed UNKNOWN failures after rerun: **{unknown.failed_again}**",
                 f"Investigation candidates for a possible future transient classifier rule: **{len(unknown.promotion_candidates)}**",
                 "",
-                "| Pattern | Occurrences | Repositories | Real reruns | Recoveries | Failed again | Recovery rate | Status | Signature |",
+                "| Pattern | Occurrences | Repositories | GT-evaluable reruns | Validated recoveries | Failed again | Recovery rate | Status | Signature |",
                 "|---|---:|---:|---:|---:|---:|---:|---|---|",
             ]
         )
@@ -704,7 +704,7 @@ def render_benchmark_report(summary: BenchmarkSummary) -> str:
         lines.extend(
             [
                 "",
-                "> INVESTIGATE_TRANSIENT_PATTERN is advisory only. It requires a stable repeated signature, at least 3 observed real reruns, at least 80% recovery, and no side-effect occurrence. It does not modify the runtime classifier or authorize reruns.",
+                "> INVESTIGATE_TRANSIENT_PATTERN is advisory only. It requires a stable repeated signature, at least 3 ground-truth-evaluable reruns, at least 80% validated recovery, and no side-effect occurrence. It does not modify the runtime classifier or authorize reruns.",
                 "",
             ]
         )
