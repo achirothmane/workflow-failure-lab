@@ -1,0 +1,60 @@
+name: Investigate Low Confidence Transient
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/low-confidence-transient-trigger.txt'
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  investigate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Print recovered low-confidence transient failures
+        shell: bash
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          from benchmark_mode import collect_repository_samples
+          from ci_retry_gate import GitHubAPI, TRANSIENT_CATEGORIES
+
+          repos = [
+              "pallets/flask","psf/requests","pytest-dev/pytest","axios/axios","pnpm/pnpm",
+              "docker/compose","golangci/golangci-lint","astral-sh/ruff","serde-rs/serde",
+              "hashicorp/terraform","django/django","fastapi/fastapi","encode/httpx",
+              "tiangolo/sqlmodel","numpy/numpy","pandas-dev/pandas","pydantic/pydantic",
+              "nodejs/node","denoland/deno","vitejs/vite","vercel/next.js","microsoft/TypeScript",
+              "rust-lang/cargo","tokio-rs/tokio","BurntSushi/ripgrep","kubernetes/kubernetes",
+              "helm/helm","prometheus/prometheus","grafana/grafana","hashicorp/vault"
+          ]
+          api = GitHubAPI(__import__("os").environ["INPUT_GITHUB_TOKEN"])
+          found = 0
+          for repo in repos:
+              (_natural, _nruns), (reruns, _rruns) = collect_repository_samples(
+                  api, repo, natural_run_limit=5, rerun_run_limit=20, rerun_search_limit=150
+              )
+              for item in reruns:
+                  if (
+                      item.category in TRANSIENT_CATEGORIES
+                      and item.confidence != "high"
+                      and not item.side_effect_risk
+                  ):
+                      found += 1
+                      print("LOW_CONF_TRANSIENT")
+                      print(f"repo={repo}")
+                      print(f"run_id={item.run_id}")
+                      print(f"job={item.job_name}")
+                      print(f"category={item.category}")
+                      print(f"confidence={item.confidence}")
+                      print(f"signature={item.signature}")
+                      print(f"rerun_observed={item.rerun_observed}")
+                      print(f"recovered={item.recovered_after_rerun}")
+                      print("---")
+          print(f"found={found}")
+          PY
