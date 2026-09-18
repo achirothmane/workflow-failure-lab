@@ -297,6 +297,9 @@ outputs:
   benchmark-unknown-promotion-blocker-transient-mechanism-evidence:
     description: 'UNKNOWN patterns blocked because no independent transient mechanism such as timeout, reset, DNS failure, 5xx, rate limiting, or temporary unavailability is evidenced.'
     value: ${{ steps.benchmark.outputs.benchmark-unknown-promotion-blocker-transient-mechanism-evidence }}
+  benchmark-unknown-promotion-blocker-mechanism-causality-evidence:
+    description: 'UNKNOWN patterns blocked because transient mechanism tokens were not causally bound inside every ground-truth-evaluable failed-step sample.'
+    value: ${{ steps.benchmark.outputs.benchmark-unknown-promotion-blocker-mechanism-causality-evidence }}
   benchmark-unknown-promotion-blocker-side-effect-contamination:
     description: 'UNKNOWN patterns blocked because at least one occurrence crossed a workflow side-effect boundary.'
     value: ${{ steps.benchmark.outputs.benchmark-unknown-promotion-blocker-side-effect-contamination }}
