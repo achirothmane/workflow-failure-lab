@@ -70,7 +70,7 @@ def test_duplicate_timestamped_transient_prose_is_scored_once():
         "2026-08-24T16:58:07.7709068Z connection timed out\n"
     )
     assert result.category == "UNKNOWN"
-    assert result.score == 2
+    assert result.score == 1
 
 
 def test_single_429_signal_remains_low_confidence_transient():
