@@ -276,6 +276,27 @@ outputs:
   benchmark-unknown-promotion-candidate-ids:
     description: 'Comma-separated advisory UNKNOWN pattern IDs meeting the investigation threshold.'
     value: ${{ steps.benchmark.outputs.benchmark-unknown-promotion-candidate-ids }}
+  benchmark-unknown-near-promotion-candidates:
+    description: 'UNKNOWN patterns exactly one blocker away from classifier research eligibility.'
+    value: ${{ steps.benchmark.outputs.benchmark-unknown-near-promotion-candidates }}
+  benchmark-unknown-promotion-blocker-no-stable-signature:
+    description: 'UNKNOWN patterns blocked because no stable normalized error signature exists.'
+    value: ${{ steps.benchmark.outputs.benchmark-unknown-promotion-blocker-no-stable-signature }}
+  benchmark-unknown-promotion-blocker-insufficient-occurrences:
+    description: 'UNKNOWN patterns blocked because fewer than three occurrences are available.'
+    value: ${{ steps.benchmark.outputs.benchmark-unknown-promotion-blocker-insufficient-occurrences }}
+  benchmark-unknown-promotion-blocker-insufficient-gt-reruns:
+    description: 'UNKNOWN patterns blocked because fewer than three ground-truth-evaluable reruns are available.'
+    value: ${{ steps.benchmark.outputs.benchmark-unknown-promotion-blocker-insufficient-gt-reruns }}
+  benchmark-unknown-promotion-blocker-recovery-rate-below-threshold:
+    description: 'UNKNOWN patterns blocked because validated recovery rate is below 80 percent.'
+    value: ${{ steps.benchmark.outputs.benchmark-unknown-promotion-blocker-recovery-rate-below-threshold }}
+  benchmark-unknown-promotion-blocker-side-effect-contamination:
+    description: 'UNKNOWN patterns blocked because at least one occurrence crossed a workflow side-effect boundary.'
+    value: ${{ steps.benchmark.outputs.benchmark-unknown-promotion-blocker-side-effect-contamination }}
+  benchmark-unknown-promotion-blocker-eligible-for-classifier-research:
+    description: 'UNKNOWN patterns satisfying all advisory evidence thresholds for classifier research.'
+    value: ${{ steps.benchmark.outputs.benchmark-unknown-promotion-blocker-eligible-for-classifier-research }}
   benchmark-unknown-cause-no-stable-error-evidence:
     description: 'UNKNOWN failures with no stable error-like evidence after semantic filtering.'
     value: ${{ steps.benchmark.outputs.benchmark-unknown-cause-no-stable-error-evidence }}
