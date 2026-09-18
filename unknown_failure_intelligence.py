@@ -8,12 +8,20 @@ from dataclasses import dataclass
 from ci_retry_gate import redact
 from history_ci_waste import HistoricalFailure, normalize_signature_line
 
+_ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+_RUNNER_TIMESTAMP_RE = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\s+"
+)
 _GENERIC_ERROR_RE = re.compile(
-    r"(::error::|\berror\b|\bfatal\b|\bexception\b|\bfailed\b|\bfailure\b|"
-    r"\bpanic\b|segmentation fault|\btraceback\b|exit code|permission denied|"
+    r"(::error::|##\[error\]|"
+    r"^(?:error|fatal|exception|panic|failed|failure)\b\s*[:\-]?|"
+    r"segmentation fault|\btraceback\b|exit code|permission denied|"
     r"no such file|not found|unable to|cannot|could not|connection refused|"
     r"timed out|timeout)",
     re.IGNORECASE,
+)
+_BENIGN_METADATA_PATTERNS = (
+    re.compile(r"^digest-mismatch:\s*(?:error|warn|warning|ignore)$", re.IGNORECASE),
 )
 
 MIN_UNKNOWN_OCCURRENCES = 3
@@ -84,11 +92,30 @@ class UnknownIntelligenceSummary:
         return tuple(item for item in self.patterns if item.promotion_candidate)
 
 
+def _semantic_log_content(raw_line: str) -> str:
+    """Return the user/tool message without runner timestamps, ANSI, or benign metadata."""
+    cleaned = redact(raw_line)
+    cleaned = _ANSI_RE.sub("", cleaned)
+    cleaned = _RUNNER_TIMESTAMP_RE.sub("", cleaned).strip()
+    if not cleaned:
+        return ""
+
+    # Shell comments and GitHub runner grouping metadata frequently contain words like
+    # "error" while describing behavior rather than reporting a failure.
+    if cleaned.startswith("#") and not cleaned.startswith("##[error]"):
+        return ""
+    if cleaned.startswith(("##[group]", "##[endgroup]", "##[debug]")):
+        return ""
+    if any(pattern.fullmatch(cleaned) for pattern in _BENIGN_METADATA_PATTERNS):
+        return ""
+    return cleaned
+
+
 def extract_unknown_evidence(log_text: str, limit: int = 3) -> tuple[str, ...]:
-    """Extract generic, redacted error-like lines when the classifier has no known rule."""
+    """Extract redacted, semantically error-like lines when no known classifier rule matches."""
     hits: list[str] = []
     for raw_line in log_text.splitlines():
-        cleaned = redact(raw_line).strip()
+        cleaned = _semantic_log_content(raw_line)
         if not cleaned or not _GENERIC_ERROR_RE.search(cleaned):
             continue
         normalized = normalize_signature_line(cleaned)
