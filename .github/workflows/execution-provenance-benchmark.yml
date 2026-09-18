@@ -82,4 +82,20 @@ jobs:
                   f"candidates={item.candidates} evaluated={item.evaluated} "
                   f"recoveries={item.recoveries} false_positives={item.false_positives}"
               )
+
+          print("=== UNCONFIRMED TRANSIENT DETAILS ===")
+          for repo, (failures, _runs) in sorted(rerun_histories.items()):
+              for item in failures:
+                  if (
+                      item.category in {"RUNNER_INFRA", "DEPENDENCY_NETWORK"}
+                      and item.confidence == "high"
+                      and not item.side_effect_risk
+                      and item.provenance_status != "CONFIRMED"
+                  ):
+                      print(
+                          f"repo={repo} run_id={item.run_id} job={item.job_name!r} "
+                          f"category={item.category} provenance={item.provenance_status} "
+                          f"rerun_observed={item.rerun_observed} recovered={item.recovered_after_rerun} "
+                          f"signature={item.signature!r}"
+                      )
           PY
