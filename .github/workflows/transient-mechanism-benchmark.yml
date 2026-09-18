@@ -1,0 +1,112 @@
+name: Transient Mechanism 30 Repo Benchmark
+
+on:
+  push:
+    branches:
+      - test/transient-mechanism-benchmark
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run transient mechanism benchmark
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          from collections import Counter
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+          import os
+
+          from benchmark_mode import collect_repository_samples, summarize_benchmark
+          from ci_retry_gate import GitHubAPI
+
+          repos = [
+              "pallets/flask","psf/requests","pytest-dev/pytest","axios/axios","pnpm/pnpm",
+              "docker/compose","golangci/golangci-lint","astral-sh/ruff","serde-rs/serde",
+              "hashicorp/terraform","django/django","fastapi/fastapi","encode/httpx",
+              "tiangolo/sqlmodel","numpy/numpy","pandas-dev/pandas","pydantic/pydantic",
+              "nodejs/node","denoland/deno","vitejs/vite","vercel/next.js","microsoft/TypeScript",
+              "rust-lang/cargo","tokio-rs/tokio","BurntSushi/ripgrep","kubernetes/kubernetes",
+              "helm/helm","prometheus/prometheus","grafana/grafana","hashicorp/vault"
+          ]
+          token = os.environ["INPUT_GITHUB_TOKEN"]
+
+          def collect(repo):
+              api = GitHubAPI(token)
+              try:
+                  natural, enriched = collect_repository_samples(api, repo, 5, 20, 150)
+                  return repo, natural, enriched, None
+              except RuntimeError as exc:
+                  return repo, None, None, str(exc)[:240]
+
+          histories, rerun_histories, skipped = {}, {}, []
+          with ThreadPoolExecutor(max_workers=5) as pool:
+              futures = [pool.submit(collect, repo) for repo in repos]
+              for future in as_completed(futures):
+                  repo, natural, enriched, error = future.result()
+                  if error:
+                      skipped.append((repo, error))
+                  else:
+                      histories[repo] = natural
+                      rerun_histories[repo] = enriched
+
+          summary = summarize_benchmark(
+              histories,
+              rerun_histories=rerun_histories,
+              repositories_requested=len(repos),
+              skipped=tuple(sorted(skipped)),
+          )
+          unknown = summary.unknown_intelligence
+
+          mechanism_statuses = Counter(item.mechanism_status for item in unknown.patterns)
+          mechanism_reasons = Counter()
+          for item in unknown.patterns:
+              mechanism_reasons.update(item.mechanism_reasons)
+
+          print("=== TRANSIENT MECHANISM BENCHMARK ===")
+          print(f"repositories_analyzed={summary.repositories_analyzed}")
+          print(f"repositories_skipped={summary.repositories_skipped}")
+          print(f"rerun_failed_jobs={summary.rerun_failed_jobs}")
+          print(f"runtime_safe_candidates={summary.rerun_candidates}")
+          print(f"unknown_failures={unknown.unknown_failures}")
+          print(f"unknown_patterns={len(unknown.patterns)}")
+          print(f"validated_unknown_recoveries={unknown.recoveries}")
+          print(f"promotion_candidates={len(unknown.promotion_candidates)}")
+          print(f"near_promotion_candidates={len(unknown.near_promotion_candidates)}")
+
+          for status, count in sorted(mechanism_statuses.items()):
+              print(f"mechanism_status={status} patterns={count}")
+          for reason, count in sorted(mechanism_reasons.items()):
+              print(f"mechanism_reason={reason} patterns={count}")
+          for blocker, count in unknown.promotion_blocker_counts:
+              print(f"promotion_blocker={blocker} patterns={count}")
+
+          for item in unknown.near_promotion_candidates[:20]:
+              print(
+                  f"near_pattern={item.pattern_id} blocker={item.promotion_blocker} "
+                  f"distance={item.promotion_distance} occurrences={item.occurrences} "
+                  f"repositories={item.repositories} gt_reruns={item.rerun_observations} "
+                  f"recoveries={item.recoveries} recovery_rate={item.recovery_rate:.4f} "
+                  f"mechanism_status={item.mechanism_status} "
+                  f"mechanism_reasons={item.mechanism_reasons!r} "
+                  f"mechanism_causes={item.mechanism_causes!r} "
+                  f"signature={item.signature!r}"
+              )
+
+          for item in unknown.patterns[:40]:
+              if "TRANSIENT_MECHANISM_EVIDENCE" in item.promotion_blockers:
+                  print(
+                      f"mechanism_blocked_pattern={item.pattern_id} distance={item.promotion_distance} "
+                      f"occurrences={item.occurrences} gt_reruns={item.rerun_observations} "
+                      f"recoveries={item.recoveries} mechanism_status={item.mechanism_status} "
+                      f"mechanism_reasons={item.mechanism_reasons!r} "
+                      f"mechanism_causes={item.mechanism_causes!r} "
+                      f"signature={item.signature!r}"
+                  )
+          PY
