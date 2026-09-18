@@ -376,7 +376,7 @@ def test_create_pr_step_is_side_effect():
 
 def test_git_push_step_is_side_effect():
     risk, evidence = detect_side_effect_risk(
-        fake_job("release helper", [{"name": "git push origin HEAD"}])
+        fake_job("helper", [{"name": "git push origin HEAD"}])
     )
     assert risk is True
     assert evidence == ("git push origin HEAD",)
