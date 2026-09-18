@@ -465,17 +465,6 @@ def rerun_decision(assessments: Iterable[JobAssessment], run_attempt: int, max_a
         return False, f"Run attempt {run_attempt} reached max_attempts={max_attempts}."
     if any(item.side_effect_risk for item in items):
         return False, "At least one failed job contains a side-effect signal; blind rerun is blocked."
-    unproven = [
-        item for item in items
-        if item.category in TRANSIENT_CATEGORIES
-        and item.confidence == "high"
-        and item.provenance_status != PROVENANCE_CONFIRMED
-    ]
-    if unproven:
-        names = ", ".join(
-            f"{item.name}={item.provenance_status}" for item in unproven
-        )
-        return False, f"Execution provenance was not confirmed for: {names}."
     unsafe = [
         item for item in items
         if item.category not in TRANSIENT_CATEGORIES or item.confidence != "high"
@@ -483,6 +472,15 @@ def rerun_decision(assessments: Iterable[JobAssessment], run_attempt: int, max_a
     if unsafe:
         names = ", ".join(f"{item.name}={item.category}/{item.confidence}" for item in unsafe)
         return False, f"Not every failed job is a high-confidence transient failure: {names}."
+    unproven = [
+        item for item in items
+        if item.provenance_status != PROVENANCE_CONFIRMED
+    ]
+    if unproven:
+        names = ", ".join(
+            f"{item.name}={item.provenance_status}" for item in unproven
+        )
+        return False, f"Execution provenance was not confirmed for: {names}."
     return True, "All failed jobs are high-confidence transient failures with confirmed execution provenance and no side-effect signal was found."
 
 
