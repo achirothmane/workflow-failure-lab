@@ -1,1 +1,1 @@
-run-low-confidence-transient-investigation
+run-fast-low-confidence-transient-investigation
