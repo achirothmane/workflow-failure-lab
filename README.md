@@ -302,19 +302,26 @@ It reports:
 
 Mechanism-family replication is deliberately separate from exact-pattern promotion. Finding the same `SERVER_5XX` mechanism under different commands or repositories strengthens research evidence, but it does not automatically create or authorize a runtime classifier rule.
 
+The current pinned corpus demonstrates this distinction: `SERVER_5XX` is independently replicated across Serde and Traefik, while each exact normalized UNKNOWN pattern still has only one pinned occurrence.
+
 ### Pinned Research Corpus
 
 Moving recent-run windows are useful for discovery but unstable for regression testing. High-value real cases are therefore pinned as immutable research fixtures with public repository/run/job identifiers and expected safety semantics.
 
-The first pinned positive candidate is `serde-rs/serde` run `34427119351`, job `Outdated`, attempt 1. The `dtolnay/install@cargo-outdated` step failed while verifying artifact attestation because GitHub's API returned `HTTP 500: Server Error`; attempt 2 re-executed the same step successfully. The fixture must remain:
+The pinned corpus now contains two independent `SERVER_5XX` cases:
+
+- `serde-rs/serde` run `34427119351`, job `Outdated`: artifact-attestation verification failed on GitHub API `HTTP 500: Server Error`; the same failed step succeeded on attempt 2.
+- `traefik/traefik` run `34857150924`, job `lint`: `golangci-lint-action` failed while downloading its binary after repeated `Unexpected HTTP response: 504`; the same `golangci-lint` step succeeded on attempt 2.
+
+Both fixtures must remain:
 
 - runtime classification: `UNKNOWN`;
 - side-effect risk: false;
 - outcome: `VALIDATED_RECOVERY`;
 - transient mechanism: `SERVER_5XX`;
-- mechanism causality: confirmed inside the failed attestation-verification step;
-- independent replication: only 1 qualifying run so far;
-- promotion: blocked until independent-run, occurrence, and ground-truth sample thresholds are met.
+- mechanism causality: confirmed inside the failed step.
+
+Together they establish **mechanism-family replication across 2 independent workflow runs and 2 repositories, with 2/2 validated recoveries**. They do **not** automatically promote either exact UNKNOWN pattern: exact-pattern occurrence, ground-truth, and promotion thresholds remain separate.
 
 Pinning a case is evidence preservation, not classifier promotion.
 
