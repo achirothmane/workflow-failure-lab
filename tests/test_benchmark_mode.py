@@ -212,11 +212,11 @@ class _FakeAPI:
                                 "started_at": f"2026-01-01T01:{run_id % 60:02d}:00Z",
                                 "completed_at": f"2026-01-01T01:{run_id % 60:02d}:30Z",
                                 "steps": [{
-                            "name": "Run tests",
-                            "conclusion": "failure",
-                            "started_at": "2026-01-01T00:00:00Z",
-                            "completed_at": "2026-01-01T00:01:00Z",
-                        }],
+                                    "name": "Run tests",
+                                    "conclusion": "success",
+                                    "started_at": f"2026-01-01T01:{run_id % 60:02d}:00Z",
+                                    "completed_at": f"2026-01-01T01:{run_id % 60:02d}:30Z",
+                                }],
                             }
                         ]
                     }
