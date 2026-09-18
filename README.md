@@ -284,6 +284,24 @@ Multiple jobs, rerun attempts, or duplicated samples from the same run ID never 
 
 This gate is research-only and does not change runtime classification or rerun authority.
 
+### Targeted Replication Search
+
+Once a real causal mechanism is pinned, Benchmark Mode can search specifically for independent evidence of that mechanism family across the rerun-enriched corpus. Set `benchmark-target-mechanism` to a reason such as `SERVER_5XX`.
+
+The search includes only UNKNOWN failures whose mechanism was causally bound inside the failed-step window and whose rerun outcome is ground-truth-evaluable. Side-effect-contaminated matches remain visible but are excluded from usable replication counts.
+
+It reports:
+
+- distinct workflow run IDs with usable causal evidence;
+- distinct repositories;
+- validated recoveries versus failed-again outcomes;
+- mechanism-family recovery rate;
+- whether independent-run replication is confirmed;
+- whether replication crosses repository boundaries;
+- pattern IDs and signatures contributing to the mechanism family.
+
+Mechanism-family replication is deliberately separate from exact-pattern promotion. Finding the same `SERVER_5XX` mechanism under different commands or repositories strengthens research evidence, but it does not automatically create or authorize a runtime classifier rule.
+
 ### Pinned Research Corpus
 
 Moving recent-run windows are useful for discovery but unstable for regression testing. High-value real cases are therefore pinned as immutable research fixtures with public repository/run/job identifiers and expected safety semantics.
