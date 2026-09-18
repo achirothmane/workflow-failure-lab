@@ -41,6 +41,10 @@ PROVENANCE_UNAVAILABLE = "UNAVAILABLE"
 PROVENANCE_MISMATCH = "MISMATCH"
 PROVENANCE_NOT_APPLICABLE = "NOT_APPLICABLE"
 
+FAILURE_STEP_CONFIRMED = "FAILURE_STEP_CONFIRMED"
+FAILURE_STEP_AMBIGUOUS = "FAILURE_STEP_AMBIGUOUS"
+FAILURE_STEP_UNAVAILABLE = "FAILURE_STEP_UNAVAILABLE"
+
 _RUNNER_TIMESTAMP_CAPTURE_RE = re.compile(
     r"^(?P<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)\s+"
 )
@@ -196,6 +200,13 @@ class ExecutionProvenance:
 
 
 @dataclass(frozen=True)
+class FailureStepProvenance:
+    status: str
+    step_name: str = ""
+    evidence: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class JobAssessment:
     job_id: int
     name: str
@@ -206,6 +217,9 @@ class JobAssessment:
     provenance_step: str
     provenance_command: str
     provenance_evidence: tuple[str, ...]
+    failure_step_status: str
+    failure_step: str
+    failure_step_evidence: tuple[str, ...]
     side_effect_risk: bool
     side_effect_evidence: tuple[str, ...]
     duration_minutes: float
@@ -358,6 +372,47 @@ def _step_command_in_window(log_text: str, start: datetime, end: datetime) -> st
     return ""
 
 
+def assess_failure_step_provenance(job: dict) -> FailureStepProvenance:
+    """Identify the failed GitHub step for outcome validation only.
+
+    This is intentionally independent from transient classification and does not
+    grant rerun authority.
+    """
+    failed_steps = [
+        step for step in (job.get("steps") or [])
+        if str(step.get("conclusion") or "").lower() in FAILURE_CONCLUSIONS
+    ]
+    if not failed_steps:
+        return FailureStepProvenance(
+            FAILURE_STEP_UNAVAILABLE,
+            evidence=("No failed-step metadata was available.",),
+        )
+
+    named_steps = [
+        str(step.get("name") or "").strip()
+        for step in failed_steps
+        if str(step.get("name") or "").strip()
+    ]
+    if len(failed_steps) == 1 and len(named_steps) == 1:
+        step_name = named_steps[0]
+        return FailureStepProvenance(
+            FAILURE_STEP_CONFIRMED,
+            step_name=step_name,
+            evidence=(f"failed step: {step_name}",),
+        )
+
+    labels = tuple(
+        str(step.get("name") or "unnamed step").strip() or "unnamed step"
+        for step in failed_steps[:5]
+    )
+    return FailureStepProvenance(
+        FAILURE_STEP_AMBIGUOUS,
+        evidence=(
+            f"Multiple failed steps were present: {', '.join(labels)}",
+        ),
+    )
+
+
 def assess_execution_provenance(
     job: dict,
     log_text: str,
@@ -445,6 +500,7 @@ def assess_execution_provenance(
 def assess_job(job: dict, log_text: str) -> JobAssessment:
     classification = classify_log(log_text)
     provenance = assess_execution_provenance(job, log_text, classification)
+    failure_step = assess_failure_step_provenance(job)
     side_effect_risk, side_effect_evidence = detect_side_effect_risk(job)
     return JobAssessment(
         job_id=int(job.get("id") or 0),
@@ -456,6 +512,9 @@ def assess_job(job: dict, log_text: str) -> JobAssessment:
         provenance_step=provenance.step_name,
         provenance_command=provenance.command,
         provenance_evidence=provenance.evidence,
+        failure_step_status=failure_step.status,
+        failure_step=failure_step.step_name,
+        failure_step_evidence=failure_step.evidence,
         side_effect_risk=side_effect_risk,
         side_effect_evidence=side_effect_evidence,
         duration_minutes=job_duration_minutes(job),
