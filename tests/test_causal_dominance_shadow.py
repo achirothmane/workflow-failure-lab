@@ -1,5 +1,6 @@
 from history_ci_waste import HistoricalFailure
 from mechanism_causality_gate import MECHANISM_CAUSAL_CONFIRMED
+from pinned_research_corpus import SWC_DPRINT_HTTP_504
 from recovery_ground_truth import RECOVERY_NOT_RECOVERED, RECOVERY_VALIDATED
 from root_cause_precedence import (
     DOMINANCE_CANDIDATE,
@@ -15,38 +16,17 @@ from causal_dominance_shadow import (
 
 
 class FakeAPI:
-    def __init__(self, logs_by_job_id):
+    def __init__(self, jobs_by_run, logs_by_job_id):
+        self.jobs_by_run = jobs_by_run
         self.logs_by_job_id = logs_by_job_id
 
     def request(self, method, path, payload=None, accept="application/vnd.github+json"):
         assert method == "GET"
         run_id = int(path.split("/actions/runs/")[1].split("/")[0])
-        if run_id == 101:
-            return {"jobs": [failed_job(1001, "unit", "Run tests")]}
-        if run_id == 102:
-            return {"jobs": [failed_job(1002, "build", "Run build")]}
-        if run_id == 103:
-            return {"jobs": [failed_job(1003, "unit-again", "Run tests")]}
-        return {"jobs": []}
+        return {"jobs": self.jobs_by_run.get(run_id, [])}
 
     def get_job_logs(self, repo, job_id):
         return self.logs_by_job_id[job_id]
-
-
-def failed_job(job_id, name, step_name):
-    return {
-        "id": job_id,
-        "name": name,
-        "conclusion": "failure",
-        "steps": [
-            {
-                "name": step_name,
-                "conclusion": "failure",
-                "started_at": "2026-09-18T10:00:00Z",
-                "completed_at": "2026-09-18T10:00:10Z",
-            }
-        ],
-    }
 
 
 def historical(run_id, job_name, recovery_status):
@@ -65,12 +45,20 @@ def historical(run_id, job_name, recovery_status):
     )
 
 
-def candidate_log():
-    return (
-        "2026-09-18T10:00:02.0000000Z Error: HTTP 504 Gateway Timeout\n"
-        "2026-09-18T10:00:04.0000000Z error: test failed, to rerun pass "
-        "`-p app --test unit`\n"
-    )
+def deterministic_job():
+    return {
+        "id": 2002,
+        "name": "build",
+        "conclusion": "failure",
+        "steps": [
+            {
+                "name": "Run build",
+                "conclusion": "failure",
+                "started_at": "2026-09-18T10:00:00Z",
+                "completed_at": "2026-09-18T10:00:10Z",
+            }
+        ],
+    }
 
 
 def deterministic_log():
@@ -82,21 +70,43 @@ def deterministic_log():
     )
 
 
+def swc_api():
+    case = SWC_DPRINT_HTTP_504
+    return FakeAPI(
+        {
+            case.run_id: [case.failed_job],
+        },
+        {
+            case.failed_job_id: case.failure_log,
+        },
+    )
+
+
 def test_shadow_summary_separates_candidate_and_deterministic_blocker():
+    case = SWC_DPRINT_HTTP_504
     histories = {
+        case.repository: (
+            [
+                historical(case.run_id, case.job_name, RECOVERY_VALIDATED),
+            ],
+            1,
+        ),
         "example/repo": (
             [
-                historical(101, "unit", RECOVERY_VALIDATED),
                 historical(102, "build", RECOVERY_VALIDATED),
             ],
-            2,
-        )
+            1,
+        ),
     }
     api = FakeAPI(
         {
-            1001: candidate_log(),
-            1002: deterministic_log(),
-        }
+            case.run_id: [case.failed_job],
+            102: [deterministic_job()],
+        },
+        {
+            case.failed_job_id: case.failure_log,
+            2002: deterministic_log(),
+        },
     )
 
     summary = collect_causal_dominance_shadow(api, histories)
@@ -116,15 +126,15 @@ def test_shadow_summary_separates_candidate_and_deterministic_blocker():
 
 
 def test_shadow_counts_failed_again_as_counterexample():
+    case = SWC_DPRINT_HTTP_504
     histories = {
-        "example/repo": (
-            [historical(103, "unit-again", RECOVERY_NOT_RECOVERED)],
+        case.repository: (
+            [historical(case.run_id, case.job_name, RECOVERY_NOT_RECOVERED)],
             1,
         )
     }
-    api = FakeAPI({1003: candidate_log()})
 
-    summary = collect_causal_dominance_shadow(api, histories)
+    summary = collect_causal_dominance_shadow(swc_api(), histories)
 
     assert len(summary.candidates) == 1
     assert len(summary.evaluable_candidates) == 1
@@ -134,16 +144,16 @@ def test_shadow_counts_failed_again_as_counterexample():
 
 
 def test_shadow_report_is_explicitly_research_only():
+    case = SWC_DPRINT_HTTP_504
     histories = {
-        "example/repo": (
-            [historical(101, "unit", RECOVERY_VALIDATED)],
+        case.repository: (
+            [historical(case.run_id, case.job_name, RECOVERY_VALIDATED)],
             1,
         )
     }
-    api = FakeAPI({1001: candidate_log()})
 
     report = render_causal_dominance_shadow(
-        collect_causal_dominance_shadow(api, histories)
+        collect_causal_dominance_shadow(swc_api(), histories)
     )
 
     assert "Research-only counterfactual" in report
