@@ -32,6 +32,37 @@ _RUNNER_TIMESTAMP_RE = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\s+"
 )
 
+CAUSAL = "CAUSAL"
+AMBIGUOUS = "AMBIGUOUS"
+NON_CAUSAL = "NON_CAUSAL"
+
+_NON_CAUSAL_LOG_PATTERNS = tuple(
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in [
+        r"^##\[(?:group|endgroup|debug)\]",
+        r":(?:ref|class|func|meth|doc|option):\`",
+        r"^(?:print|printf|echo|assert|raise)\b.*(?:timeout|timed out|connection reset|could not resolve host)",
+        r"^[A-Za-z0-9_.-]+:\s*(?:error|warn|warning|ignore)$",
+    ]
+)
+
+_CAUSAL_OPERATIONAL_PATTERNS = tuple(
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in [
+        r"^##\[error\]",
+        r"^::error::",
+        r"^(?:error|fatal|exception|panic)\b\s*[:!]",
+        r"^npm (?:err!|error)\b",
+        r"^curl:\s*\(\d+\)",
+        r"^read tcp\b",
+        r"^dial tcp\b",
+        r"^traceback \(most recent call last\):",
+        r"^process completed with exit code\b",
+        r"\b_ssl\.c:\d+:\s*the handshake operation timed out\b",
+        r"^http\s+(?:429|502|503|504)\b",
+    ]
+)
+
 _CATEGORY_RULES: dict[str, tuple[tuple[int, re.Pattern[str]], ...]] = {
     "RUNNER_INFRA": tuple(
         (weight, re.compile(pattern, re.IGNORECASE))
@@ -169,6 +200,21 @@ def _useful_line(line: str) -> str:
     return line
 
 
+def causal_evidence_role(line: str) -> str:
+    """Classify whether a cleaned log line is causal failure evidence or log noise."""
+    cleaned = _useful_line(line)
+    if not cleaned:
+        return NON_CAUSAL
+
+    if cleaned.startswith("#") and not cleaned.startswith("##[error]"):
+        return NON_CAUSAL
+    if any(pattern.search(cleaned) for pattern in _NON_CAUSAL_LOG_PATTERNS):
+        return NON_CAUSAL
+    if any(pattern.search(cleaned) for pattern in _CAUSAL_OPERATIONAL_PATTERNS):
+        return CAUSAL
+    return AMBIGUOUS
+
+
 def classify_log(log_text: str) -> Classification:
     scores: dict[str, int] = {name: 0 for name in _CATEGORY_RULES}
     evidence: dict[str, list[str]] = {name: [] for name in _CATEGORY_RULES}
@@ -179,16 +225,28 @@ def classify_log(log_text: str) -> Classification:
     seen_lines: set[str] = set()
     for raw_line in log_text.splitlines():
         line = _useful_line(raw_line)
-        if not line or line in seen_lines:
+        role = causal_evidence_role(line)
+        if not line or role == NON_CAUSAL or line in seen_lines:
             continue
         seen_lines.add(line)
+
         for category, rules in _CATEGORY_RULES.items():
             for weight, pattern in rules:
                 if pattern.search(line):
-                    scores[category] += weight
+                    effective_weight = weight
+                    # Weak transient phrases are easy to encounter in prose. If the
+                    # line has no operational anchor, count them only as a hint.
+                    if (
+                        category in TRANSIENT_CATEGORIES
+                        and role == AMBIGUOUS
+                        and weight <= 2
+                    ):
+                        effective_weight = 1
+                    scores[category] += effective_weight
                     if len(evidence[category]) < 3 and line not in evidence[category]:
                         evidence[category].append(line)
                     break
+
         for category, patterns in _HIGH_SPECIFICITY_TRANSIENT_RULES.items():
             if any(pattern.search(line) for pattern in patterns):
                 if len(strong_transient_evidence[category]) < 3 and line not in strong_transient_evidence[category]:
