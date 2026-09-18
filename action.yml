@@ -58,6 +58,10 @@ inputs:
     description: 'Completed-run history window searched for run_attempt > 1 when building the rerun-enriched sample. Capped at 500.'
     required: false
     default: '200'
+  benchmark-target-mechanism:
+    description: 'Optional transient mechanism reason such as SERVER_5XX for read-only targeted replication search across the rerun-enriched benchmark sample.'
+    required: false
+    default: ''
 
 outputs:
   safe-to-rerun:
@@ -303,6 +307,30 @@ outputs:
   benchmark-unknown-promotion-blocker-independent-replication:
     description: 'UNKNOWN patterns blocked because causally supported ground-truth evidence has not replicated across at least two distinct workflow run IDs.'
     value: ${{ steps.benchmark.outputs.benchmark-unknown-promotion-blocker-independent-replication }}
+  benchmark-target-mechanism:
+    description: 'Normalized mechanism reason used by Targeted Replication Search.'
+    value: ${{ steps.benchmark.outputs.benchmark-target-mechanism }}
+  benchmark-target-independent-runs:
+    description: 'Distinct workflow run IDs with usable causal ground-truth matches for the targeted mechanism.'
+    value: ${{ steps.benchmark.outputs.benchmark-target-independent-runs }}
+  benchmark-target-independent-repositories:
+    description: 'Distinct repositories with usable causal ground-truth matches for the targeted mechanism.'
+    value: ${{ steps.benchmark.outputs.benchmark-target-independent-repositories }}
+  benchmark-target-validated-recoveries:
+    description: 'Usable targeted mechanism matches with VALIDATED_RECOVERY.'
+    value: ${{ steps.benchmark.outputs.benchmark-target-validated-recoveries }}
+  benchmark-target-failed-again:
+    description: 'Usable targeted mechanism matches that failed again on rerun.'
+    value: ${{ steps.benchmark.outputs.benchmark-target-failed-again }}
+  benchmark-target-recovery-rate:
+    description: 'Validated targeted recoveries divided by evaluated usable targeted matches.'
+    value: ${{ steps.benchmark.outputs.benchmark-target-recovery-rate }}
+  benchmark-target-replicated:
+    description: 'true when the targeted mechanism has usable causal ground-truth evidence in at least two distinct workflow run IDs.'
+    value: ${{ steps.benchmark.outputs.benchmark-target-replicated }}
+  benchmark-target-cross-repository-replicated:
+    description: 'true when the targeted mechanism has usable causal ground-truth evidence across at least two repositories.'
+    value: ${{ steps.benchmark.outputs.benchmark-target-cross-repository-replicated }}
   benchmark-unknown-promotion-blocker-side-effect-contamination:
     description: 'UNKNOWN patterns blocked because at least one occurrence crossed a workflow side-effect boundary.'
     value: ${{ steps.benchmark.outputs.benchmark-unknown-promotion-blocker-side-effect-contamination }}
@@ -399,6 +427,7 @@ runs:
         INPUT_BENCHMARK_RUNS: ${{ inputs.benchmark-runs }}
         INPUT_BENCHMARK_RERUN_RUNS: ${{ inputs.benchmark-rerun-runs }}
         INPUT_BENCHMARK_RERUN_SEARCH_RUNS: ${{ inputs.benchmark-rerun-search-runs }}
+        INPUT_BENCHMARK_TARGET_MECHANISM: ${{ inputs.benchmark-target-mechanism }}
       run: python3 "$GITHUB_ACTION_PATH/benchmark_mode.py"
 
 branding:
