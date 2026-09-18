@@ -777,13 +777,6 @@ def render_benchmark_report(summary: BenchmarkSummary) -> str:
         )
         for blocker, count in unknown.promotion_blocker_counts:
             lines.append(f"| `{blocker}` | {count} |")
-        lines.extend(
-            [
-                "",
-                "| Pattern | Occurrences | Repositories | GT reruns | Recoveries | Recovery rate | Primary blocker | All blockers | Gap | Signature |",
-                "|---|---:|---:|---:|---:|---:|---|---|---|---|",
-            ]
-        )
         if unknown.causes:
             lines.extend(
                 [
@@ -807,6 +800,16 @@ def render_benchmark_report(summary: BenchmarkSummary) -> str:
                     "",
                 ]
             )
+
+        lines.extend(
+            [
+                "",
+                "#### UNKNOWN Pattern Promotion Readiness",
+                "",
+                "| Pattern | Occurrences | Repositories | GT reruns | Recoveries | Recovery rate | Primary blocker | All blockers | Gap | Signature |",
+                "|---|---:|---:|---:|---:|---:|---|---|---|---|",
+            ]
+        )
 
         for item in unknown.patterns[:20]:
             safe_signature = item.signature.replace("|", "/")
