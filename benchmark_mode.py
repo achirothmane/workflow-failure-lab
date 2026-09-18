@@ -6,11 +6,14 @@ from collections import Counter
 from dataclasses import dataclass
 
 from ci_retry_gate import (
+    AMBIGUOUS,
+    CAUSAL,
     FAILURE_CONCLUSIONS,
     PROVENANCE_CONFIRMED,
     TRANSIENT_CATEGORIES,
     GitHubAPI,
     assess_execution_provenance,
+    causal_evidence_role,
     classify_log,
     detect_side_effect_risk,
     job_duration_minutes,
@@ -27,6 +30,20 @@ from recovery_ground_truth import (
     is_ground_truth_evaluable,
     is_validated_recovery,
     later_rerun_result,
+)
+from coverage_attribution import (
+    GATE_CAUSAL_EVIDENCE,
+    GATE_CLASSIFICATION_UNKNOWN,
+    GATE_CODE_REGRESSION,
+    GATE_ELIGIBLE,
+    GATE_LOW_CONFIDENCE,
+    GATE_NON_TRANSIENT_CATEGORY,
+    GATE_PROVENANCE,
+    GATE_SIDE_EFFECT,
+    CoverageGateSummary,
+    coverage_gate_count,
+    evidence_gap_count,
+    summarize_coverage_attribution,
 )
 from policy_shadow import simulate_shadow
 from unknown_failure_intelligence import (
@@ -141,6 +158,7 @@ class BenchmarkSummary:
     repositories: tuple[RepositoryBenchmark, ...]
     categories: tuple[CategoryBenchmark, ...]
     rejections: tuple[RejectionBenchmark, ...]
+    coverage_attribution: tuple[CoverageGateSummary, ...]
     unknown_intelligence: UnknownIntelligenceSummary
     skipped: tuple[tuple[str, str], ...]
 
@@ -274,6 +292,14 @@ def _collect_failures_for_runs(
                 log_text = ""
 
             classification = classify_log(log_text)
+            causal_evidence_count = sum(
+                causal_evidence_role(line) == CAUSAL
+                for line in classification.evidence
+            )
+            ambiguous_evidence_count = sum(
+                causal_evidence_role(line) == AMBIGUOUS
+                for line in classification.evidence
+            )
             provenance = assess_execution_provenance(job, log_text, classification)
             if classification.category == "UNKNOWN":
                 signature = unknown_signature(log_text)
@@ -325,6 +351,8 @@ def _collect_failures_for_runs(
                     provenance_status=provenance.status,
                     recovery_status=recovery.status,
                     recovery_evidence=recovery.evidence,
+                    causal_evidence_count=causal_evidence_count,
+                    ambiguous_evidence_count=ambiguous_evidence_count,
                 )
             )
 
@@ -580,6 +608,12 @@ def summarize_benchmark(
     total_rerun_blocked_failed_again = sum(item.failed_again for item in rejections)
     total_rerun_blocked_unknown = sum(item.unknown_outcomes for item in rejections)
 
+    all_rerun_failures = [
+        item
+        for failures, _runs in rerun_histories.values()
+        for item in failures
+    ]
+    coverage_attribution = summarize_coverage_attribution(all_rerun_failures)
     unknown_intelligence = summarize_unknown_patterns(histories, rerun_histories)
 
     requested = repositories_requested
@@ -611,6 +645,7 @@ def summarize_benchmark(
         repositories=tuple(repo_rows),
         categories=tuple(categories),
         rejections=tuple(rejections),
+        coverage_attribution=coverage_attribution,
         unknown_intelligence=unknown_intelligence,
         skipped=skipped,
     )
@@ -647,6 +682,31 @@ def render_benchmark_report(summary: BenchmarkSummary) -> str:
         f"Candidate coverage inside rerun-enriched failures: **{summary.rerun_candidate_coverage:.1%}**",
         "",
     ]
+
+    if summary.coverage_attribution:
+        lines.extend(
+            [
+                "### Coverage Attribution — first limiting layer",
+                "",
+                f"Failures stopped at evidence-gap layers: **{evidence_gap_count(summary.coverage_attribution)}**",
+                "",
+                "| First limiting layer | Type | Failures | Raw later successes | Validated recoveries | Failed reruns | Unknown / unverified |",
+                "|---|---|---:|---:|---:|---:|---:|",
+            ]
+        )
+        for item in summary.coverage_attribution:
+            lines.append(
+                f"| `{item.gate}` | `{item.kind}` | {item.failures} | "
+                f"{item.raw_later_successes} | {item.validated_recoveries} | "
+                f"{item.failed_reruns} | {item.unknown_or_unverified} |"
+            )
+        lines.extend(
+            [
+                "",
+                "> Coverage Attribution is diagnostic only. It records the first limiting layer in pipeline order; it does not bypass a later authority boundary or grant rerun permission.",
+                "",
+            ]
+        )
 
     if summary.rejections:
         lines.extend(
@@ -881,6 +941,42 @@ def main() -> int:
     _write_output(
         "benchmark-rerun-blocked-unknown",
         str(summary.rerun_blocked_unknown),
+    )
+    _write_output(
+        "benchmark-coverage-evidence-gaps",
+        str(evidence_gap_count(summary.coverage_attribution)),
+    )
+    _write_output(
+        "benchmark-coverage-classification-unknown",
+        str(coverage_gate_count(summary.coverage_attribution, GATE_CLASSIFICATION_UNKNOWN)),
+    )
+    _write_output(
+        "benchmark-coverage-non-transient",
+        str(coverage_gate_count(summary.coverage_attribution, GATE_NON_TRANSIENT_CATEGORY)),
+    )
+    _write_output(
+        "benchmark-coverage-code-regression",
+        str(coverage_gate_count(summary.coverage_attribution, GATE_CODE_REGRESSION)),
+    )
+    _write_output(
+        "benchmark-coverage-causal-evidence",
+        str(coverage_gate_count(summary.coverage_attribution, GATE_CAUSAL_EVIDENCE)),
+    )
+    _write_output(
+        "benchmark-coverage-low-confidence",
+        str(coverage_gate_count(summary.coverage_attribution, GATE_LOW_CONFIDENCE)),
+    )
+    _write_output(
+        "benchmark-coverage-unconfirmed-provenance",
+        str(coverage_gate_count(summary.coverage_attribution, GATE_PROVENANCE)),
+    )
+    _write_output(
+        "benchmark-coverage-side-effect-boundary",
+        str(coverage_gate_count(summary.coverage_attribution, GATE_SIDE_EFFECT)),
+    )
+    _write_output(
+        "benchmark-coverage-eligible",
+        str(coverage_gate_count(summary.coverage_attribution, GATE_ELIGIBLE)),
     )
     _write_output(
         "benchmark-rejection-side-effect",

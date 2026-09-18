@@ -7,11 +7,14 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 
 from ci_retry_gate import (
+    AMBIGUOUS,
+    CAUSAL,
     FAILURE_CONCLUSIONS,
     PROVENANCE_CONFIRMED,
     TRANSIENT_CATEGORIES,
     GitHubAPI,
     assess_execution_provenance,
+    causal_evidence_role,
     classify_log,
     detect_side_effect_risk,
     job_duration_minutes,
@@ -59,6 +62,8 @@ class HistoricalFailure:
     provenance_status: str = PROVENANCE_CONFIRMED
     recovery_status: str = RECOVERY_NOT_OBSERVED
     recovery_evidence: tuple[str, ...] = ()
+    causal_evidence_count: int = 0
+    ambiguous_evidence_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -498,6 +503,14 @@ def collect_history(
                     log_text = ""
 
                 classification = classify_log(log_text)
+                causal_evidence_count = sum(
+                    causal_evidence_role(line) == CAUSAL
+                    for line in classification.evidence
+                )
+                ambiguous_evidence_count = sum(
+                    causal_evidence_role(line) == AMBIGUOUS
+                    for line in classification.evidence
+                )
                 provenance = assess_execution_provenance(job, log_text, classification)
                 fingerprint, signature = failure_fingerprint(
                     job_name,
@@ -536,6 +549,8 @@ def collect_history(
                         provenance_status=provenance.status,
                         recovery_status=recovery.status,
                         recovery_evidence=recovery.evidence,
+                        causal_evidence_count=causal_evidence_count,
+                        ambiguous_evidence_count=ambiguous_evidence_count,
                     )
                 )
 
