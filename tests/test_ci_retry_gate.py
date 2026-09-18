@@ -1,7 +1,7 @@
 import http.client
 
 import ci_retry_gate
-from ci_retry_gate import TRANSIENT_CATEGORIES, GitHubAPI, assess_job, classify_log, detect_side_effect_risk, rerun_decision
+from ci_retry_gate import AMBIGUOUS, CAUSAL, NON_CAUSAL, TRANSIENT_CATEGORIES, GitHubAPI, assess_job, causal_evidence_role, classify_log, detect_side_effect_risk, rerun_decision
 
 
 def fake_job(name="tests", steps=None, start="2026-09-17T01:00:00Z", end="2026-09-17T01:04:30Z"):
@@ -228,3 +228,54 @@ def test_requests_httpbin_handshake_timeout_is_not_auto_rerun_transient():
         "pytest-httpbin server hit an exception serving request: "
         "_ssl.c:1015: The handshake operation timed out",
     )
+
+
+def test_causal_evidence_rejects_documentation_role():
+    line = "data before giving up, as a float, or a :ref:\`(connect timeout, read timeout) tuple"
+    assert causal_evidence_role(line) == NON_CAUSAL
+
+
+def test_causal_evidence_rejects_shell_comment():
+    assert causal_evidence_role("# Error: connection reset by peer") == NON_CAUSAL
+
+
+def test_causal_evidence_rejects_echoed_failure_example():
+    assert causal_evidence_role('echo "Error: connection reset by peer"') == NON_CAUSAL
+
+
+def test_causal_evidence_accepts_operational_error():
+    assert causal_evidence_role("Error: connection reset by peer") == CAUSAL
+
+
+def test_causal_evidence_accepts_curl_transport_error():
+    assert causal_evidence_role("curl: (28) Operation timed out after 30000 milliseconds") == CAUSAL
+
+
+def test_causal_evidence_keeps_unknown_text_ambiguous():
+    assert causal_evidence_role("connection timed out") == AMBIGUOUS
+
+
+def test_documented_connection_reset_does_not_become_transient():
+    result = classify_log(
+        "2026-09-18T01:00:00.0000000Z # Error: connection reset by peer\n"
+        "2026-09-18T01:00:00.1000000Z echo \"Error: connection reset by peer\"\n"
+        "2026-09-18T01:00:00.2000000Z Process completed with exit code 1\n"
+    )
+    assert result.category == "UNKNOWN"
+    assert result.confidence == "low"
+
+
+def test_real_connection_reset_survives_causal_filter():
+    result = classify_log(
+        "2026-09-18T01:00:00.0000000Z Error: connection reset by peer\n"
+        "2026-09-18T01:00:00.1000000Z Process completed with exit code 1\n"
+    )
+    assert result.category == "DEPENDENCY_NETWORK"
+    assert result.confidence == "high"
+    assert result.evidence == ("Error: connection reset by peer",)
+
+
+def test_ambiguous_timeout_hint_is_discounted():
+    result = classify_log("connection timed out")
+    assert result.category == "UNKNOWN"
+    assert result.score == 1
