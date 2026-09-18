@@ -327,6 +327,7 @@ def test_unknown_cause_summary_aggregates_by_family_and_repository():
     summary = summarize_unknown_patterns(histories, reruns)
     by_cause = {item.cause: item for item in summary.causes}
 
+    assert sum(item.occurrences for item in summary.causes) == summary.unknown_failures
     assert by_cause["AUTH_PERMISSION"].occurrences == 3
     assert by_cause["AUTH_PERMISSION"].repositories == 2
     assert by_cause["AUTH_PERMISSION"].rerun_observations == 1
