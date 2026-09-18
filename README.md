@@ -256,6 +256,20 @@ Diagnostic cause families that usually indicate deterministic state — `AUTH_PE
 
 The gate is research-only: it neither changes runtime classification nor grants rerun authority.
 
+### Pinned Research Corpus
+
+Moving recent-run windows are useful for discovery but unstable for regression testing. High-value real cases are therefore pinned as immutable research fixtures with public repository/run/job identifiers and expected safety semantics.
+
+The first pinned positive candidate is `serde-rs/serde` run `34427119351`, job `Outdated`, attempt 1. The `dtolnay/install@cargo-outdated` step failed while verifying artifact attestation because GitHub's API returned `HTTP 500: Server Error`; attempt 2 re-executed the same step successfully. The fixture must remain:
+
+- runtime classification: `UNKNOWN`;
+- side-effect risk: false;
+- outcome: `VALIDATED_RECOVERY`;
+- transient mechanism: `SERVER_5XX`;
+- promotion: blocked until independent occurrence and ground-truth sample thresholds are met.
+
+Pinning a case is evidence preservation, not classifier promotion.
+
 `INVESTIGATE_TRANSIENT_PATTERN` is emitted only when the UNKNOWN signature is stable, semantically specific, has positive transient-mechanism evidence, appears at least 3 times, has at least 3 ground-truth-evaluable reruns, at least 80% validated recovery, and no side-effect occurrence is present. This status is **research evidence only**: it does not change the runtime classifier and never grants rerun authority.
 
 This creates a controlled path from `UNKNOWN` → repeated evidence → candidate classifier rule → separate testing, rather than weakening the production safety gate from a handful of recoveries.
