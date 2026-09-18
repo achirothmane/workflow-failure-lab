@@ -670,14 +670,14 @@ def render_report(repo: str, run_id: int, run_attempt: int, assessments: list[Jo
         "",
         f"Failed-job runtime observed: **{wasted:.2f} min**",
         "",
-        "| Job | Classification | Confidence | Provenance | Side-effect risk | Runtime |",
-        "|---|---|---|---|---|---:|",
+        "| Job | Classification | Confidence | Retry provenance | Outcome step | Side-effect risk | Runtime |",
+        "|---|---|---|---|---|---|---:|",
     ]
     for item in assessments:
         lines.append(
             f"| {item.name.replace('|', '/')} | `{item.category}` | {item.confidence} | "
-            f"`{item.provenance_status}` | {'YES' if item.side_effect_risk else 'no'} | "
-            f"{item.duration_minutes:.2f} min |"
+            f"`{item.provenance_status}` | `{item.failure_step_status}` | "
+            f"{'YES' if item.side_effect_risk else 'no'} | {item.duration_minutes:.2f} min |"
         )
     for item in assessments:
         lines.extend(["", f"### {item.name}"])
