@@ -40,8 +40,8 @@ def successful_rerun(step_name="Install dependencies", step_conclusion="success"
 def test_validated_recovery_requires_same_failed_step_to_succeed():
     result = assess_recovery_ground_truth(
         original_job=failed_job(),
-        provenance_status="CONFIRMED",
-        provenance_step="Install dependencies",
+        failure_step_status="FAILURE_STEP_CONFIRMED",
+        failure_step="Install dependencies",
         rerun_observed=True,
         recovered=True,
         rerun_job=successful_rerun(),
@@ -54,8 +54,8 @@ def test_validated_recovery_requires_same_failed_step_to_succeed():
 def test_success_without_confirmed_original_provenance_is_unverified():
     result = assess_recovery_ground_truth(
         original_job=failed_job(),
-        provenance_status="MISMATCH",
-        provenance_step="Install dependencies",
+        failure_step_status="FAILURE_STEP_AMBIGUOUS",
+        failure_step="",
         rerun_observed=True,
         recovered=True,
         rerun_job=successful_rerun(),
@@ -67,8 +67,8 @@ def test_success_without_confirmed_original_provenance_is_unverified():
 def test_success_without_reexecuting_original_failed_step_is_inconsistent():
     result = assess_recovery_ground_truth(
         original_job=failed_job(),
-        provenance_status="CONFIRMED",
-        provenance_step="Install dependencies",
+        failure_step_status="FAILURE_STEP_CONFIRMED",
+        failure_step="Install dependencies",
         rerun_observed=True,
         recovered=True,
         rerun_job=successful_rerun(step_name="Compile"),
@@ -80,8 +80,8 @@ def test_success_without_reexecuting_original_failed_step_is_inconsistent():
 def test_failed_real_rerun_is_ground_truth_not_recovered():
     result = assess_recovery_ground_truth(
         original_job=failed_job(),
-        provenance_status="CONFIRMED",
-        provenance_step="Install dependencies",
+        failure_step_status="FAILURE_STEP_CONFIRMED",
+        failure_step="Install dependencies",
         rerun_observed=True,
         recovered=False,
         rerun_job=None,
@@ -93,8 +93,8 @@ def test_failed_real_rerun_is_ground_truth_not_recovered():
 def test_no_real_rerun_stays_not_observed():
     result = assess_recovery_ground_truth(
         original_job=failed_job(),
-        provenance_status="CONFIRMED",
-        provenance_step="Install dependencies",
+        failure_step_status="FAILURE_STEP_CONFIRMED",
+        failure_step="Install dependencies",
         rerun_observed=False,
         recovered=False,
         rerun_job=None,
@@ -130,3 +130,17 @@ def test_later_rerun_result_ignores_copied_job_and_returns_real_success_job():
     assert recovered is True
     assert job is not None
     assert job["started_at"] == "2026-09-18T01:02:00Z"
+
+
+def test_unknown_category_can_have_validated_outcome_without_retry_authority():
+    result = assess_recovery_ground_truth(
+        original_job=failed_job(),
+        failure_step_status="FAILURE_STEP_CONFIRMED",
+        failure_step="Install dependencies",
+        rerun_observed=True,
+        recovered=True,
+        rerun_job=successful_rerun(),
+    )
+
+    assert result.status == RECOVERY_VALIDATED
+

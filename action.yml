@@ -103,7 +103,7 @@ outputs:
     description: 'Number of historical failed jobs that later succeeded in a genuine subsequent execution of the same job, before ground-truth attribution.'
     value: ${{ steps.history.outputs.rerun-recoveries }}
   validated-rerun-recoveries:
-    description: 'Later successes where the original failure had confirmed execution provenance and the same failed step was re-executed successfully.'
+    description: 'Later successes where failure-step outcome provenance uniquely identified the original failed step and the same step was re-executed successfully.'
     value: ${{ steps.history.outputs.validated-rerun-recoveries }}
   policy-auto-rerun-fingerprints:
     description: 'Number of fingerprints for which Policy Learning recommends AUTO_RERUN_ONCE.'

@@ -13,6 +13,7 @@ from ci_retry_gate import (
     TRANSIENT_CATEGORIES,
     GitHubAPI,
     assess_execution_provenance,
+    assess_failure_step_provenance,
     causal_evidence_role,
     classify_log,
     detect_side_effect_risk,
@@ -302,6 +303,7 @@ def _collect_failures_for_runs(
                 for line in classification.evidence
             )
             provenance = assess_execution_provenance(job, log_text, classification)
+            failure_step = assess_failure_step_provenance(job)
             unknown_cause = ""
             unknown_cause_evidence: tuple[str, ...] = ()
             if classification.category == "UNKNOWN":
@@ -333,8 +335,8 @@ def _collect_failures_for_runs(
             )
             recovery = assess_recovery_ground_truth(
                 original_job=job,
-                provenance_status=provenance.status,
-                provenance_step=provenance.step_name,
+                failure_step_status=failure_step.status,
+                failure_step=failure_step.step_name,
                 rerun_observed=rerun_observed,
                 recovered=recovered,
                 rerun_job=rerun_job,
@@ -355,6 +357,8 @@ def _collect_failures_for_runs(
                     ),
                     attempt=1,
                     provenance_status=provenance.status,
+                    failure_step_status=failure_step.status,
+                    failure_step=failure_step.step_name,
                     recovery_status=recovery.status,
                     recovery_evidence=recovery.evidence,
                     causal_evidence_count=causal_evidence_count,

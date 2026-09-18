@@ -10,10 +10,12 @@ from ci_retry_gate import (
     AMBIGUOUS,
     CAUSAL,
     FAILURE_CONCLUSIONS,
+    FAILURE_STEP_UNAVAILABLE,
     PROVENANCE_CONFIRMED,
     TRANSIENT_CATEGORIES,
     GitHubAPI,
     assess_execution_provenance,
+    assess_failure_step_provenance,
     causal_evidence_role,
     classify_log,
     detect_side_effect_risk,
@@ -60,6 +62,8 @@ class HistoricalFailure:
     side_effect_risk: bool = False
     attempt: int = 1
     provenance_status: str = PROVENANCE_CONFIRMED
+    failure_step_status: str = FAILURE_STEP_UNAVAILABLE
+    failure_step: str = ""
     recovery_status: str = RECOVERY_NOT_OBSERVED
     recovery_evidence: tuple[str, ...] = ()
     causal_evidence_count: int = 0
@@ -514,6 +518,7 @@ def collect_history(
                     for line in classification.evidence
                 )
                 provenance = assess_execution_provenance(job, log_text, classification)
+                failure_step = assess_failure_step_provenance(job)
                 fingerprint, signature = failure_fingerprint(
                     job_name,
                     classification.category,
@@ -529,8 +534,8 @@ def collect_history(
                 )
                 recovery = assess_recovery_ground_truth(
                     original_job=job,
-                    provenance_status=provenance.status,
-                    provenance_step=provenance.step_name,
+                    failure_step_status=failure_step.status,
+                    failure_step=failure_step.step_name,
                     rerun_observed=rerun_observed,
                     recovered=recovered,
                     rerun_job=rerun_job,
@@ -549,6 +554,8 @@ def collect_history(
                         side_effect_risk=side_effect_risk,
                         attempt=attempt,
                         provenance_status=provenance.status,
+                        failure_step_status=failure_step.status,
+                        failure_step=failure_step.step_name,
                         recovery_status=recovery.status,
                         recovery_evidence=recovery.evidence,
                         causal_evidence_count=causal_evidence_count,
