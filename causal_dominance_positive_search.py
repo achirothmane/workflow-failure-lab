@@ -129,7 +129,6 @@ SEARCH_SHARDS: dict[int, tuple[str, ...]] = {
         "apache/mxnet",
         "huggingface/tokenizers",
         "huggingface/safetensors",
-        "rust-lang/rustup",
     ),
 }
 
