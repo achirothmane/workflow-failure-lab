@@ -89,6 +89,23 @@ Other outcomes remain explicit:
 
 `UNVERIFIED_RECOVERY` and `INCONSISTENT_RECOVERY` are excluded from precision and policy-learning denominators. They are not counted as successes or failures. This prevents an unrelated later success from inflating measured retry precision.
 
+## Coverage Attribution Layer
+
+Coverage Attribution explains **where safe-candidate coverage is lost** without changing any rerun decision. For every failure in the rerun-enriched benchmark, it records the first limiting layer in pipeline order:
+
+- `CLASSIFICATION_UNKNOWN` — no known failure category reached the classifier threshold;
+- `NON_TRANSIENT_CATEGORY` — the known category is outside the conservative transient allow-list;
+- `CODE_REGRESSION` — deterministic code-regression evidence blocks retry authority;
+- `INSUFFICIENT_CAUSAL_EVIDENCE` — a transient category is present, but the selected evidence has no directly causal line;
+- `LOW_TRANSIENT_CONFIDENCE` — causal support exists, but transient confidence is still below high;
+- `UNCONFIRMED_EXECUTION_PROVENANCE` — high-confidence transient evidence cannot be bound to the failed execution step;
+- `SIDE_EFFECT_BOUNDARY` — the evidence gates pass, but the workflow crosses a push/PR/deploy/publish or other real-world authority boundary;
+- `ELIGIBLE` — all measured layers pass.
+
+The layer also labels each bucket as an `EVIDENCE_GAP`, `DETERMINISTIC_BLOCKER`, `POLICY_BOUNDARY`, `AUTHORITY_BOUNDARY`, or `ELIGIBLE`. Raw later successes and Recovery Ground-Truth outcomes are shown separately, so a high number of later successes cannot by itself justify weakening a gate.
+
+Coverage Attribution is diagnostic only. It does not grant rerun authority and does not override a later side-effect boundary.
+
 ## Policy Learning
 
 Policy Learning turns fingerprint history into a conservative recommendation for each fingerprint:
@@ -128,6 +145,7 @@ Benchmark Mode samples completed workflow runs, reads first-attempt failed jobs,
 - validated recoveries, observed failed reruns, and unknown/unverified outcomes;
 - ground-truth precision;
 - decision coverage and evaluated coverage;
+- **coverage attribution** showing the first limiting pipeline layer for every rerun-enriched failure;
 - **rejection intelligence** for failures that were blocked from auto-rerun;
 - blocked failures that later recovered, failed again, or had no observable rerun outcome;
 - rejection reasons such as side-effect risk, code regression, low-confidence transient, unknown classification, and other non-transient categories;
@@ -274,6 +292,15 @@ Benchmark Mode emits:
 | `benchmark-rerun-blocked-recovered` | Blocked failures that later recovered after a real rerun. |
 | `benchmark-rerun-blocked-failed-again` | Blocked failures that failed again after a real rerun. |
 | `benchmark-rerun-blocked-unknown` | Blocked failures without an observable real rerun outcome. |
+| `benchmark-coverage-evidence-gaps` | Failures whose first limiting layer is classification, causal support, confidence, or execution provenance. |
+| `benchmark-coverage-classification-unknown` | Failures first limited by UNKNOWN classification. |
+| `benchmark-coverage-non-transient` | Failures first limited by a known category outside the transient allow-list. |
+| `benchmark-coverage-code-regression` | Failures first limited by deterministic code-regression evidence. |
+| `benchmark-coverage-causal-evidence` | Transient failures first limited by missing directly causal selected evidence. |
+| `benchmark-coverage-low-confidence` | Causally supported transient failures first limited by confidence below high. |
+| `benchmark-coverage-unconfirmed-provenance` | High-confidence transient failures first limited by execution provenance. |
+| `benchmark-coverage-side-effect-boundary` | Evidence-qualified transient failures first limited by an authority boundary. |
+| `benchmark-coverage-eligible` | Failures passing all measured attribution layers. |
 | `benchmark-rejection-side-effect` | Failures blocked by workflow/job side-effect risk. |
 | `benchmark-rejection-code-regression` | Failures blocked as code regressions. |
 | `benchmark-rejection-low-confidence-transient` | Transient-category failures blocked because confidence was not high. |
@@ -299,7 +326,7 @@ This tool cannot prove that rerunning arbitrary third-party workflows is safe. I
 
 ## Validation
 
-The action has unit coverage for transient failures, code failures, unknown failures, causal-vs-non-causal log evidence, execution provenance binding, provenance mismatch/unavailable blocking, recovery ground-truth validation, unverified/inconsistent recovery exclusion, weak transient evidence discounting, secret redaction, side-effect blocking, attempt caps, runtime accounting, historical transient-waste accounting, recurring failure detection, fingerprint stability under dynamic log values, fingerprint separation for different failures, real-vs-copied rerun detection, Policy Learning thresholds, Shadow Mode look-back isolation, Benchmark Mode repository isolation, unknown counterfactual handling, benchmark precision/coverage aggregation, UNKNOWN signature extraction, cross-repository UNKNOWN clustering, promotion thresholds, and UNKNOWN side-effect guards.
+The action has unit coverage for transient failures, code failures, unknown failures, causal-vs-non-causal log evidence, execution provenance binding, provenance mismatch/unavailable blocking, recovery ground-truth validation, unverified/inconsistent recovery exclusion, first-gate coverage attribution, evidence-gap versus authority-boundary separation, weak transient evidence discounting, secret redaction, side-effect blocking, attempt caps, runtime accounting, historical transient-waste accounting, recurring failure detection, fingerprint stability under dynamic log values, fingerprint separation for different failures, real-vs-copied rerun detection, Policy Learning thresholds, Shadow Mode look-back isolation, Benchmark Mode repository isolation, unknown counterfactual handling, benchmark precision/coverage aggregation, UNKNOWN signature extraction, cross-repository UNKNOWN clustering, promotion thresholds, and UNKNOWN side-effect guards.
 
 Selective Safe Rerun has also been tested end-to-end in GitHub Actions: a mixed run containing a transient network failure and a code regression caused only the transient job to execute again; the code-regression job remained blocked, and the attempt cap prevented a third loop.
 
