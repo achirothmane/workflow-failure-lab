@@ -19,6 +19,16 @@ The action currently classifies failures into:
 
 Automatic rerun is disabled by default.
 
+## Causal Evidence Layer
+
+Before category scoring, CI Retry Gate classifies each cleaned log line as `CAUSAL`, `AMBIGUOUS`, or `NON_CAUSAL`.
+
+Clearly non-causal material such as shell comments, GitHub runner grouping metadata, Sphinx documentation roles, echoed/source-code examples, and simple configuration values is excluded from failure scoring. Operational forms such as `Error:`, `npm ERR!`, `curl: (...)`, `read tcp`, `dial tcp`, GitHub `##[error]` annotations, and explicit process failures remain eligible evidence.
+
+Weak transient phrases such as a bare `connection timed out` line are treated only as hints unless stronger operational context is present. This prevents documentation or fixtures containing words like `timeout` from accumulating enough score to authorize a rerun.
+
+The layer is intentionally fail-closed: ambiguous evidence may reduce coverage, but it cannot independently promote a job to high-confidence transient status.
+
 ## Failure fingerprints + CI History & Waste
 
 For the same workflow, the action can inspect recent completed runs and report:
@@ -254,7 +264,7 @@ This tool cannot prove that rerunning arbitrary third-party workflows is safe. I
 
 ## Validation
 
-The action has unit coverage for transient failures, code failures, unknown failures, secret redaction, side-effect blocking, attempt caps, runtime accounting, historical transient-waste accounting, recurring failure detection, fingerprint stability under dynamic log values, fingerprint separation for different failures, real-vs-copied rerun detection, rerun-recovery metrics, Policy Learning thresholds, Shadow Mode look-back isolation, Benchmark Mode repository isolation, unknown counterfactual handling, benchmark precision/coverage aggregation, UNKNOWN signature extraction, cross-repository UNKNOWN clustering, promotion thresholds, and UNKNOWN side-effect guards.
+The action has unit coverage for transient failures, code failures, unknown failures, causal-vs-non-causal log evidence, weak transient evidence discounting, secret redaction, side-effect blocking, attempt caps, runtime accounting, historical transient-waste accounting, recurring failure detection, fingerprint stability under dynamic log values, fingerprint separation for different failures, real-vs-copied rerun detection, rerun-recovery metrics, Policy Learning thresholds, Shadow Mode look-back isolation, Benchmark Mode repository isolation, unknown counterfactual handling, benchmark precision/coverage aggregation, UNKNOWN signature extraction, cross-repository UNKNOWN clustering, promotion thresholds, and UNKNOWN side-effect guards.
 
 Selective Safe Rerun has also been tested end-to-end in GitHub Actions: a mixed run containing a transient network failure and a code regression caused only the transient job to execute again; the code-regression job remained blocked, and the attempt cap prevented a third loop.
 
