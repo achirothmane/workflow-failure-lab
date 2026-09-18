@@ -1,0 +1,120 @@
+name: Outcome Provenance UNKNOWN Benchmark
+
+on:
+  push:
+    branches:
+      - test/outcome-provenance-unknown-benchmark
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run UNKNOWN outcome provenance benchmark
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+          import os
+
+          from benchmark_mode import collect_repository_samples, summarize_benchmark
+          from ci_retry_gate import GitHubAPI
+          from unknown_failure_intelligence import summarize_unknown_patterns
+
+          repos = [
+              "pallets/flask","psf/requests","pytest-dev/pytest","axios/axios","pnpm/pnpm",
+              "docker/compose","golangci/golangci-lint","astral-sh/ruff","serde-rs/serde",
+              "hashicorp/terraform","django/django","fastapi/fastapi","encode/httpx",
+              "tiangolo/sqlmodel","numpy/numpy","pandas-dev/pandas","pydantic/pydantic",
+              "nodejs/node","denoland/deno","vitejs/vite","vercel/next.js","microsoft/TypeScript",
+              "rust-lang/cargo","tokio-rs/tokio","BurntSushi/ripgrep","kubernetes/kubernetes",
+              "helm/helm","prometheus/prometheus","grafana/grafana","hashicorp/vault"
+          ]
+          token = os.environ["INPUT_GITHUB_TOKEN"]
+
+          def collect(repo):
+              api = GitHubAPI(token)
+              try:
+                  natural, enriched = collect_repository_samples(api, repo, 5, 20, 150)
+                  return repo, natural, enriched, None
+              except RuntimeError as exc:
+                  return repo, None, None, str(exc)[:240]
+
+          histories, rerun_histories, skipped = {}, {}, []
+          with ThreadPoolExecutor(max_workers=5) as pool:
+              futures = [pool.submit(collect, repo) for repo in repos]
+              for future in as_completed(futures):
+                  repo, natural, enriched, error = future.result()
+                  if error:
+                      skipped.append((repo, error))
+                  else:
+                      histories[repo] = natural
+                      rerun_histories[repo] = enriched
+
+          bench = summarize_benchmark(
+              histories,
+              rerun_histories=rerun_histories,
+              repositories_requested=len(repos),
+              skipped=tuple(sorted(skipped)),
+          )
+          unknown = summarize_unknown_patterns({}, rerun_histories)
+
+          unknown_items = [
+              item
+              for failures, _runs in rerun_histories.values()
+              for item in failures
+              if item.category == "UNKNOWN"
+          ]
+          validated_unknown = sum(
+              item.recovery_status == "VALIDATED_RECOVERY"
+              for item in unknown_items
+          )
+          unverified_unknown = sum(
+              item.recovery_status == "UNVERIFIED_RECOVERY"
+              for item in unknown_items
+          )
+          inconsistent_unknown = sum(
+              item.recovery_status == "INCONSISTENT_RECOVERY"
+              for item in unknown_items
+          )
+          not_recovered_unknown = sum(
+              item.recovery_status == "NOT_RECOVERED"
+              for item in unknown_items
+          )
+          confirmed_failure_steps = sum(
+              item.failure_step_status == "FAILURE_STEP_CONFIRMED"
+              for item in unknown_items
+          )
+
+          print("=== OUTCOME PROVENANCE UNKNOWN BENCHMARK ===")
+          print(f"repositories_analyzed={bench.repositories_analyzed}")
+          print(f"repositories_skipped={bench.repositories_skipped}")
+          print(f"rerun_failed_jobs={bench.rerun_failed_jobs}")
+          print(f"runtime_safe_candidates={bench.rerun_candidates}")
+          print(f"rerun_unknown_failures={len(unknown_items)}")
+          print(f"unknown_failure_step_confirmed={confirmed_failure_steps}")
+          print(f"unknown_validated_recoveries={validated_unknown}")
+          print(f"unknown_unverified_recoveries={unverified_unknown}")
+          print(f"unknown_inconsistent_recoveries={inconsistent_unknown}")
+          print(f"unknown_not_recovered={not_recovered_unknown}")
+          print(f"unknown_promotion_candidates={len(unknown.promotion_candidates)}")
+          for pattern in unknown.promotion_candidates:
+              print(
+                  f"promotion_pattern={pattern.pattern_id} occurrences={pattern.occurrences} "
+                  f"repositories={pattern.repositories} gt_reruns={pattern.rerun_observations} "
+                  f"recoveries={pattern.recoveries} recovery_rate={pattern.recovery_rate:.4f} "
+                  f"side_effects={pattern.side_effect_occurrences} signature={pattern.signature!r}"
+              )
+          for cause in unknown.causes:
+              print(
+                  f"unknown_cause={cause.cause} occurrences={cause.occurrences} "
+                  f"gt_reruns={cause.rerun_observations} validated_recoveries={cause.recoveries} "
+                  f"failed_again={cause.failed_again} unknown_or_unverified={cause.unknown_outcomes} "
+                  f"side_effects={cause.side_effect_occurrences}"
+              )
+          PY
