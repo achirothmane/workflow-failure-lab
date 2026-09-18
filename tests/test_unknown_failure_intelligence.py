@@ -13,6 +13,7 @@ from unknown_failure_intelligence import (
     PROMOTION_BLOCKER_INSUFFICIENT_OCCURRENCES,
     PROMOTION_BLOCKER_NO_STABLE_SIGNATURE,
     PROMOTION_BLOCKER_RECOVERY_RATE,
+    PROMOTION_BLOCKER_SEMANTIC_EVIDENCE,
     PROMOTION_BLOCKER_SIDE_EFFECT,
     PROMOTION_ELIGIBLE,
     STATUS_INSUFFICIENT_EVIDENCE,
@@ -504,4 +505,70 @@ def test_promotion_blocker_counts_and_near_candidates_are_exposed():
     assert counts[PROMOTION_ELIGIBLE] == 1
     assert counts[PROMOTION_BLOCKER_RECOVERY_RATE] == 1
     assert len(summary.near_promotion_candidates) == 1
+
+
+def test_semantic_noise_blocks_promotion_even_with_perfect_ground_truth_recovery():
+    signature = (
+        "test alt_registry::cannot_publish_to_crates_io_with_registry_dependency ... ok | "
+        "test cargo_alias_config::alias_cannot_shadow_builtin_command ... ok"
+    )
+    reruns = {
+        "acme/repo": (
+            [
+                _unknown(1, signature=signature, recovered=True),
+                _unknown(2, signature=signature, recovered=True),
+                _unknown(3, signature=signature, recovered=True),
+            ],
+            3,
+        )
+    }
+
+    summary = summarize_unknown_patterns({}, reruns)
+    pattern = summary.patterns[0]
+
+    assert pattern.recovery_rate == 1.0
+    assert pattern.promotion_candidate is False
+    assert pattern.promotion_blockers == (PROMOTION_BLOCKER_SEMANTIC_EVIDENCE,)
+    assert pattern.semantic_accepted_segments == ()
+    assert "SUCCESSFUL_TEST_LINE" in pattern.semantic_reasons
+
+
+def test_generic_runner_wrapper_blocks_promotion_despite_perfect_recovery():
+    signature = "##[error]process completed with exit code <n>."
+    reruns = {
+        "acme/repo": (
+            [
+                _unknown(1, signature=signature, recovered=True),
+                _unknown(2, signature=signature, recovered=True),
+                _unknown(3, signature=signature, recovered=True),
+            ],
+            3,
+        )
+    }
+
+    pattern = summarize_unknown_patterns({}, reruns).patterns[0]
+
+    assert pattern.promotion_candidate is False
+    assert pattern.promotion_blocker == PROMOTION_BLOCKER_SEMANTIC_EVIDENCE
+    assert "GENERIC_RUNNER_WRAPPER" in pattern.semantic_reasons
+
+
+def test_specific_failure_signature_still_promotes_when_other_thresholds_pass():
+    signature = "fatal: remote cache service unavailable"
+    reruns = {
+        "acme/repo": (
+            [
+                _unknown(1, signature=signature, recovered=True),
+                _unknown(2, signature=signature, recovered=True),
+                _unknown(3, signature=signature, recovered=True),
+            ],
+            3,
+        )
+    }
+
+    pattern = summarize_unknown_patterns({}, reruns).patterns[0]
+
+    assert pattern.promotion_candidate is True
+    assert pattern.promotion_blockers == ()
+    assert pattern.semantic_accepted_segments == (signature,)
 
