@@ -334,7 +334,12 @@ def test_execution_provenance_fails_closed_without_timestamps():
 def test_execution_provenance_detects_signal_outside_failed_step_window():
     assessment = assess_job(
         fake_job("install deps", [failed_step()]),
-        timestamped_network_log(signal_time="2026-09-17T01:03:30.0000000Z"),
+        (
+            "2026-09-17T01:03:29.0000000Z ##[group]Run npm ci\n"
+            "2026-09-17T01:03:30.0000000Z npm ERR! code ETIMEDOUT\n"
+            "2026-09-17T01:03:31.0000000Z Error: connection reset by peer\n"
+            "2026-09-17T01:03:32.0000000Z Process completed with exit code 1\n"
+        ),
     )
     assert assessment.category == "DEPENDENCY_NETWORK"
     assert assessment.confidence == "high"
