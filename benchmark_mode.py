@@ -49,6 +49,12 @@ from coverage_attribution import (
 from policy_shadow import simulate_shadow
 from unknown_cause_decomposition import decompose_unknown_cause
 from unknown_failure_intelligence import (
+    PROMOTION_BLOCKER_INSUFFICIENT_GT_RERUNS,
+    PROMOTION_BLOCKER_INSUFFICIENT_OCCURRENCES,
+    PROMOTION_BLOCKER_NO_STABLE_SIGNATURE,
+    PROMOTION_BLOCKER_RECOVERY_RATE,
+    PROMOTION_BLOCKER_SIDE_EFFECT,
+    PROMOTION_ELIGIBLE,
     UnknownIntelligenceSummary,
     summarize_unknown_patterns,
     unknown_signature,
@@ -761,9 +767,21 @@ def render_benchmark_report(summary: BenchmarkSummary) -> str:
                 f"Validated UNKNOWN recoveries: **{unknown.recoveries}**",
                 f"Observed UNKNOWN failures after rerun: **{unknown.failed_again}**",
                 f"Investigation candidates for a possible future transient classifier rule: **{len(unknown.promotion_candidates)}**",
+                f"Patterns one blocker away from classifier research: **{len(unknown.near_promotion_candidates)}**",
                 "",
-                "| Pattern | Occurrences | Repositories | GT-evaluable reruns | Validated recoveries | Failed again | Recovery rate | Status | Signature |",
-                "|---|---:|---:|---:|---:|---:|---:|---|---|",
+                "#### UNKNOWN Promotion Blocker Attribution",
+                "",
+                "| Blocker | Patterns affected |",
+                "|---|---:|",
+            ]
+        )
+        for blocker, count in unknown.promotion_blocker_counts:
+            lines.append(f"| `{blocker}` | {count} |")
+        lines.extend(
+            [
+                "",
+                "| Pattern | Occurrences | Repositories | GT reruns | Recoveries | Recovery rate | Primary blocker | All blockers | Gap | Signature |",
+                "|---|---:|---:|---:|---:|---:|---|---|---|---|",
             ]
         )
         if unknown.causes:
@@ -792,15 +810,30 @@ def render_benchmark_report(summary: BenchmarkSummary) -> str:
 
         for item in unknown.patterns[:20]:
             safe_signature = item.signature.replace("|", "/")
+            blockers = ", ".join(item.promotion_blockers) or PROMOTION_ELIGIBLE
+            gaps: list[str] = []
+            if item.occurrence_deficit:
+                gaps.append(f"+{item.occurrence_deficit} occurrence(s)")
+            if item.gt_rerun_deficit:
+                gaps.append(f"+{item.gt_rerun_deficit} GT rerun(s)")
+            if (
+                item.rerun_observations >= 3
+                and item.recovery_rate_deficit > 0
+            ):
+                gaps.append(f"+{item.recovery_rate_deficit:.0%} recovery rate")
+            if item.side_effect_occurrences:
+                gaps.append(f"{item.side_effect_occurrences} side-effect occurrence(s)")
+            gap_text = "; ".join(gaps) or "ready"
             lines.append(
                 f"| `{item.pattern_id}` | {item.occurrences} | {item.repositories} | "
-                f"{item.rerun_observations} | {item.recoveries} | {item.failed_again} | "
-                f"{item.recovery_rate:.1%} | `{item.status}` | {safe_signature} |"
+                f"{item.rerun_observations} | {item.recoveries} | "
+                f"{item.recovery_rate:.1%} | `{item.promotion_blocker}` | "
+                f"{blockers} | {gap_text} | {safe_signature} |"
             )
         lines.extend(
             [
                 "",
-                "> INVESTIGATE_TRANSIENT_PATTERN is advisory only. It requires a stable repeated signature, at least 3 ground-truth-evaluable reruns, at least 80% validated recovery, and no side-effect occurrence. It does not modify the runtime classifier or authorize reruns.",
+                "> Promotion Blocker Attribution is diagnostic only. A pattern becomes ELIGIBLE_FOR_CLASSIFIER_RESEARCH only after stable evidence, at least 3 occurrences, at least 3 ground-truth-evaluable reruns, at least 80% validated recovery, and zero side-effect occurrences. Eligibility still does not modify the runtime classifier or authorize reruns.",
                 "",
             ]
         )
@@ -1066,6 +1099,24 @@ def main() -> int:
         "benchmark-unknown-promotion-candidate-ids",
         ",".join(item.pattern_id for item in summary.unknown_intelligence.promotion_candidates),
     )
+    _write_output(
+        "benchmark-unknown-near-promotion-candidates",
+        str(len(summary.unknown_intelligence.near_promotion_candidates)),
+    )
+    blocker_counts = dict(summary.unknown_intelligence.promotion_blocker_counts)
+    for blocker_name in (
+        PROMOTION_BLOCKER_NO_STABLE_SIGNATURE,
+        PROMOTION_BLOCKER_INSUFFICIENT_OCCURRENCES,
+        PROMOTION_BLOCKER_INSUFFICIENT_GT_RERUNS,
+        PROMOTION_BLOCKER_RECOVERY_RATE,
+        PROMOTION_BLOCKER_SIDE_EFFECT,
+        PROMOTION_ELIGIBLE,
+    ):
+        _write_output(
+            "benchmark-unknown-promotion-blocker-"
+            + blocker_name.lower().replace("_", "-"),
+            str(blocker_counts.get(blocker_name, 0)),
+        )
     unknown_causes = {
         item.cause: item.occurrences
         for item in summary.unknown_intelligence.causes
