@@ -322,6 +322,19 @@ The rule is **not installed into `classify_log()`**. It is evaluated only agains
 
 This separation is intentional: classification asks what kind of failure occurred; authority asks whether a real-world rerun is admissible. A strong shadow precision result does not by itself grant rerun authority or change production classification.
 
+### SERVER_5XX Counterexample Search
+
+Every `SERVER_5XX_CAUSAL_UNKNOWN` research run also performs a broader falsification search across **all runtime categories**, not only `UNKNOWN`.
+
+The search looks for two distinct counterexample classes:
+
+- **Outcome counterexample** — causal `SERVER_5XX` is ground-truth-evaluable and the rerun fails again. This is the strongest direct falsifier of the transient-rule hypothesis.
+- **Classification contradiction** — causal `SERVER_5XX` coexists with a non-transient, non-`UNKNOWN` category such as `CODE_REGRESSION`. This is diagnostic evidence for manual inspection, not automatically a false positive.
+
+Side-effect matches are reported separately because they affect rerun authority rather than failure classification. Unknown or unverified rerun outcomes remain outside the recovery-rate denominator.
+
+The falsification search is read-only. It does not install the proposed classifier rule and does not weaken any runtime authority gate.
+
 ### Pinned Research Corpus
 
 Moving recent-run windows are useful for discovery but unstable for regression testing. High-value real cases are therefore pinned as immutable research fixtures with public repository/run/job identifiers and expected safety semantics.
