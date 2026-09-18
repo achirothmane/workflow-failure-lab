@@ -16,6 +16,16 @@ _TIMESTAMP_RE = re.compile(
     r"^(?P<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)\s+"
 )
 _ANSI_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+_CLI_TIMEOUT_OPTION_RE = re.compile(
+    r"(?<!\\S)--?timeout(?:=(?:[^\\s`\"\']+)|\\s+[^\\s`\"\']+)",
+    re.IGNORECASE,
+)
+_TRANSIENT_IDENTIFIER_RE = re.compile(
+    r"\\b(?:[A-Za-z0-9_.]+[-_/])+(?:timeout|econnreset|etimedout)"
+    r"(?:[-_/][A-Za-z0-9_.]+)*\\b",
+    re.IGNORECASE,
+)
+
 
 
 @dataclass(frozen=True)
@@ -50,6 +60,12 @@ def _clean_line(raw_line: str) -> str:
     value = _TIMESTAMP_RE.sub("", raw_line)
     value = _ANSI_RE.sub("", value)
     return value.strip()
+
+
+def _mask_noncausal_mechanism_tokens(line: str) -> str:
+    value = _CLI_TIMEOUT_OPTION_RE.sub(" <cli-timeout-option> ", line)
+    value = _TRANSIENT_IDENTIFIER_RE.sub(" <transient-identifier> ", value)
+    return value
 
 
 def assess_mechanism_causality(
@@ -96,7 +112,8 @@ def assess_mechanism_causality(
             continue
 
         cleaned = _clean_line(raw_line)
-        line_reasons, _matches = detect_transient_mechanisms(cleaned)
+        mechanism_text = _mask_noncausal_mechanism_tokens(cleaned)
+        line_reasons, _matches = detect_transient_mechanisms(mechanism_text)
         if not line_reasons:
             continue
 
