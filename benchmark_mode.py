@@ -5,6 +5,11 @@ import re
 from collections import Counter
 from dataclasses import dataclass
 
+from classifier_rule_research import (
+    RULE_SERVER_5XX_CAUSAL_UNKNOWN,
+    evaluate_server5xx_shadow_rule,
+    render_server5xx_rule_research,
+)
 from ci_retry_gate import (
     AMBIGUOUS,
     CAUSAL,
@@ -928,6 +933,7 @@ def main() -> int:
     )
     raw_repos = os.environ.get("INPUT_BENCHMARK_REPOSITORIES", "")
     target_mechanism = os.environ.get("INPUT_BENCHMARK_TARGET_MECHANISM", "").strip().upper()
+    research_rule = os.environ.get("INPUT_BENCHMARK_RESEARCH_RULE", "").strip().upper()
 
     if not token:
         print("::warning::Benchmark skipped because github-token is missing.")
@@ -948,6 +954,11 @@ def main() -> int:
                 500,
             ),
         )
+        if research_rule and research_rule != RULE_SERVER_5XX_CAUSAL_UNKNOWN:
+            raise ValueError(
+                f"Unsupported benchmark research rule: {research_rule!r}; "
+                f"supported: {RULE_SERVER_5XX_CAUSAL_UNKNOWN}"
+            )
     except ValueError as exc:
         print(f"::error::Benchmark configuration invalid: {exc}")
         return 2
@@ -989,6 +1000,14 @@ def main() -> int:
     )
     if targeted is not None:
         report += "\n" + render_targeted_replication_report(targeted)
+
+    rule_research = (
+        evaluate_server5xx_shadow_rule(histories, rerun_histories)
+        if research_rule == RULE_SERVER_5XX_CAUSAL_UNKNOWN
+        else None
+    )
+    if rule_research is not None:
+        report += "\n" + render_server5xx_rule_research(rule_research)
 
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
@@ -1161,6 +1180,60 @@ def main() -> int:
         _write_output(
             "benchmark-target-cross-repository-replicated",
             str(targeted.cross_repository_replicated).lower(),
+        )
+    if rule_research is not None:
+        _write_output("benchmark-research-rule", rule_research.rule_name)
+        _write_output(
+            "benchmark-research-proposed-category",
+            rule_research.proposed_category,
+        )
+        _write_output(
+            "benchmark-research-natural-unknown-failures",
+            str(rule_research.natural_unknown_failures),
+        )
+        _write_output(
+            "benchmark-research-natural-matches",
+            str(len(rule_research.natural_matches)),
+        )
+        _write_output(
+            "benchmark-research-natural-match-rate",
+            f"{rule_research.natural_match_rate:.4f}",
+        )
+        _write_output(
+            "benchmark-research-rerun-matches",
+            str(len(rule_research.rerun_matches)),
+        )
+        _write_output(
+            "benchmark-research-evaluable",
+            str(rule_research.evaluable_matches),
+        )
+        _write_output(
+            "benchmark-research-validated-recoveries",
+            str(rule_research.validated_recoveries),
+        )
+        _write_output(
+            "benchmark-research-false-positives",
+            str(rule_research.failed_again),
+        )
+        _write_output(
+            "benchmark-research-unknown-outcomes",
+            str(rule_research.unknown_outcomes),
+        )
+        _write_output(
+            "benchmark-research-observed-precision",
+            f"{rule_research.observed_precision:.4f}",
+        )
+        _write_output(
+            "benchmark-research-independent-runs",
+            str(rule_research.independent_runs),
+        )
+        _write_output(
+            "benchmark-research-independent-repositories",
+            str(rule_research.independent_repositories),
+        )
+        _write_output(
+            "benchmark-research-side-effect-matches",
+            str(rule_research.side_effect_matches),
         )
     _write_output(
         "benchmark-unknown-near-promotion-candidates",

@@ -304,6 +304,24 @@ Mechanism-family replication is deliberately separate from exact-pattern promoti
 
 The current pinned corpus demonstrates this distinction: `SERVER_5XX` is independently replicated across Serde and Traefik, while each exact normalized UNKNOWN pattern still has only one pinned occurrence.
 
+### SERVER_5XX Classifier Rule Research
+
+After mechanism-family replication, Benchmark Mode can evaluate the shadow-only rule `SERVER_5XX_CAUSAL_UNKNOWN` by setting `benchmark-research-rule` to that value.
+
+The hypothesis is deliberately narrow:
+
+`UNKNOWN + failed-step causal SERVER_5XX evidence → proposed DEPENDENCY_NETWORK`
+
+The rule is **not installed into `classify_log()`**. It is evaluated only against historical samples. The report separates:
+
+- natural-sample matches, to estimate how often the rule would affect UNKNOWN coverage;
+- rerun-enriched matches with Ground Truth, to measure validated recoveries and failed-again false positives;
+- unknown/unverified outcomes, excluded from the precision denominator;
+- independent run and repository counts;
+- side-effect matches, which remain authority-blocked but are not treated as classifier false positives.
+
+This separation is intentional: classification asks what kind of failure occurred; authority asks whether a real-world rerun is admissible. A strong shadow precision result does not by itself grant rerun authority or change production classification.
+
 ### Pinned Research Corpus
 
 Moving recent-run windows are useful for discovery but unstable for regression testing. High-value real cases are therefore pinned as immutable research fixtures with public repository/run/job identifiers and expected safety semantics.

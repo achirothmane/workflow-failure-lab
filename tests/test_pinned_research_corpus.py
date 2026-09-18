@@ -1,3 +1,4 @@
+from classifier_rule_research import evaluate_server5xx_shadow_rule
 from ci_retry_gate import (
     FAILURE_STEP_CONFIRMED,
     assess_failure_step_provenance,
@@ -237,4 +238,25 @@ def test_pinned_traefik_metadata_matches_observed_public_run():
     assert case.failed_job_id == 104019537901
     assert case.rerun_job_id == 104021344977
     assert "Unexpected HTTP response: 504" in case.failure_log
+
+
+def test_pinned_server_5xx_cases_support_shadow_classifier_hypothesis():
+    serde = _historical_from_pinned_case(SERDE_ATTESTATION_HTTP_500)
+    traefik = _historical_from_pinned_case(TRAEFIK_GOLANGCI_HTTP_504)
+
+    summary = evaluate_server5xx_shadow_rule(
+        {},
+        {
+            SERDE_ATTESTATION_HTTP_500.repository: ([serde], 1),
+            TRAEFIK_GOLANGCI_HTTP_504.repository: ([traefik], 1),
+        },
+    )
+
+    assert summary.evaluable_matches == 2
+    assert summary.validated_recoveries == 2
+    assert summary.failed_again == 0
+    assert summary.observed_precision == 1.0
+    assert summary.independent_runs == 2
+    assert summary.independent_repositories == 2
+    assert summary.side_effect_matches == 0
 

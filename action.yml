@@ -62,6 +62,10 @@ inputs:
     description: 'Optional transient mechanism reason such as SERVER_5XX for read-only targeted replication search across the rerun-enriched benchmark sample.'
     required: false
     default: ''
+  benchmark-research-rule:
+    description: 'Optional shadow-only classifier research rule. Currently supports SERVER_5XX_CAUSAL_UNKNOWN. Does not change runtime classification or rerun authority.'
+    required: false
+    default: ''
 
 outputs:
   safe-to-rerun:
@@ -331,6 +335,48 @@ outputs:
   benchmark-target-cross-repository-replicated:
     description: 'true when the targeted mechanism has usable causal ground-truth evidence across at least two repositories.'
     value: ${{ steps.benchmark.outputs.benchmark-target-cross-repository-replicated }}
+  benchmark-research-rule:
+    description: 'Shadow-only classifier research rule evaluated by Benchmark Mode.'
+    value: ${{ steps.benchmark.outputs.benchmark-research-rule }}
+  benchmark-research-proposed-category:
+    description: 'Proposed runtime category under research; no runtime change is made.'
+    value: ${{ steps.benchmark.outputs.benchmark-research-proposed-category }}
+  benchmark-research-natural-unknown-failures:
+    description: 'Natural-sample UNKNOWN failures considered as the research-rule denominator.'
+    value: ${{ steps.benchmark.outputs.benchmark-research-natural-unknown-failures }}
+  benchmark-research-natural-matches:
+    description: 'Natural-sample failures matching the shadow classifier hypothesis.'
+    value: ${{ steps.benchmark.outputs.benchmark-research-natural-matches }}
+  benchmark-research-natural-match-rate:
+    description: 'Natural shadow matches divided by natural UNKNOWN failures.'
+    value: ${{ steps.benchmark.outputs.benchmark-research-natural-match-rate }}
+  benchmark-research-rerun-matches:
+    description: 'Rerun-enriched failures matching the shadow classifier hypothesis.'
+    value: ${{ steps.benchmark.outputs.benchmark-research-rerun-matches }}
+  benchmark-research-evaluable:
+    description: 'Shadow-rule matches with ground-truth-evaluable rerun outcomes.'
+    value: ${{ steps.benchmark.outputs.benchmark-research-evaluable }}
+  benchmark-research-validated-recoveries:
+    description: 'Ground-truth-evaluable shadow-rule matches with VALIDATED_RECOVERY.'
+    value: ${{ steps.benchmark.outputs.benchmark-research-validated-recoveries }}
+  benchmark-research-false-positives:
+    description: 'Ground-truth-evaluable shadow-rule matches that failed again on rerun.'
+    value: ${{ steps.benchmark.outputs.benchmark-research-false-positives }}
+  benchmark-research-unknown-outcomes:
+    description: 'Shadow-rule matches without a ground-truth-evaluable outcome.'
+    value: ${{ steps.benchmark.outputs.benchmark-research-unknown-outcomes }}
+  benchmark-research-observed-precision:
+    description: 'Validated recoveries divided by ground-truth-evaluable shadow-rule matches.'
+    value: ${{ steps.benchmark.outputs.benchmark-research-observed-precision }}
+  benchmark-research-independent-runs:
+    description: 'Distinct workflow run IDs among evaluable shadow-rule matches.'
+    value: ${{ steps.benchmark.outputs.benchmark-research-independent-runs }}
+  benchmark-research-independent-repositories:
+    description: 'Distinct repositories among evaluable shadow-rule matches.'
+    value: ${{ steps.benchmark.outputs.benchmark-research-independent-repositories }}
+  benchmark-research-side-effect-matches:
+    description: 'Shadow classifier matches that cross a side-effect boundary; reported separately from classifier false positives.'
+    value: ${{ steps.benchmark.outputs.benchmark-research-side-effect-matches }}
   benchmark-unknown-promotion-blocker-side-effect-contamination:
     description: 'UNKNOWN patterns blocked because at least one occurrence crossed a workflow side-effect boundary.'
     value: ${{ steps.benchmark.outputs.benchmark-unknown-promotion-blocker-side-effect-contamination }}
@@ -428,6 +474,7 @@ runs:
         INPUT_BENCHMARK_RERUN_RUNS: ${{ inputs.benchmark-rerun-runs }}
         INPUT_BENCHMARK_RERUN_SEARCH_RUNS: ${{ inputs.benchmark-rerun-search-runs }}
         INPUT_BENCHMARK_TARGET_MECHANISM: ${{ inputs.benchmark-target-mechanism }}
+        INPUT_BENCHMARK_RESEARCH_RULE: ${{ inputs.benchmark-research-rule }}
       run: python3 "$GITHUB_ACTION_PATH/benchmark_mode.py"
 
 branding:
