@@ -210,6 +210,33 @@ outputs:
   benchmark-rerun-blocked-unknown:
     description: 'Blocked rerun-enriched failures without an observable real rerun outcome.'
     value: ${{ steps.benchmark.outputs.benchmark-rerun-blocked-unknown }}
+  benchmark-coverage-evidence-gaps:
+    description: 'Rerun-enriched failures whose first limiting layer is an evidence gap: classification, causal support, confidence, or execution provenance.'
+    value: ${{ steps.benchmark.outputs.benchmark-coverage-evidence-gaps }}
+  benchmark-coverage-classification-unknown:
+    description: 'Failures whose first limiting layer is UNKNOWN classification.'
+    value: ${{ steps.benchmark.outputs.benchmark-coverage-classification-unknown }}
+  benchmark-coverage-non-transient:
+    description: 'Failures whose first limiting layer is a known category outside the transient allow-list.'
+    value: ${{ steps.benchmark.outputs.benchmark-coverage-non-transient }}
+  benchmark-coverage-code-regression:
+    description: 'Failures whose first limiting layer is deterministic code-regression evidence.'
+    value: ${{ steps.benchmark.outputs.benchmark-coverage-code-regression }}
+  benchmark-coverage-causal-evidence:
+    description: 'Transient failures whose first limiting layer is missing directly causal selected evidence.'
+    value: ${{ steps.benchmark.outputs.benchmark-coverage-causal-evidence }}
+  benchmark-coverage-low-confidence:
+    description: 'Transient failures with causal support whose first limiting layer is insufficient classification confidence.'
+    value: ${{ steps.benchmark.outputs.benchmark-coverage-low-confidence }}
+  benchmark-coverage-unconfirmed-provenance:
+    description: 'High-confidence transient failures whose first limiting layer is unconfirmed execution provenance.'
+    value: ${{ steps.benchmark.outputs.benchmark-coverage-unconfirmed-provenance }}
+  benchmark-coverage-side-effect-boundary:
+    description: 'Evidence-qualified transient failures whose first limiting layer is a workflow or job authority boundary.'
+    value: ${{ steps.benchmark.outputs.benchmark-coverage-side-effect-boundary }}
+  benchmark-coverage-eligible:
+    description: 'Failures that pass all measured coverage-attribution layers and remain eligible rerun candidates.'
+    value: ${{ steps.benchmark.outputs.benchmark-coverage-eligible }}
   benchmark-rejection-side-effect:
     description: 'Blocked rerun-enriched failures carrying a workflow or job side-effect risk.'
     value: ${{ steps.benchmark.outputs.benchmark-rejection-side-effect }}
