@@ -683,6 +683,31 @@ def render_benchmark_report(summary: BenchmarkSummary) -> str:
         "",
     ]
 
+    if summary.coverage_attribution:
+        lines.extend(
+            [
+                "### Coverage Attribution — first limiting layer",
+                "",
+                f"Failures stopped at evidence-gap layers: **{evidence_gap_count(summary.coverage_attribution)}**",
+                "",
+                "| First limiting layer | Type | Failures | Raw later successes | Validated recoveries | Failed reruns | Unknown / unverified |",
+                "|---|---|---:|---:|---:|---:|---:|",
+            ]
+        )
+        for item in summary.coverage_attribution:
+            lines.append(
+                f"| `{item.gate}` | `{item.kind}` | {item.failures} | "
+                f"{item.raw_later_successes} | {item.validated_recoveries} | "
+                f"{item.failed_reruns} | {item.unknown_or_unverified} |"
+            )
+        lines.extend(
+            [
+                "",
+                "> Coverage Attribution is diagnostic only. It records the first limiting layer in pipeline order; it does not bypass a later authority boundary or grant rerun permission.",
+                "",
+            ]
+        )
+
     if summary.rejections:
         lines.extend(
             [
@@ -916,6 +941,42 @@ def main() -> int:
     _write_output(
         "benchmark-rerun-blocked-unknown",
         str(summary.rerun_blocked_unknown),
+    )
+    _write_output(
+        "benchmark-coverage-evidence-gaps",
+        str(evidence_gap_count(summary.coverage_attribution)),
+    )
+    _write_output(
+        "benchmark-coverage-classification-unknown",
+        str(coverage_gate_count(summary.coverage_attribution, GATE_CLASSIFICATION_UNKNOWN)),
+    )
+    _write_output(
+        "benchmark-coverage-non-transient",
+        str(coverage_gate_count(summary.coverage_attribution, GATE_NON_TRANSIENT_CATEGORY)),
+    )
+    _write_output(
+        "benchmark-coverage-code-regression",
+        str(coverage_gate_count(summary.coverage_attribution, GATE_CODE_REGRESSION)),
+    )
+    _write_output(
+        "benchmark-coverage-causal-evidence",
+        str(coverage_gate_count(summary.coverage_attribution, GATE_CAUSAL_EVIDENCE)),
+    )
+    _write_output(
+        "benchmark-coverage-low-confidence",
+        str(coverage_gate_count(summary.coverage_attribution, GATE_LOW_CONFIDENCE)),
+    )
+    _write_output(
+        "benchmark-coverage-unconfirmed-provenance",
+        str(coverage_gate_count(summary.coverage_attribution, GATE_PROVENANCE)),
+    )
+    _write_output(
+        "benchmark-coverage-side-effect-boundary",
+        str(coverage_gate_count(summary.coverage_attribution, GATE_SIDE_EFFECT)),
+    )
+    _write_output(
+        "benchmark-coverage-eligible",
+        str(coverage_gate_count(summary.coverage_attribution, GATE_ELIGIBLE)),
     )
     _write_output(
         "benchmark-rejection-side-effect",
