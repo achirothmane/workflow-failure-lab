@@ -86,3 +86,33 @@ def test_causal_transient_error_outside_failed_step_does_not_bind():
     )
 
     assert result.status == MECHANISM_CAUSAL_UNCONFIRMED
+
+def test_real_typescript_error_wrapper_does_not_turn_cli_timeout_into_mechanism():
+    result = assess_mechanism_causality(
+        {
+            "name": "test (noembed)",
+            "steps": [
+                {
+                    "name": "Tests",
+                    "conclusion": "failure",
+                    "started_at": "2026-09-17T21:04:12Z",
+                    "completed_at": "2026-09-17T21:10:45Z",
+                }
+            ],
+        },
+        (
+            "2026-09-17T21:04:41.2540349Z $ /home/runner/work/TypeScript/TypeScript/tools/gotestsum "
+            "--format-hide-empty-pkg --hide-summary skipped -- -tags=noembed ./... --timeout=45m\n"
+            "2026-09-17T21:10:45.3871997Z internal/project/session.go:17:2: "
+            "github.com/mackerelio/go-osstat@v0.2.8: read https://proxy.golang.org/...: "
+            "stream error: stream ID 7; INTERNAL_ERROR; received from peer\n"
+            "2026-09-17T21:10:45.3893131Z Error: The command "
+            "/home/runner/work/TypeScript/TypeScript/tools/gotestsum "
+            "--format-hide-empty-pkg --hide-summary skipped -- -tags=noembed ./... --timeout=45m "
+            "exited with a non-zero status (1)\n"
+            "2026-09-17T21:10:45.4068548Z ##[error]Process completed with exit code 1.\n"
+        ),
+    )
+
+    assert result.status == MECHANISM_CAUSAL_UNCONFIRMED
+    assert result.reasons == ()
