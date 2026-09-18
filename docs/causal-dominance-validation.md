@@ -88,3 +88,27 @@ The workflow is `.github/workflows/causal-dominance-positive-control.yml`.
 Passing the mechanics above is intentionally **not enough** to install a production override. The current gate requires at least **3 independent real causal-dominance positive-control runs** before `production_promotion_ready` can become true.
 
 At present the pinned count is **1/3**, so a clean positive-control + holdout run should report that the validation mechanics pass while production promotion remains blocked pending **2 additional independent real dominance-positive cases**.
+
+
+## Targeted Positive-Control Search
+
+After the combined positive-control + 50-repository holdout gate passed, production promotion remains blocked because only **1/3** independent real dominance-positive controls are pinned.
+
+The next search is therefore targeted rather than another generic evidence wave. `causal_dominance_positive_search.py` searches only cases that already satisfy all of the following historical conditions:
+
+- runtime category is `CODE_REGRESSION` or `FLAKY_TEST`
+- mechanism causality is confirmed
+- `SERVER_5XX` is the causal mechanism
+- rerun outcome is ground-truth-evaluable
+
+For each such case it re-fetches the original failed job and raw logs, re-runs `assess_causal_dominance()`, re-checks raw side-effect risk, and records:
+
+- validated authority-safe `DOMINANCE_CANDIDATE` cases
+- failed-again counterexamples
+- deterministic blockers
+- ordering-unproven cases
+- lookup/API unresolved cases
+
+The workflow `.github/workflows/causal-dominance-positive-search.yml` searches **100 repositories** in two 50-repository shards in parallel. The search is read-only and does not modify classifier or retry behavior.
+
+Promotion is still fail-closed: a discovered case is only eligible to become a new pinned positive control after manual/raw-log verification and confirmation that it is independent of the existing SWC dprint case.
