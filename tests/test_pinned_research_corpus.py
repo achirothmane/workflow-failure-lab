@@ -18,6 +18,7 @@ from transient_mechanism_gate import (
 )
 from unknown_cause_decomposition import decompose_unknown_cause
 from unknown_failure_intelligence import (
+    PROMOTION_BLOCKER_INDEPENDENT_REPLICATION,
     PROMOTION_BLOCKER_INSUFFICIENT_GT_RERUNS,
     PROMOTION_BLOCKER_INSUFFICIENT_OCCURRENCES,
     summarize_unknown_patterns,
@@ -91,6 +92,7 @@ def test_pinned_serde_http_500_remains_research_only_transient_candidate():
 
     assert pattern.promotion_candidate is False
     assert pattern.promotion_blockers == (
+        PROMOTION_BLOCKER_INDEPENDENT_REPLICATION,
         PROMOTION_BLOCKER_INSUFFICIENT_OCCURRENCES,
         PROMOTION_BLOCKER_INSUFFICIENT_GT_RERUNS,
     )
@@ -99,6 +101,10 @@ def test_pinned_serde_http_500_remains_research_only_transient_candidate():
     assert pattern.mechanism_status == MECHANISM_TRANSIENT_SUPPORTED
     assert pattern.mechanism_causal_gt_reruns == 1
     assert pattern.mechanism_causality_reasons == (REASON_SERVER_5XX,)
+    assert pattern.independent_runs == 1
+    assert pattern.independent_repositories == 1
+    assert pattern.replication_run_ids == (case.run_id,)
+    assert pattern.independent_run_deficit == 1
 
 
 def test_pinned_corpus_metadata_matches_observed_public_run():
