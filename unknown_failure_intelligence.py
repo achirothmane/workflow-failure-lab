@@ -249,16 +249,18 @@ def _promotion_blockers_for(
     causes: tuple[str, ...] = (),
     mechanism_causal_gt_reruns: int = 0,
     independent_runs: int = 0,
+    causal_mechanism_reasons: tuple[str, ...] = (),
 ) -> tuple[str, ...]:
     blockers: list[str] = []
     semantic = assess_semantic_promotion_signature(signature)
     mechanism = assess_transient_mechanism(signature, causes)
+    mechanism_supported = mechanism.supported or bool(causal_mechanism_reasons)
     stable_signature = signature != "unknown without stable evidence"
     if not stable_signature:
         blockers.append(PROMOTION_BLOCKER_NO_STABLE_SIGNATURE)
     elif not semantic.eligible:
         blockers.append(PROMOTION_BLOCKER_SEMANTIC_EVIDENCE)
-    elif not mechanism.supported:
+    elif not mechanism_supported:
         blockers.append(PROMOTION_BLOCKER_TRANSIENT_MECHANISM)
     elif (
         rerun_observations > 0
@@ -289,6 +291,7 @@ def _status_for(
     causes: tuple[str, ...] = (),
     mechanism_causal_gt_reruns: int = 0,
     independent_runs: int = 0,
+    causal_mechanism_reasons: tuple[str, ...] = (),
 ) -> str:
     if side_effect_occurrences:
         return STATUS_SIDE_EFFECT_GUARDED
@@ -296,7 +299,10 @@ def _status_for(
         return STATUS_INSUFFICIENT_EVIDENCE
     if not assess_semantic_promotion_signature(signature).eligible:
         return STATUS_INSUFFICIENT_EVIDENCE
-    if not assess_transient_mechanism(signature, causes).supported:
+    if (
+        not assess_transient_mechanism(signature, causes).supported
+        and not causal_mechanism_reasons
+    ):
         return STATUS_INSUFFICIENT_EVIDENCE
     if (
         rerun_observations > 0
@@ -396,6 +402,18 @@ def summarize_unknown_patterns(
         causes = tuple(sorted(pattern_causes[pattern_id]))
         semantic = assess_semantic_promotion_signature(signature)
         mechanism = assess_transient_mechanism(signature, causes)
+        causal_reasons = tuple(sorted(mechanism_causality_reasons[pattern_id]))
+        effective_mechanism_status = (
+            MECHANISM_TRANSIENT_SUPPORTED if causal_reasons else mechanism.status
+        )
+        effective_mechanism_reasons = (
+            causal_reasons if causal_reasons else mechanism.reasons
+        )
+        effective_mechanism_evidence = (
+            tuple(mechanism_causal_evidence[pattern_id])
+            if causal_reasons
+            else mechanism.transient_evidence
+        )
         replication = assess_independent_replication(
             replication_run_ids[pattern_id],
             replication_repositories[pattern_id],
@@ -409,6 +427,7 @@ def summarize_unknown_patterns(
             causes,
             mechanism_causal_gt_reruns[pattern_id],
             replication.independent_runs,
+            causal_reasons,
         )
         recovery_rate = (
             recoveries[pattern_id] / rerun_observations[pattern_id]
@@ -435,6 +454,7 @@ def summarize_unknown_patterns(
                     causes,
                     mechanism_causal_gt_reruns[pattern_id],
                     replication.independent_runs,
+                    causal_reasons,
                 ),
                 promotion_blocker=(
                     blockers[0] if blockers else PROMOTION_ELIGIBLE
@@ -453,9 +473,9 @@ def summarize_unknown_patterns(
                 semantic_reasons=semantic.reasons,
                 semantic_accepted_segments=semantic.accepted_segments,
                 semantic_rejected_segments=semantic.rejected_segments,
-                mechanism_status=mechanism.status,
-                mechanism_reasons=mechanism.reasons,
-                mechanism_evidence=mechanism.transient_evidence,
+                mechanism_status=effective_mechanism_status,
+                mechanism_reasons=effective_mechanism_reasons,
+                mechanism_evidence=effective_mechanism_evidence,
                 mechanism_causes=causes,
                 mechanism_causal_gt_reruns=mechanism_causal_gt_reruns[pattern_id],
                 mechanism_causality_reasons=tuple(
