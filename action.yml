@@ -294,6 +294,9 @@ outputs:
   benchmark-unknown-promotion-blocker-semantic-evidence-quality:
     description: 'UNKNOWN patterns blocked because their signature contains only generic runner wrappers, successful test lines, command-source text, or otherwise lacks specific failure semantics.'
     value: ${{ steps.benchmark.outputs.benchmark-unknown-promotion-blocker-semantic-evidence-quality }}
+  benchmark-unknown-promotion-blocker-transient-mechanism-evidence:
+    description: 'UNKNOWN patterns blocked because no independent transient mechanism such as timeout, reset, DNS failure, 5xx, rate limiting, or temporary unavailability is evidenced.'
+    value: ${{ steps.benchmark.outputs.benchmark-unknown-promotion-blocker-transient-mechanism-evidence }}
   benchmark-unknown-promotion-blocker-side-effect-contamination:
     description: 'UNKNOWN patterns blocked because at least one occurrence crossed a workflow side-effect boundary.'
     value: ${{ steps.benchmark.outputs.benchmark-unknown-promotion-blocker-side-effect-contamination }}
