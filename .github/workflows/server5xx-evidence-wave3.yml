@@ -1,0 +1,143 @@
+name: SERVER 5XX Evidence Wave 3
+
+on:
+  push:
+    branches:
+      - research/server5xx-evidence-wave3
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  search:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Search SERVER_5XX evidence across 50 more repos
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+          import os
+          from benchmark_mode import collect_repository_samples
+          from ci_retry_gate import GitHubAPI
+          from server5xx_counterexample_search import search_server5xx_counterexamples
+
+          repos = [
+              "kubernetes-sigs/kustomize",
+              "kubernetes-sigs/controller-runtime",
+              "kubernetes-sigs/kind",
+              "prometheus/alertmanager",
+              "grafana/loki",
+              "grafana/tempo",
+              "open-telemetry/opentelemetry-collector",
+              "open-telemetry/opentelemetry-python",
+              "open-telemetry/opentelemetry-java",
+              "grpc/grpc-go",
+              "cloudflare/cloudflared",
+              "tailscale/tailscale",
+              "zeromicro/go-zero",
+              "go-gitea/gitea",
+              "forgejo/forgejo",
+              "syncthing/syncthing",
+              "restic/restic",
+              "rclone/rclone",
+              "hashicorp/nomad",
+              "hashicorp/consul",
+              "terraform-linters/tflint",
+              "pulumi/pulumi",
+              "crossplane/crossplane",
+              "dapr/dapr",
+              "knative/serving",
+              "temporalio/temporal",
+              "apache/arrow",
+              "apache/parquet-mr",
+              "apache/beam",
+              "ray-project/ray",
+              "dask/dask",
+              "scipy/scipy",
+              "sympy/sympy",
+              "jax-ml/jax",
+              "keras-team/keras",
+              "apache/tvm",
+              "mlflow/mlflow",
+              "bentoml/BentoML",
+              "PrefectHQ/prefect",
+              "dagster-io/dagster",
+              "celery/celery",
+              "encode/uvicorn",
+              "aio-libs/aiohttp",
+              "scrapy/scrapy",
+              "python-poetry/poetry",
+              "pypa/pip",
+              "python/cpython",
+              "PyO3/pyo3",
+              "swc-project/swc",
+              "biomejs/biome"
+          ]
+          token = os.environ["INPUT_GITHUB_TOKEN"]
+
+          def collect(repo):
+              api = GitHubAPI(token)
+              try:
+                  _natural, enriched = collect_repository_samples(api, repo, 1, 50, 500)
+                  return repo, enriched, None
+              except RuntimeError as exc:
+                  return repo, None, str(exc)[:240]
+
+          histories, skipped = {}, []
+          with ThreadPoolExecutor(max_workers=5) as pool:
+              futures = [pool.submit(collect, repo) for repo in repos]
+              for future in as_completed(futures):
+                  repo, enriched, error = future.result()
+                  if error:
+                      skipped.append((repo, error))
+                  else:
+                      histories[repo] = enriched
+
+          summary = search_server5xx_counterexamples(histories)
+
+          print("=== SERVER_5XX EVIDENCE WAVE 3 ===")
+          print(f"repositories_analyzed={len(histories)}")
+          print(f"repositories_skipped={len(skipped)}")
+          print(f"causal_matches={len(summary.matches)}")
+          print(f"evaluable_matches={len(summary.evaluable_matches)}")
+          print(f"validated_recoveries={summary.validated_recoveries}")
+          print(f"failed_again={summary.failed_again}")
+          print(f"unknown_outcomes={summary.unknown_outcomes}")
+          print(f"observed_recovery_rate={summary.observed_recovery_rate:.6f}")
+          print(f"classification_contradictions={len(summary.classification_contradictions)}")
+          print(f"side_effect_matches={summary.side_effect_matches}")
+          print(f"independent_runs={summary.independent_runs}")
+          print(f"independent_repositories={summary.independent_repositories}")
+          print(f"category_counts={summary.category_counts!r}")
+
+          safe = [x for x in summary.evaluable_matches if not x.side_effect_risk]
+          print(f"authority_safe_evaluable_matches={len(safe)}")
+
+          for item in summary.evaluable_matches:
+              print(
+                  f"EVALUABLE repo={item.repository} run_id={item.run_id} job={item.job_name!r} "
+                  f"category={item.category} outcome={item.recovery_status} "
+                  f"side_effect={item.side_effect_risk} signature={item.signature.replace('##[','GH_ANNOTATION[')!r}"
+              )
+              for evidence in item.evidence:
+                  print(f"EVIDENCE {evidence.replace('##[','GH_ANNOTATION[')}")
+
+          for item in summary.outcome_counterexamples:
+              print(
+                  f"OUTCOME_COUNTEREXAMPLE repo={item.repository} run_id={item.run_id} "
+                  f"job={item.job_name!r} category={item.category}"
+              )
+
+          for item in summary.classification_contradictions:
+              print(
+                  f"CLASSIFICATION_CONTRADICTION repo={item.repository} run_id={item.run_id} "
+                  f"job={item.job_name!r} category={item.category} outcome={item.recovery_status}"
+              )
+
+          for repo, error in sorted(skipped):
+              print(f"SKIPPED repo={repo} error={error!r}")
+          PY
