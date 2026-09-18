@@ -19,6 +19,7 @@ from ci_retry_gate import (
     detect_side_effect_risk,
     job_duration_minutes,
 )
+from mechanism_causality_gate import assess_mechanism_causality
 from history_ci_waste import (
     HistoricalFailure,
     _jobs_for_attempt,
@@ -312,6 +313,7 @@ def _collect_failures_for_runs(
             )
             provenance = assess_execution_provenance(job, log_text, classification)
             failure_step = assess_failure_step_provenance(job)
+            mechanism_causality = assess_mechanism_causality(job, log_text)
             unknown_cause = ""
             unknown_cause_evidence: tuple[str, ...] = ()
             if classification.category == "UNKNOWN":
@@ -373,6 +375,9 @@ def _collect_failures_for_runs(
                     ambiguous_evidence_count=ambiguous_evidence_count,
                     unknown_cause=unknown_cause,
                     unknown_cause_evidence=unknown_cause_evidence,
+                    mechanism_causality_status=mechanism_causality.status,
+                    mechanism_causality_reasons=mechanism_causality.reasons,
+                    mechanism_causal_evidence=mechanism_causality.evidence,
                 )
             )
 
