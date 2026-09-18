@@ -40,10 +40,12 @@ def _failure(
     if recovery_status is None:
         if not observed:
             recovery_status = RECOVERY_NOT_OBSERVED
-        elif recovered:
-            recovery_status = RECOVERY_VALIDATED
-        else:
+        elif not recovered:
             recovery_status = RECOVERY_NOT_RECOVERED
+        elif provenance != "CONFIRMED":
+            recovery_status = RECOVERY_UNVERIFIED
+        else:
+            recovery_status = RECOVERY_VALIDATED
     return HistoricalFailure(
         run_id=run_id,
         job_name="test",
@@ -461,8 +463,9 @@ def test_rerun_candidate_requires_confirmed_execution_provenance():
     assert summary.rerun_candidates == 1
     by_reason = {item.reason: item for item in summary.rejections}
     assert by_reason[REJECTION_UNCONFIRMED_PROVENANCE].blocked == 2
-    assert by_reason[REJECTION_UNCONFIRMED_PROVENANCE].recovered == 1
+    assert by_reason[REJECTION_UNCONFIRMED_PROVENANCE].recovered == 0
     assert by_reason[REJECTION_UNCONFIRMED_PROVENANCE].failed_again == 1
+    assert by_reason[REJECTION_UNCONFIRMED_PROVENANCE].unknown_outcomes == 1
 
 
 def test_rerun_precision_excludes_unverified_later_success():
