@@ -75,7 +75,6 @@ jobs:
                   f"repositories={cause.repositories} gt_reruns={cause.rerun_observations} "
                   f"validated_recoveries={cause.recoveries} failed_again={cause.failed_again} "
                   f"unknown_or_unverified={cause.unknown_outcomes} "
-                  f"side_effects={cause.side_effect_occurrences} "
-                  f"examples={cause.examples!r}"
+                  f"side_effects={cause.side_effect_occurrences}"
               )
           PY
