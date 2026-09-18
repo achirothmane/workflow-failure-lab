@@ -1,0 +1,94 @@
+name: Recovery Ground Truth 30 Repo Benchmark
+
+on:
+  push:
+    branches:
+      - test/recovery-ground-truth-benchmark
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run parallel benchmark
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          from collections import Counter
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+          import os
+          from benchmark_mode import collect_repository_samples, summarize_benchmark
+          from ci_retry_gate import GitHubAPI
+
+          repos = [
+              "pallets/flask","psf/requests","pytest-dev/pytest","axios/axios","pnpm/pnpm",
+              "docker/compose","golangci/golangci-lint","astral-sh/ruff","serde-rs/serde",
+              "hashicorp/terraform","django/django","fastapi/fastapi","encode/httpx",
+              "tiangolo/sqlmodel","numpy/numpy","pandas-dev/pandas","pydantic/pydantic",
+              "nodejs/node","denoland/deno","vitejs/vite","vercel/next.js","microsoft/TypeScript",
+              "rust-lang/cargo","tokio-rs/tokio","BurntSushi/ripgrep","kubernetes/kubernetes",
+              "helm/helm","prometheus/prometheus","grafana/grafana","hashicorp/vault"
+          ]
+          token = os.environ["INPUT_GITHUB_TOKEN"]
+
+          def collect(repo):
+              api = GitHubAPI(token)
+              try:
+                  natural, enriched = collect_repository_samples(api, repo, 5, 20, 150)
+                  return repo, natural, enriched, None
+              except RuntimeError as exc:
+                  return repo, None, None, str(exc)[:240]
+
+          histories, rerun_histories, skipped = {}, {}, []
+          with ThreadPoolExecutor(max_workers=5) as pool:
+              futures = [pool.submit(collect, repo) for repo in repos]
+              for future in as_completed(futures):
+                  repo, natural, enriched, error = future.result()
+                  if error:
+                      skipped.append((repo, error))
+                  else:
+                      histories[repo] = natural
+                      rerun_histories[repo] = enriched
+
+          summary = summarize_benchmark(
+              histories,
+              rerun_histories=rerun_histories,
+              repositories_requested=len(repos),
+              skipped=tuple(sorted(skipped)),
+          )
+
+          statuses = Counter()
+          raw_successes = 0
+          for repo, (failures, _runs) in rerun_histories.items():
+              for item in failures:
+                  statuses[item.recovery_status] += 1
+                  raw_successes += int(item.rerun_observed and item.recovered_after_rerun)
+
+          print("=== RECOVERY GROUND TRUTH BENCHMARK ===")
+          print(f"repositories_analyzed={summary.repositories_analyzed}")
+          print(f"repositories_skipped={summary.repositories_skipped}")
+          print(f"natural_failed_jobs={summary.failed_jobs}")
+          print(f"natural_shadow_decisions={summary.decisions}")
+          print(f"rerun_failed_jobs={summary.rerun_failed_jobs}")
+          print(f"raw_later_successes={raw_successes}")
+          for status, count in sorted(statuses.items()):
+              print(f"recovery_status={status} count={count}")
+          print(f"rerun_candidates={summary.rerun_candidates}")
+          print(f"rerun_evaluated={summary.rerun_evaluated}")
+          print(f"validated_recoveries={summary.rerun_recoveries}")
+          print(f"failed_reruns={summary.rerun_false_positives}")
+          print(f"unknown_or_unverified={summary.rerun_unknown_outcomes}")
+          print(f"ground_truth_precision={summary.rerun_observed_precision:.4f}")
+          for item in summary.rejections:
+              print(
+                  f"rejection={item.reason} blocked={item.blocked} "
+                  f"validated_recovered={item.recovered} failed_again={item.failed_again} "
+                  f"unknown={item.unknown_outcomes}"
+              )
+          print(f"unknown_promotion_candidates={len(summary.unknown_intelligence.promotion_candidates)}")
+          PY
