@@ -1,0 +1,33 @@
+name: Causal Dominance Positive Control
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate pinned positive and deterministic negative controls
+        run: python3 causal_dominance_validation.py
+
+      - name: Run 50-repository holdout shadow
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          INPUT_DOMINANCE_RERUN_RUNS: '50'
+          INPUT_DOMINANCE_SEARCH_RUNS: '500'
+          INPUT_DOMINANCE_WORKERS: '5'
+          INPUT_DOMINANCE_RESULT_PATH: /tmp/causal-dominance-holdout.json
+        run: python3 causal_dominance_shadow.py
+
+      - name: Evaluate combined positive-control and holdout gate
+        run: |
+          python3 causal_dominance_validation.py \
+            --holdout-json /tmp/causal-dominance-holdout.json \
+            --require-clean-holdout
