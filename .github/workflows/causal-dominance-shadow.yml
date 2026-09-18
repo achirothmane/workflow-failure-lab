@@ -1,0 +1,39 @@
+name: Causal Dominance Shadow
+
+on:
+  workflow_dispatch:
+    inputs:
+      repositories:
+        description: 'Optional owner/name list; leave blank for the curated 50-repository holdout set'
+        required: false
+        type: string
+      rerun_runs:
+        description: 'Maximum rerun-enriched runs per repository'
+        required: false
+        default: '50'
+        type: string
+      search_runs:
+        description: 'Completed-run history window searched per repository'
+        required: false
+        default: '500'
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  shadow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Evaluate causal dominance as a shadow-only override
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          INPUT_DOMINANCE_REPOSITORIES: ${{ inputs.repositories }}
+          INPUT_DOMINANCE_RERUN_RUNS: ${{ inputs.rerun_runs }}
+          INPUT_DOMINANCE_SEARCH_RUNS: ${{ inputs.search_runs }}
+          INPUT_DOMINANCE_WORKERS: '5'
+        run: python3 causal_dominance_shadow.py
