@@ -300,6 +300,9 @@ outputs:
   benchmark-unknown-promotion-blocker-mechanism-causality-evidence:
     description: 'UNKNOWN patterns blocked because transient mechanism tokens were not causally bound inside every ground-truth-evaluable failed-step sample.'
     value: ${{ steps.benchmark.outputs.benchmark-unknown-promotion-blocker-mechanism-causality-evidence }}
+  benchmark-unknown-promotion-blocker-independent-replication:
+    description: 'UNKNOWN patterns blocked because causally supported ground-truth evidence has not replicated across at least two distinct workflow run IDs.'
+    value: ${{ steps.benchmark.outputs.benchmark-unknown-promotion-blocker-independent-replication }}
   benchmark-unknown-promotion-blocker-side-effect-contamination:
     description: 'UNKNOWN patterns blocked because at least one occurrence crossed a workflow side-effect boundary.'
     value: ${{ steps.benchmark.outputs.benchmark-unknown-promotion-blocker-side-effect-contamination }}

@@ -7,6 +7,11 @@ from dataclasses import dataclass
 
 from ci_retry_gate import redact
 from history_ci_waste import HistoricalFailure, normalize_signature_line
+from independent_replication_gate import (
+    MIN_INDEPENDENT_RUNS,
+    REPLICATION_CONFIRMED,
+    assess_independent_replication,
+)
 from mechanism_causality_gate import MECHANISM_CAUSAL_CONFIRMED
 from recovery_ground_truth import (
     RECOVERY_NOT_RECOVERED,
@@ -55,6 +60,7 @@ PROMOTION_BLOCKER_SIDE_EFFECT = "SIDE_EFFECT_CONTAMINATION"
 PROMOTION_BLOCKER_SEMANTIC_EVIDENCE = "SEMANTIC_EVIDENCE_QUALITY"
 PROMOTION_BLOCKER_TRANSIENT_MECHANISM = "TRANSIENT_MECHANISM_EVIDENCE"
 PROMOTION_BLOCKER_MECHANISM_CAUSALITY = "MECHANISM_CAUSALITY_EVIDENCE"
+PROMOTION_BLOCKER_INDEPENDENT_REPLICATION = "INDEPENDENT_REPLICATION"
 PROMOTION_ELIGIBLE = "ELIGIBLE_FOR_CLASSIFIER_RESEARCH"
 
 
@@ -86,6 +92,12 @@ class UnknownPattern:
     mechanism_causal_gt_reruns: int = 0
     mechanism_causality_reasons: tuple[str, ...] = ()
     mechanism_causal_evidence: tuple[str, ...] = ()
+    replication_status: str = ""
+    independent_runs: int = 0
+    independent_repositories: int = 0
+    replication_run_ids: tuple[int, ...] = ()
+    replication_repositories: tuple[str, ...] = ()
+    independent_run_deficit: int = MIN_INDEPENDENT_RUNS
 
     @property
     def recovery_rate(self) -> float:
@@ -236,6 +248,7 @@ def _promotion_blockers_for(
     signature: str,
     causes: tuple[str, ...] = (),
     mechanism_causal_gt_reruns: int = 0,
+    independent_runs: int = 0,
 ) -> tuple[str, ...]:
     blockers: list[str] = []
     semantic = assess_semantic_promotion_signature(signature)
@@ -252,6 +265,8 @@ def _promotion_blockers_for(
         and mechanism_causal_gt_reruns < rerun_observations
     ):
         blockers.append(PROMOTION_BLOCKER_MECHANISM_CAUSALITY)
+    elif rerun_observations > 0 and independent_runs < MIN_INDEPENDENT_RUNS:
+        blockers.append(PROMOTION_BLOCKER_INDEPENDENT_REPLICATION)
     if occurrences < MIN_UNKNOWN_OCCURRENCES:
         blockers.append(PROMOTION_BLOCKER_INSUFFICIENT_OCCURRENCES)
     if rerun_observations < MIN_UNKNOWN_RERUN_SAMPLES:
@@ -273,6 +288,7 @@ def _status_for(
     signature: str,
     causes: tuple[str, ...] = (),
     mechanism_causal_gt_reruns: int = 0,
+    independent_runs: int = 0,
 ) -> str:
     if side_effect_occurrences:
         return STATUS_SIDE_EFFECT_GUARDED
@@ -286,6 +302,8 @@ def _status_for(
         rerun_observations > 0
         and mechanism_causal_gt_reruns < rerun_observations
     ):
+        return STATUS_INSUFFICIENT_EVIDENCE
+    if rerun_observations > 0 and independent_runs < MIN_INDEPENDENT_RUNS:
         return STATUS_INSUFFICIENT_EVIDENCE
     if occurrences < MIN_UNKNOWN_OCCURRENCES or rerun_observations < MIN_UNKNOWN_RERUN_SAMPLES:
         return STATUS_INSUFFICIENT_EVIDENCE
@@ -311,6 +329,8 @@ def summarize_unknown_patterns(
     mechanism_causal_gt_reruns: dict[str, int] = defaultdict(int)
     mechanism_causality_reasons: dict[str, set[str]] = defaultdict(set)
     mechanism_causal_evidence: dict[str, list[str]] = defaultdict(list)
+    replication_run_ids: dict[str, set[int]] = defaultdict(set)
+    replication_repositories: dict[str, set[str]] = defaultdict(set)
 
     cause_occurrences: dict[str, int] = defaultdict(int)
     cause_repos: dict[str, set[str]] = defaultdict(set)
@@ -349,6 +369,8 @@ def summarize_unknown_patterns(
                         cause_rerun_observations[cause] += 1
                         if item.mechanism_causality_status == MECHANISM_CAUSAL_CONFIRMED:
                             mechanism_causal_gt_reruns[pattern_id] += 1
+                            replication_run_ids[pattern_id].add(item.run_id)
+                            replication_repositories[pattern_id].add(repo)
                             mechanism_causality_reasons[pattern_id].update(
                                 item.mechanism_causality_reasons
                             )
@@ -374,6 +396,10 @@ def summarize_unknown_patterns(
         causes = tuple(sorted(pattern_causes[pattern_id]))
         semantic = assess_semantic_promotion_signature(signature)
         mechanism = assess_transient_mechanism(signature, causes)
+        replication = assess_independent_replication(
+            replication_run_ids[pattern_id],
+            replication_repositories[pattern_id],
+        )
         blockers = _promotion_blockers_for(
             count,
             rerun_observations[pattern_id],
@@ -382,6 +408,7 @@ def summarize_unknown_patterns(
             signature,
             causes,
             mechanism_causal_gt_reruns[pattern_id],
+            replication.independent_runs,
         )
         recovery_rate = (
             recoveries[pattern_id] / rerun_observations[pattern_id]
@@ -407,6 +434,7 @@ def summarize_unknown_patterns(
                     signature,
                     causes,
                     mechanism_causal_gt_reruns[pattern_id],
+                    replication.independent_runs,
                 ),
                 promotion_blocker=(
                     blockers[0] if blockers else PROMOTION_ELIGIBLE
@@ -436,6 +464,12 @@ def summarize_unknown_patterns(
                 mechanism_causal_evidence=tuple(
                     mechanism_causal_evidence[pattern_id]
                 ),
+                replication_status=replication.status,
+                independent_runs=replication.independent_runs,
+                independent_repositories=replication.independent_repositories,
+                replication_run_ids=replication.run_ids,
+                replication_repositories=replication.repositories,
+                independent_run_deficit=replication.run_deficit,
             )
         )
 
