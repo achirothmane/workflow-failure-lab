@@ -234,11 +234,12 @@ def _promotion_blockers_for(
     blockers: list[str] = []
     semantic = assess_semantic_promotion_signature(signature)
     mechanism = assess_transient_mechanism(signature, causes)
-    if signature == "unknown without stable evidence":
+    stable_signature = signature != "unknown without stable evidence"
+    if not stable_signature:
         blockers.append(PROMOTION_BLOCKER_NO_STABLE_SIGNATURE)
-    if not semantic.eligible:
+    elif not semantic.eligible:
         blockers.append(PROMOTION_BLOCKER_SEMANTIC_EVIDENCE)
-    if not mechanism.supported:
+    elif not mechanism.supported:
         blockers.append(PROMOTION_BLOCKER_TRANSIENT_MECHANISM)
     if occurrences < MIN_UNKNOWN_OCCURRENCES:
         blockers.append(PROMOTION_BLOCKER_INSUFFICIENT_OCCURRENCES)
