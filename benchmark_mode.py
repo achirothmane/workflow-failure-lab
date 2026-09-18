@@ -46,6 +46,7 @@ from coverage_attribution import (
     summarize_coverage_attribution,
 )
 from policy_shadow import simulate_shadow
+from unknown_cause_decomposition import decompose_unknown_cause
 from unknown_failure_intelligence import (
     UnknownIntelligenceSummary,
     summarize_unknown_patterns,
@@ -301,8 +302,13 @@ def _collect_failures_for_runs(
                 for line in classification.evidence
             )
             provenance = assess_execution_provenance(job, log_text, classification)
+            unknown_cause = ""
+            unknown_cause_evidence: tuple[str, ...] = ()
             if classification.category == "UNKNOWN":
                 signature = unknown_signature(log_text)
+                cause = decompose_unknown_cause(log_text)
+                unknown_cause = cause.cause
+                unknown_cause_evidence = cause.matched_evidence or cause.evidence
                 unknown_evidence = (
                     tuple() if signature == "unknown without stable evidence" else (signature,)
                 )
@@ -353,6 +359,8 @@ def _collect_failures_for_runs(
                     recovery_evidence=recovery.evidence,
                     causal_evidence_count=causal_evidence_count,
                     ambiguous_evidence_count=ambiguous_evidence_count,
+                    unknown_cause=unknown_cause,
+                    unknown_cause_evidence=unknown_cause_evidence,
                 )
             )
 
