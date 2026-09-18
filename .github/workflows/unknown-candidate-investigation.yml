@@ -15,20 +15,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - id: gate
-        uses: ./
-        with:
-          github-token: ${{ github.token }}
-          auto-rerun: 'false'
-          selective-rerun: 'false'
-          policy-shadow-mode: 'false'
-          history-runs: '0'
-          comment-on-pr: 'false'
-          benchmark-mode: 'true'
-          benchmark-runs: '5'
-          benchmark-rerun-runs: '20'
-          benchmark-rerun-search-runs: '150'
-          benchmark-repositories: |
+      - name: Print UNKNOWN intelligence report directly
+        shell: bash
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          INPUT_BENCHMARK_RUNS: '5'
+          INPUT_BENCHMARK_RERUN_RUNS: '20'
+          INPUT_BENCHMARK_RERUN_SEARCH_RUNS: '150'
+          INPUT_BENCHMARK_REPOSITORIES: |
             pallets/flask
             psf/requests
             pytest-dev/pytest
@@ -59,9 +53,5 @@ jobs:
             prometheus/prometheus
             grafana/grafana
             hashicorp/vault
-      - name: Show UNKNOWN candidate report rows
-        shell: bash
         run: |
-          echo "candidate_ids=${{ steps.gate.outputs.benchmark-unknown-promotion-candidate-ids }}"
-          echo "--- unknown intelligence report ---"
-          sed -n '/### Unknown Failure Intelligence/,/### Rerun-enriched results by failure category/p' "$GITHUB_STEP_SUMMARY"
+          GITHUB_STEP_SUMMARY="" python3 benchmark_mode.py
