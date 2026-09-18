@@ -12,6 +12,10 @@ from recovery_ground_truth import (
     is_ground_truth_evaluable,
     is_validated_recovery,
 )
+from semantic_promotion_gate import (
+    SEMANTIC_PROMOTION_ELIGIBLE,
+    assess_semantic_promotion_signature,
+)
 
 _ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 _RUNNER_TIMESTAMP_RE = re.compile(
@@ -43,6 +47,7 @@ PROMOTION_BLOCKER_INSUFFICIENT_OCCURRENCES = "INSUFFICIENT_OCCURRENCES"
 PROMOTION_BLOCKER_INSUFFICIENT_GT_RERUNS = "INSUFFICIENT_GT_RERUNS"
 PROMOTION_BLOCKER_RECOVERY_RATE = "RECOVERY_RATE_BELOW_THRESHOLD"
 PROMOTION_BLOCKER_SIDE_EFFECT = "SIDE_EFFECT_CONTAMINATION"
+PROMOTION_BLOCKER_SEMANTIC_EVIDENCE = "SEMANTIC_EVIDENCE_QUALITY"
 PROMOTION_ELIGIBLE = "ELIGIBLE_FOR_CLASSIFIER_RESEARCH"
 
 
@@ -63,6 +68,10 @@ class UnknownPattern:
     occurrence_deficit: int = 0
     gt_rerun_deficit: int = 0
     recovery_rate_deficit: float = 0.0
+    semantic_status: str = SEMANTIC_PROMOTION_ELIGIBLE
+    semantic_reasons: tuple[str, ...] = ()
+    semantic_accepted_segments: tuple[str, ...] = ()
+    semantic_rejected_segments: tuple[str, ...] = ()
 
     @property
     def recovery_rate(self) -> float:
@@ -213,8 +222,11 @@ def _promotion_blockers_for(
     signature: str,
 ) -> tuple[str, ...]:
     blockers: list[str] = []
+    semantic = assess_semantic_promotion_signature(signature)
     if signature == "unknown without stable evidence":
         blockers.append(PROMOTION_BLOCKER_NO_STABLE_SIGNATURE)
+    if not semantic.eligible:
+        blockers.append(PROMOTION_BLOCKER_SEMANTIC_EVIDENCE)
     if occurrences < MIN_UNKNOWN_OCCURRENCES:
         blockers.append(PROMOTION_BLOCKER_INSUFFICIENT_OCCURRENCES)
     if rerun_observations < MIN_UNKNOWN_RERUN_SAMPLES:
@@ -238,6 +250,8 @@ def _status_for(
     if side_effect_occurrences:
         return STATUS_SIDE_EFFECT_GUARDED
     if signature == "unknown without stable evidence":
+        return STATUS_INSUFFICIENT_EVIDENCE
+    if not assess_semantic_promotion_signature(signature).eligible:
         return STATUS_INSUFFICIENT_EVIDENCE
     if occurrences < MIN_UNKNOWN_OCCURRENCES or rerun_observations < MIN_UNKNOWN_RERUN_SAMPLES:
         return STATUS_INSUFFICIENT_EVIDENCE
@@ -307,6 +321,7 @@ def summarize_unknown_patterns(
     patterns: list[UnknownPattern] = []
     for pattern_id, count in occurrences.items():
         signature = signatures[pattern_id]
+        semantic = assess_semantic_promotion_signature(signature)
         blockers = _promotion_blockers_for(
             count,
             rerun_observations[pattern_id],
@@ -350,6 +365,10 @@ def summarize_unknown_patterns(
                     0.0,
                     MIN_UNKNOWN_RECOVERY_RATE - recovery_rate,
                 ),
+                semantic_status=semantic.status,
+                semantic_reasons=semantic.reasons,
+                semantic_accepted_segments=semantic.accepted_segments,
+                semantic_rejected_segments=semantic.rejected_segments,
             )
         )
 

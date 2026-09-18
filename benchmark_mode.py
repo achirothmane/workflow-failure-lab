@@ -53,6 +53,7 @@ from unknown_failure_intelligence import (
     PROMOTION_BLOCKER_INSUFFICIENT_OCCURRENCES,
     PROMOTION_BLOCKER_NO_STABLE_SIGNATURE,
     PROMOTION_BLOCKER_RECOVERY_RATE,
+    PROMOTION_BLOCKER_SEMANTIC_EVIDENCE,
     PROMOTION_BLOCKER_SIDE_EFFECT,
     PROMOTION_ELIGIBLE,
     UnknownIntelligenceSummary,
@@ -806,14 +807,15 @@ def render_benchmark_report(summary: BenchmarkSummary) -> str:
                 "",
                 "#### UNKNOWN Pattern Promotion Readiness",
                 "",
-                "| Pattern | Occurrences | Repositories | GT reruns | Recoveries | Recovery rate | Primary blocker | All blockers | Gap | Signature |",
-                "|---|---:|---:|---:|---:|---:|---|---|---|---|",
+                "| Pattern | Occurrences | Repositories | GT reruns | Recoveries | Recovery rate | Primary blocker | Semantic reasons | All blockers | Gap | Signature |",
+                "|---|---:|---:|---:|---:|---:|---|---|---|---|---|",
             ]
         )
 
         for item in unknown.patterns[:20]:
             safe_signature = item.signature.replace("|", "/")
             blockers = ", ".join(item.promotion_blockers) or PROMOTION_ELIGIBLE
+            semantic_reasons = ", ".join(item.semantic_reasons) or "specific failure evidence"
             gaps: list[str] = []
             if item.occurrence_deficit:
                 gaps.append(f"+{item.occurrence_deficit} occurrence(s)")
@@ -831,7 +833,7 @@ def render_benchmark_report(summary: BenchmarkSummary) -> str:
                 f"| `{item.pattern_id}` | {item.occurrences} | {item.repositories} | "
                 f"{item.rerun_observations} | {item.recoveries} | "
                 f"{item.recovery_rate:.1%} | `{item.promotion_blocker}` | "
-                f"{blockers} | {gap_text} | {safe_signature} |"
+                f"{semantic_reasons} | {blockers} | {gap_text} | {safe_signature} |"
             )
         lines.extend(
             [
@@ -1112,6 +1114,7 @@ def main() -> int:
         PROMOTION_BLOCKER_INSUFFICIENT_OCCURRENCES,
         PROMOTION_BLOCKER_INSUFFICIENT_GT_RERUNS,
         PROMOTION_BLOCKER_RECOVERY_RATE,
+        PROMOTION_BLOCKER_SEMANTIC_EVIDENCE,
         PROMOTION_BLOCKER_SIDE_EFFECT,
         PROMOTION_ELIGIBLE,
     ):
