@@ -1,0 +1,35 @@
+name: Benchmark 30 Repositories After Noise Fixes
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/benchmark-30-trigger.txt'
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run 30-repository benchmark
+        shell: bash
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          INPUT_BENCHMARK_REPOSITORIES: >-
+            pallets/flask psf/requests pytest-dev/pytest axios/axios pnpm/pnpm
+            docker/compose golangci/golangci-lint astral-sh/ruff serde-rs/serde
+            hashicorp/terraform django/django fastapi/fastapi encode/httpx
+            tiangolo/sqlmodel numpy/numpy pandas-dev/pandas pydantic/pydantic
+            nodejs/node denoland/deno vitejs/vite vercel/next.js microsoft/TypeScript
+            rust-lang/cargo tokio-rs/tokio BurntSushi/ripgrep kubernetes/kubernetes
+            helm/helm prometheus/prometheus grafana/grafana hashicorp/vault
+          INPUT_BENCHMARK_RUNS: '5'
+          INPUT_BENCHMARK_RERUN_RUNS: '20'
+          INPUT_BENCHMARK_RERUN_SEARCH_RUNS: '150'
+          GITHUB_STEP_SUMMARY: ''
+        run: python3 benchmark_mode.py
