@@ -1,7 +1,7 @@
 import http.client
 
 import ci_retry_gate
-from ci_retry_gate import AMBIGUOUS, CAUSAL, NON_CAUSAL, PROVENANCE_CONFIRMED, PROVENANCE_MISMATCH, PROVENANCE_UNAVAILABLE, TRANSIENT_CATEGORIES, GitHubAPI, assess_job, causal_evidence_role, classify_log, detect_side_effect_risk, rerun_decision
+from ci_retry_gate import AMBIGUOUS, CAUSAL, FAILURE_STEP_AMBIGUOUS, FAILURE_STEP_CONFIRMED, NON_CAUSAL, PROVENANCE_CONFIRMED, PROVENANCE_MISMATCH, PROVENANCE_UNAVAILABLE, TRANSIENT_CATEGORIES, GitHubAPI, assess_failure_step_provenance, assess_job, causal_evidence_role, classify_log, detect_side_effect_risk, rerun_decision
 
 
 def fake_job(name="tests", steps=None, start="2026-09-17T01:00:00Z", end="2026-09-17T01:04:30Z"):
@@ -380,4 +380,33 @@ def test_git_push_step_is_side_effect():
     )
     assert risk is True
     assert evidence == ("git push origin HEAD",)
+
+
+def test_failure_step_provenance_is_independent_from_unknown_classification():
+    job = fake_job("mystery", [failed_step("Mystery operation")])
+    assessment = assess_job(job, "Error: mysterious subsystem exploded")
+
+    assert assessment.category == "UNKNOWN"
+    assert assessment.failure_step_status == FAILURE_STEP_CONFIRMED
+    assert assessment.failure_step == "Mystery operation"
+
+    safe, _ = rerun_decision([assessment], run_attempt=1, max_attempts=2)
+    assert safe is False
+
+
+def test_failure_step_provenance_is_ambiguous_with_multiple_failed_steps():
+    result = assess_failure_step_provenance(
+        fake_job(
+            "multi",
+            [
+                failed_step("Step A"),
+                failed_step("Step B"),
+            ],
+        )
+    )
+
+    assert result.status == FAILURE_STEP_AMBIGUOUS
+    assert result.step_name == ""
+    assert "Step A" in result.evidence[0]
+    assert "Step B" in result.evidence[0]
 
