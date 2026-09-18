@@ -831,3 +831,41 @@ def test_cross_repository_replication_is_tracked_without_becoming_mandatory():
     assert pattern.replication_repositories == ("acme/repo", "other/project")
     assert pattern.promotion_candidate is True
 
+
+def test_causal_server_5xx_evidence_survives_numeric_signature_normalization():
+    signature = "##[error]unexpected http response: <n>"
+    reruns = {
+        "acme/repo": (
+            [
+                _unknown(
+                    101,
+                    signature=signature,
+                    recovered=True,
+                    mechanism_causality_reasons=("SERVER_5XX",),
+                ),
+                _unknown(
+                    202,
+                    signature=signature,
+                    recovered=True,
+                    mechanism_causality_reasons=("SERVER_5XX",),
+                ),
+                _unknown(
+                    303,
+                    signature=signature,
+                    recovered=True,
+                    mechanism_causality_reasons=("SERVER_5XX",),
+                ),
+            ],
+            3,
+        )
+    }
+
+    pattern = summarize_unknown_patterns({}, reruns).patterns[0]
+
+    assert pattern.mechanism_status == "TRANSIENT_MECHANISM_SUPPORTED"
+    assert pattern.mechanism_reasons == ("SERVER_5XX",)
+    assert pattern.mechanism_causal_gt_reruns == 3
+    assert pattern.independent_runs == 3
+    assert pattern.promotion_candidate is True
+    assert pattern.promotion_blockers == ()
+
