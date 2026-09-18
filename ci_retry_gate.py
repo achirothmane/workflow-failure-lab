@@ -10,7 +10,7 @@ import urllib.error
 import urllib.request
 from urllib.parse import urlparse
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Iterable
 
@@ -35,6 +35,15 @@ _RUNNER_TIMESTAMP_RE = re.compile(
 CAUSAL = "CAUSAL"
 AMBIGUOUS = "AMBIGUOUS"
 NON_CAUSAL = "NON_CAUSAL"
+
+PROVENANCE_CONFIRMED = "CONFIRMED"
+PROVENANCE_UNAVAILABLE = "UNAVAILABLE"
+PROVENANCE_MISMATCH = "MISMATCH"
+PROVENANCE_NOT_APPLICABLE = "NOT_APPLICABLE"
+
+_RUNNER_TIMESTAMP_CAPTURE_RE = re.compile(
+    r"^(?P<timestamp>\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z)\\s+"
+)
 
 _NON_CAUSAL_LOG_PATTERNS = tuple(
     re.compile(pattern, re.IGNORECASE)
@@ -174,12 +183,24 @@ class Classification:
 
 
 @dataclass(frozen=True)
+class ExecutionProvenance:
+    status: str
+    step_name: str = ""
+    command: str = ""
+    evidence: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class JobAssessment:
     job_id: int
     name: str
     category: str
     confidence: str
     evidence: tuple[str, ...]
+    provenance_status: str
+    provenance_step: str
+    provenance_command: str
+    provenance_evidence: tuple[str, ...]
     side_effect_risk: bool
     side_effect_evidence: tuple[str, ...]
     duration_minutes: float
@@ -313,8 +334,112 @@ def job_duration_minutes(job: dict) -> float:
     return round((end - start).total_seconds() / 60.0, 2)
 
 
+def _raw_line_timestamp(raw_line: str) -> datetime | None:
+    match = _RUNNER_TIMESTAMP_CAPTURE_RE.match(raw_line)
+    if not match:
+        return None
+    return _parse_time(match.group("timestamp"))
+
+
+def _step_command_in_window(log_text: str, start: datetime, end: datetime) -> str:
+    for raw_line in log_text.splitlines():
+        timestamp = _raw_line_timestamp(raw_line)
+        if timestamp is None or timestamp < start or timestamp > end:
+            continue
+        cleaned = _useful_line(raw_line)
+        match = re.match(r"^##\[group\]Run\s+(.+)$", cleaned, re.IGNORECASE)
+        if match:
+            return match.group(1).strip()[:220]
+    return ""
+
+
+def assess_execution_provenance(
+    job: dict,
+    log_text: str,
+    classification: Classification,
+) -> ExecutionProvenance:
+    """Bind transient failure evidence to the GitHub step that actually failed."""
+    if classification.category not in TRANSIENT_CATEGORIES or classification.confidence != "high":
+        return ExecutionProvenance(PROVENANCE_NOT_APPLICABLE)
+
+    failed_steps = [
+        step for step in (job.get("steps") or [])
+        if str(step.get("conclusion") or "").lower() in FAILURE_CONCLUSIONS
+    ]
+    if not failed_steps:
+        return ExecutionProvenance(
+            PROVENANCE_UNAVAILABLE,
+            evidence=("No failed-step metadata was available.",),
+        )
+
+    evidence_lines = set(classification.evidence)
+    timestamped_evidence: list[tuple[datetime, str]] = []
+    exit_lines: list[tuple[datetime, str]] = []
+    for raw_line in log_text.splitlines():
+        timestamp = _raw_line_timestamp(raw_line)
+        if timestamp is None:
+            continue
+        cleaned = _useful_line(raw_line)
+        if cleaned in evidence_lines:
+            timestamped_evidence.append((timestamp, cleaned))
+        if re.match(r"^process completed with exit code\b", cleaned, re.IGNORECASE):
+            exit_lines.append((timestamp, cleaned))
+
+    if not timestamped_evidence:
+        return ExecutionProvenance(
+            PROVENANCE_UNAVAILABLE,
+            evidence=("Transient evidence had no GitHub runner timestamp.",),
+        )
+
+    usable_windows = 0
+    for step in failed_steps:
+        start = _parse_time(step.get("started_at"))
+        end = _parse_time(step.get("completed_at"))
+        if start is None or end is None or end < start:
+            continue
+        usable_windows += 1
+        window_start = start - timedelta(seconds=2)
+        window_end = end + timedelta(seconds=2)
+        matched = [
+            line for timestamp, line in timestamped_evidence
+            if window_start <= timestamp <= window_end
+        ]
+        if not matched:
+            continue
+
+        command = _step_command_in_window(log_text, window_start, window_end)
+        proof: list[str] = [f"failed step: {step.get('name') or 'unnamed step'}"]
+        if command:
+            proof.append(f"command: {command}")
+        for line in matched[:2]:
+            proof.append(f"signal: {line}")
+        matching_exits = [
+            line for timestamp, line in exit_lines
+            if window_start <= timestamp <= window_end
+        ]
+        if matching_exits:
+            proof.append(f"exit: {matching_exits[-1]}")
+        return ExecutionProvenance(
+            PROVENANCE_CONFIRMED,
+            step_name=str(step.get("name") or ""),
+            command=command,
+            evidence=tuple(proof[:5]),
+        )
+
+    if usable_windows == 0:
+        return ExecutionProvenance(
+            PROVENANCE_UNAVAILABLE,
+            evidence=("Failed-step timing metadata was unavailable.",),
+        )
+    return ExecutionProvenance(
+        PROVENANCE_MISMATCH,
+        evidence=("Transient evidence was timestamped outside every failed-step window.",),
+    )
+
+
 def assess_job(job: dict, log_text: str) -> JobAssessment:
     classification = classify_log(log_text)
+    provenance = assess_execution_provenance(job, log_text, classification)
     side_effect_risk, side_effect_evidence = detect_side_effect_risk(job)
     return JobAssessment(
         job_id=int(job.get("id") or 0),
@@ -322,6 +447,10 @@ def assess_job(job: dict, log_text: str) -> JobAssessment:
         category=classification.category,
         confidence=classification.confidence,
         evidence=classification.evidence,
+        provenance_status=provenance.status,
+        provenance_step=provenance.step_name,
+        provenance_command=provenance.command,
+        provenance_evidence=provenance.evidence,
         side_effect_risk=side_effect_risk,
         side_effect_evidence=side_effect_evidence,
         duration_minutes=job_duration_minutes(job),
@@ -336,6 +465,17 @@ def rerun_decision(assessments: Iterable[JobAssessment], run_attempt: int, max_a
         return False, f"Run attempt {run_attempt} reached max_attempts={max_attempts}."
     if any(item.side_effect_risk for item in items):
         return False, "At least one failed job contains a side-effect signal; blind rerun is blocked."
+    unproven = [
+        item for item in items
+        if item.category in TRANSIENT_CATEGORIES
+        and item.confidence == "high"
+        and item.provenance_status != PROVENANCE_CONFIRMED
+    ]
+    if unproven:
+        names = ", ".join(
+            f"{item.name}={item.provenance_status}" for item in unproven
+        )
+        return False, f"Execution provenance was not confirmed for: {names}."
     unsafe = [
         item for item in items
         if item.category not in TRANSIENT_CATEGORIES or item.confidence != "high"
@@ -343,7 +483,7 @@ def rerun_decision(assessments: Iterable[JobAssessment], run_attempt: int, max_a
     if unsafe:
         names = ", ".join(f"{item.name}={item.category}/{item.confidence}" for item in unsafe)
         return False, f"Not every failed job is a high-confidence transient failure: {names}."
-    return True, "All failed jobs are high-confidence transient failures and no side-effect signal was found."
+    return True, "All failed jobs are high-confidence transient failures with confirmed execution provenance and no side-effect signal was found."
 
 
 class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -468,13 +608,14 @@ def render_report(repo: str, run_id: int, run_attempt: int, assessments: list[Jo
         "",
         f"Failed-job runtime observed: **{wasted:.2f} min**",
         "",
-        "| Job | Classification | Confidence | Side-effect risk | Runtime |",
-        "|---|---|---|---|---:|",
+        "| Job | Classification | Confidence | Provenance | Side-effect risk | Runtime |",
+        "|---|---|---|---|---|---:|",
     ]
     for item in assessments:
         lines.append(
             f"| {item.name.replace('|', '/')} | `{item.category}` | {item.confidence} | "
-            f"{'YES' if item.side_effect_risk else 'no'} | {item.duration_minutes:.2f} min |"
+            f"`{item.provenance_status}` | {'YES' if item.side_effect_risk else 'no'} | "
+            f"{item.duration_minutes:.2f} min |"
         )
     for item in assessments:
         lines.extend(["", f"### {item.name}"])
@@ -484,6 +625,10 @@ def render_report(repo: str, run_id: int, run_attempt: int, assessments: list[Jo
                 lines.append(f"- `{evidence.replace('`', "'")}`")
         else:
             lines.append("- No strong signature found in the available log.")
+        if item.provenance_evidence:
+            lines.append("Execution provenance:")
+            for evidence in item.provenance_evidence:
+                lines.append(f"- `{evidence.replace('`', "\'")}`")
         if item.side_effect_evidence:
             lines.append("Side-effect signals:")
             for evidence in item.side_effect_evidence:
