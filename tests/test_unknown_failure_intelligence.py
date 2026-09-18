@@ -9,6 +9,12 @@ from recovery_ground_truth import (
     RECOVERY_VALIDATED,
 )
 from unknown_failure_intelligence import (
+    PROMOTION_BLOCKER_INSUFFICIENT_GT_RERUNS,
+    PROMOTION_BLOCKER_INSUFFICIENT_OCCURRENCES,
+    PROMOTION_BLOCKER_NO_STABLE_SIGNATURE,
+    PROMOTION_BLOCKER_RECOVERY_RATE,
+    PROMOTION_BLOCKER_SIDE_EFFECT,
+    PROMOTION_ELIGIBLE,
     STATUS_INSUFFICIENT_EVIDENCE,
     STATUS_INVESTIGATE_TRANSIENT,
     STATUS_NOT_TRANSIENT,
@@ -356,4 +362,144 @@ def test_benchmark_report_surfaces_unknown_cause_decomposition():
     assert "UNKNOWN Cause Decomposition" in report
     assert "`AUTH_PERMISSION`" in report
     assert "diagnostic buckets only" in report
+
+
+def test_promotion_blocker_attribution_reports_all_missing_requirements():
+    signature = "fatal: remote cache service unavailable"
+    summary = summarize_unknown_patterns(
+        {"acme/repo": ([_unknown(1, signature=signature)], 1)},
+        {
+            "acme/repo": (
+                [
+                    _unknown(
+                        2,
+                        signature=signature,
+                        observed=False,
+                        recovered=False,
+                    )
+                ],
+                1,
+            )
+        },
+    )
+
+    pattern = summary.patterns[0]
+    assert pattern.promotion_candidate is False
+    assert pattern.promotion_blocker == PROMOTION_BLOCKER_INSUFFICIENT_OCCURRENCES
+    assert pattern.promotion_blockers == (
+        PROMOTION_BLOCKER_INSUFFICIENT_OCCURRENCES,
+        PROMOTION_BLOCKER_INSUFFICIENT_GT_RERUNS,
+    )
+    assert pattern.occurrence_deficit == 1
+    assert pattern.gt_rerun_deficit == 3
+    assert pattern.promotion_distance == 2
+
+
+def test_promotion_blocker_distinguishes_low_recovery_from_missing_samples():
+    signature = "fatal: remote cache service unavailable"
+    reruns = {
+        "acme/repo": (
+            [
+                _unknown(1, signature=signature, recovered=True),
+                _unknown(2, signature=signature, recovered=False),
+                _unknown(3, signature=signature, recovered=False),
+            ],
+            3,
+        )
+    }
+
+    pattern = summarize_unknown_patterns({}, reruns).patterns[0]
+
+    assert pattern.promotion_blockers == (PROMOTION_BLOCKER_RECOVERY_RATE,)
+    assert pattern.promotion_blocker == PROMOTION_BLOCKER_RECOVERY_RATE
+    assert pattern.recovery_rate == 1 / 3
+    assert pattern.recovery_rate_deficit > 0
+    assert pattern in summarize_unknown_patterns({}, reruns).near_promotion_candidates
+
+
+def test_promotion_blocker_reports_side_effect_contamination_even_with_good_recovery():
+    signature = "fatal: remote cache service unavailable"
+    reruns = {
+        "acme/repo": (
+            [
+                _unknown(1, signature=signature, recovered=True, side_effect=True),
+                _unknown(2, signature=signature, recovered=True),
+                _unknown(3, signature=signature, recovered=True),
+            ],
+            3,
+        )
+    }
+
+    pattern = summarize_unknown_patterns({}, reruns).patterns[0]
+
+    assert pattern.promotion_blockers == (PROMOTION_BLOCKER_SIDE_EFFECT,)
+    assert pattern.promotion_blocker == PROMOTION_BLOCKER_SIDE_EFFECT
+    assert pattern.promotion_distance == 1
+
+
+def test_promotion_blocker_marks_ready_pattern_as_eligible():
+    signature = "fatal: remote cache service unavailable"
+    reruns = {
+        "acme/repo": (
+            [
+                _unknown(1, signature=signature, recovered=True),
+                _unknown(2, signature=signature, recovered=True),
+                _unknown(3, signature=signature, recovered=True),
+            ],
+            3,
+        )
+    }
+
+    summary = summarize_unknown_patterns({}, reruns)
+    pattern = summary.patterns[0]
+
+    assert pattern.promotion_candidate is True
+    assert pattern.promotion_blocker == PROMOTION_ELIGIBLE
+    assert pattern.promotion_blockers == ()
+    assert pattern.promotion_distance == 0
+
+
+def test_no_stable_signature_is_explicit_promotion_blocker():
+    signature = "unknown without stable evidence"
+    reruns = {
+        "acme/repo": (
+            [
+                _unknown(1, signature=signature, recovered=True),
+                _unknown(2, signature=signature, recovered=True),
+                _unknown(3, signature=signature, recovered=True),
+            ],
+            3,
+        )
+    }
+
+    pattern = summarize_unknown_patterns({}, reruns).patterns[0]
+
+    assert pattern.promotion_blocker == PROMOTION_BLOCKER_NO_STABLE_SIGNATURE
+    assert PROMOTION_BLOCKER_NO_STABLE_SIGNATURE in pattern.promotion_blockers
+
+
+def test_promotion_blocker_counts_and_near_candidates_are_exposed():
+    ready_signature = "fatal: cache unavailable"
+    low_recovery_signature = "fatal: flaky helper"
+    summary = summarize_unknown_patterns(
+        {},
+        {
+            "acme/repo": (
+                [
+                    _unknown(1, signature=ready_signature, recovered=True),
+                    _unknown(2, signature=ready_signature, recovered=True),
+                    _unknown(3, signature=ready_signature, recovered=True),
+                    _unknown(4, signature=low_recovery_signature, recovered=True),
+                    _unknown(5, signature=low_recovery_signature, recovered=False),
+                    _unknown(6, signature=low_recovery_signature, recovered=False),
+                ],
+                6,
+            )
+        },
+    )
+
+    counts = dict(summary.promotion_blocker_counts)
+    assert counts[PROMOTION_ELIGIBLE] == 1
+    assert counts[PROMOTION_BLOCKER_RECOVERY_RATE] == 1
+    assert len(summary.near_promotion_candidates) == 1
 
