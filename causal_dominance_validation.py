@@ -139,8 +139,8 @@ def _evaluate_negative_controls() -> tuple[ControlResult, ...]:
     )
 
     ordering_log = (
-        "2026-09-18T10:00:01.0000000Z error: test failed, to rerun pass "
-        "`-p app --test unit`\n"
+        "2026-09-18T10:00:01.0000000Z Error: tests failed\n"
+        "2026-09-18T10:00:02.0000000Z Error: test failure\n"
         "2026-09-18T10:00:03.0000000Z Error: HTTP 504 Gateway Timeout\n"
     )
     ordering = assess_causal_dominance(_job(), ordering_log)
