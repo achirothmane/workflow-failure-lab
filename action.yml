@@ -100,8 +100,11 @@ outputs:
     description: 'Number of exact normalized failure fingerprints seen at least twice in sampled history.'
     value: ${{ steps.history.outputs.recurring-fingerprints }}
   rerun-recoveries:
-    description: 'Number of historical failed jobs that later succeeded in a real subsequent execution of the same job.'
+    description: 'Number of historical failed jobs that later succeeded in a genuine subsequent execution of the same job, before ground-truth attribution.'
     value: ${{ steps.history.outputs.rerun-recoveries }}
+  validated-rerun-recoveries:
+    description: 'Later successes where the original failure had confirmed execution provenance and the same failed step was re-executed successfully.'
+    value: ${{ steps.history.outputs.validated-rerun-recoveries }}
   policy-auto-rerun-fingerprints:
     description: 'Number of fingerprints for which Policy Learning recommends AUTO_RERUN_ONCE.'
     value: ${{ steps.history.outputs.policy-auto-rerun-fingerprints }}
@@ -178,16 +181,16 @@ outputs:
     description: 'High-confidence transient rerun candidates with no workflow side-effect signal in the enriched sample.'
     value: ${{ steps.benchmark.outputs.benchmark-rerun-candidates }}
   benchmark-rerun-evaluated:
-    description: 'Rerun-enriched candidates for which a real execution outcome is observable.'
+    description: 'Rerun-enriched candidates with a ground-truth-evaluable outcome: validated recovery or observed failed rerun.'
     value: ${{ steps.benchmark.outputs.benchmark-rerun-evaluated }}
   benchmark-rerun-recoveries:
-    description: 'Evaluated rerun-enriched candidates whose real rerun recovered.'
+    description: 'Evaluated rerun-enriched candidates whose recovery was validated by re-execution of the original failed step.'
     value: ${{ steps.benchmark.outputs.benchmark-rerun-recoveries }}
   benchmark-rerun-false-positives:
     description: 'Evaluated rerun-enriched candidates whose real rerun did not recover.'
     value: ${{ steps.benchmark.outputs.benchmark-rerun-false-positives }}
   benchmark-rerun-unknown-outcomes:
-    description: 'Rerun-enriched candidates that were copied into a later attempt but were not actually rerun.'
+    description: 'Rerun-enriched candidates with no real rerun or a later success that could not be ground-truth validated.'
     value: ${{ steps.benchmark.outputs.benchmark-rerun-unknown-outcomes }}
   benchmark-rerun-observed-precision:
     description: 'Rerun-enriched recoveries divided by evaluated candidates, as a decimal from 0 to 1.'

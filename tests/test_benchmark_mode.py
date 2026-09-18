@@ -17,6 +17,12 @@ from benchmark_mode import (
     summarize_benchmark,
 )
 from history_ci_waste import HistoricalFailure
+from recovery_ground_truth import (
+    RECOVERY_NOT_OBSERVED,
+    RECOVERY_NOT_RECOVERED,
+    RECOVERY_UNVERIFIED,
+    RECOVERY_VALIDATED,
+)
 
 
 def _failure(
@@ -29,7 +35,17 @@ def _failure(
     observed: bool = True,
     side_effect: bool = False,
     provenance: str = "CONFIRMED",
+    recovery_status: str | None = None,
 ) -> HistoricalFailure:
+    if recovery_status is None:
+        if not observed:
+            recovery_status = RECOVERY_NOT_OBSERVED
+        elif not recovered:
+            recovery_status = RECOVERY_NOT_RECOVERED
+        elif provenance != "CONFIRMED":
+            recovery_status = RECOVERY_UNVERIFIED
+        else:
+            recovery_status = RECOVERY_VALIDATED
     return HistoricalFailure(
         run_id=run_id,
         job_name="test",
@@ -43,6 +59,7 @@ def _failure(
         side_effect_risk=side_effect,
         attempt=1,
         provenance_status=provenance,
+        recovery_status=recovery_status,
     )
 
 
@@ -248,6 +265,7 @@ def test_collect_repository_history_observes_real_rerun_recovery():
     assert all(item.confidence == "high" for item in rerun_items)
     assert all(item.rerun_observed is True for item in rerun_items)
     assert all(item.recovered_after_rerun is True for item in rerun_items)
+    assert all(item.recovery_status == RECOVERY_VALIDATED for item in rerun_items)
 
 
 def test_collect_repository_samples_separates_natural_and_rerun_runs():
@@ -268,6 +286,7 @@ def test_collect_repository_samples_separates_natural_and_rerun_runs():
     assert {item.run_id for item in rerun_failures} == {101, 102}
     assert all(item.rerun_observed for item in rerun_failures)
     assert all(item.recovered_after_rerun for item in rerun_failures)
+    assert all(item.recovery_status == RECOVERY_VALIDATED for item in rerun_failures)
 
 
 class _SideEffectWorkflowAPI:
@@ -444,6 +463,36 @@ def test_rerun_candidate_requires_confirmed_execution_provenance():
     assert summary.rerun_candidates == 1
     by_reason = {item.reason: item for item in summary.rejections}
     assert by_reason[REJECTION_UNCONFIRMED_PROVENANCE].blocked == 2
-    assert by_reason[REJECTION_UNCONFIRMED_PROVENANCE].recovered == 1
+    assert by_reason[REJECTION_UNCONFIRMED_PROVENANCE].recovered == 0
     assert by_reason[REJECTION_UNCONFIRMED_PROVENANCE].failed_again == 1
+    assert by_reason[REJECTION_UNCONFIRMED_PROVENANCE].unknown_outcomes == 1
+
+
+def test_rerun_precision_excludes_unverified_later_success():
+    rerun = {
+        "acme/one": (
+            [
+                _failure(
+                    1,
+                    recovered=True,
+                    recovery_status=RECOVERY_UNVERIFIED,
+                ),
+                _failure(2, recovered=True),
+                _failure(3, recovered=False),
+            ],
+            3,
+        )
+    }
+
+    summary = summarize_benchmark(
+        {"acme/one": ([], 0)},
+        rerun_histories=rerun,
+    )
+
+    assert summary.rerun_candidates == 3
+    assert summary.rerun_evaluated == 2
+    assert summary.rerun_recoveries == 1
+    assert summary.rerun_false_positives == 1
+    assert summary.rerun_unknown_outcomes == 1
+    assert summary.rerun_observed_precision == 0.5
 

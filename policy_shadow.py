@@ -11,6 +11,7 @@ from history_ci_waste import (
     collect_history,
     summarize_history,
 )
+from recovery_ground_truth import RECOVERY_NOT_RECOVERED, is_validated_recovery
 
 SHADOW_RECOVERED = "RECOVERED"
 SHADOW_NOT_RECOVERED = "NOT_RECOVERED"
@@ -95,12 +96,12 @@ def simulate_shadow(failures: list[HistoricalFailure]) -> ShadowSummary:
 
         policy = _policy_for_prior(prior, item.fingerprint)
         if policy == POLICY_AUTO_RERUN_ONCE:
-            if not item.rerun_observed:
-                outcome = SHADOW_UNKNOWN
-            elif item.recovered_after_rerun:
+            if is_validated_recovery(item.recovery_status):
                 outcome = SHADOW_RECOVERED
-            else:
+            elif item.recovery_status == RECOVERY_NOT_RECOVERED:
                 outcome = SHADOW_NOT_RECOVERED
+            else:
+                outcome = SHADOW_UNKNOWN
             decisions.append(
                 ShadowDecision(
                     fingerprint=item.fingerprint,
@@ -172,11 +173,11 @@ def render_shadow_report(summary: ShadowSummary) -> str:
         "> Read-only retrospective backtest. No rerun is triggered. Each simulated decision uses only samples older than that decision.",
         "",
         f"Shadow AUTO_RERUN_ONCE decisions: **{summary.decisions}**",
-        f"Decisions with an observed real rerun outcome: **{summary.evaluated}**",
-        f"Observed recoveries: **{summary.recoveries}**",
+        f"Decisions with a ground-truth-evaluable rerun outcome: **{summary.evaluated}**",
+        f"Validated recoveries: **{summary.recoveries}**",
         f"Observed false positives: **{summary.false_positives}**",
         f"Unknown counterfactual outcomes: **{summary.unknown_outcomes}**",
-        f"Observed precision on evaluated decisions: **{summary.observed_precision:.1%}**",
+        f"Ground-truth precision on evaluated decisions: **{summary.observed_precision:.1%}**",
         f"Recoverable failed-job runtime represented by observed recoveries: **{summary.recoverable_failed_minutes:.2f} min**",
         "",
     ]

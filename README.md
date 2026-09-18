@@ -62,12 +62,32 @@ Example:
 ```text
 FG-4A92F6D13C21
 install dependencies · DEPENDENCY_NETWORK
-8 occurrences · 5 real reruns · 4 recoveries · 31.20 failed minutes
+8 occurrences · 5 real reruns · 4 later successes · 3 validated recoveries · 31.20 failed minutes
 ```
 
 This distinction is intentional: **failed runtime is not automatically waste**. A real code regression can be useful CI work. `historical-transient-waste-minutes` counts only failures classified with high confidence as runner/infrastructure or dependency/network failures.
 
 The default history window is 10 previous completed runs and can be increased up to 50.
+
+## Recovery Ground-Truth Layer
+
+A later successful rerun is not automatically counted as evidence that the original failure was transient. Recovery Ground Truth separates **observed success** from **validated recovery**.
+
+A recovery is `VALIDATED_RECOVERY` only when:
+
+- the original failure had `CONFIRMED` Execution Provenance;
+- the provenance identifies the step that actually failed;
+- the same job genuinely executed again rather than being copied untouched by GitHub;
+- that same failed step appears in the later execution and completes successfully.
+
+Other outcomes remain explicit:
+
+- `NOT_RECOVERED` — the genuine rerun executed but did not succeed;
+- `UNVERIFIED_RECOVERY` — the later job succeeded, but original failure provenance or rerun-step metadata is insufficient;
+- `INCONSISTENT_RECOVERY` — the later job succeeded without successfully re-executing the step tied to the original failure;
+- `NOT_OBSERVED` — no genuine later execution was observed.
+
+`UNVERIFIED_RECOVERY` and `INCONSISTENT_RECOVERY` are excluded from precision and policy-learning denominators. They are not counted as successes or failures. This prevents an unrelated later success from inflating measured retry precision.
 
 ## Policy Learning
 
@@ -80,20 +100,20 @@ Policy Learning turns fingerprint history into a conservative recommendation for
 `AUTO_RERUN_ONCE` is recommended only when all of the following are true:
 
 - the fingerprint belongs to `RUNNER_INFRA` or `DEPENDENCY_NETWORK`;
-- at least 5 **real** reruns were observed;
-- at least 80% of those reruns recovered;
+- at least 5 **ground-truth-evaluable** reruns were observed;
+- at least 80% of those evaluable reruns are `VALIDATED_RECOVERY`;
 - at least 80% of the fingerprint occurrences were classified with high confidence;
 - no side-effect signal was observed.
 
 Policy Learning is advisory only. It does not silently change the selective-rerun safety gate or enable reruns by itself.
 
-GitHub can copy an untouched job into a later workflow attempt when another job is rerun. CI Retry Gate therefore counts a rerun sample only when the same job has a genuinely different `started_at` time in a later attempt. This avoids learning policies from copied historical records.
+GitHub can copy an untouched job into a later workflow attempt when another job is rerun. CI Retry Gate therefore counts a rerun sample only when the same job has a genuinely different `started_at` time in a later attempt. Recovery Ground Truth then performs the stronger step-level consistency check above.
 
 ## Policy Shadow Mode
 
-`policy-shadow-mode: 'true'` runs a read-only retrospective backtest. For each historical point it uses only evidence older than that point, then checks whether a real later rerun recovered. Outcomes without an observed rerun remain `UNKNOWN` rather than being guessed.
+`policy-shadow-mode: 'true'` runs a read-only retrospective backtest. For each historical point it uses only evidence older than that point, then evaluates a later rerun through Recovery Ground Truth. Unobserved, unverified, or inconsistent later outcomes remain `UNKNOWN` rather than being guessed.
 
-Shadow Mode reports decisions, evaluated decisions, recoveries, false positives, unknown outcomes, observed precision, and the failed-job runtime represented by observed recoveries. It never triggers a rerun.
+Shadow Mode reports decisions, ground-truth-evaluated decisions, validated recoveries, observed failed reruns, unknown outcomes, precision, and the failed-job runtime represented by validated recoveries. It never triggers a rerun.
 
 ## Benchmark Mode
 
@@ -104,9 +124,9 @@ Benchmark Mode samples completed workflow runs, reads first-attempt failed jobs,
 - repositories and completed runs analyzed;
 - first-attempt failed jobs;
 - shadow `AUTO_RERUN_ONCE` decisions;
-- evaluated decisions with a real rerun outcome;
-- recoveries, false positives, and unknown outcomes;
-- observed precision;
+- evaluated decisions with a ground-truth-evaluable rerun outcome;
+- validated recoveries, observed failed reruns, and unknown/unverified outcomes;
+- ground-truth precision;
 - decision coverage and evaluated coverage;
 - **rejection intelligence** for failures that were blocked from auto-rerun;
 - blocked failures that later recovered, failed again, or had no observable rerun outcome;
@@ -132,7 +152,7 @@ Example:
 
 The repository list is capped at 50 and `benchmark-runs` is capped at 50 per repository. Public or otherwise token-accessible repositories can be analyzed; inaccessible repositories are reported as skipped instead of aborting the whole benchmark.
 
-**Observed precision is not overall classifier accuracy.** It is `recoveries / evaluated AUTO_RERUN_ONCE shadow decisions`. Unknown counterfactual outcomes are excluded rather than counted as successes or failures. Benchmark results describe only the sampled history and are not a guarantee of future behavior.
+**Ground-truth precision is not overall classifier accuracy.** It is `validated recoveries / ground-truth-evaluable AUTO_RERUN_ONCE decisions`. Unobserved, unverified, and inconsistent outcomes are excluded rather than counted as successes or failures. Benchmark results describe only the sampled history and are not a guarantee of future behavior.
 
 A **blocked recovery** is also not evidence that the block was wrong. A code regression, side-effect workflow, or ambiguous failure can succeed on a later rerun for unrelated reasons. Rejection Intelligence treats recovered blocked cases as places to investigate for safer coverage improvements, not as automatic promotion evidence.
 
@@ -243,11 +263,11 @@ Benchmark Mode emits:
 | `benchmark-runs-analyzed` | Total completed workflow runs sampled. |
 | `benchmark-failed-jobs` | First-attempt failed jobs observed. |
 | `benchmark-shadow-decisions` | Simulated historical `AUTO_RERUN_ONCE` decisions. |
-| `benchmark-evaluated-decisions` | Shadow decisions with an observed historical rerun outcome. |
-| `benchmark-recoveries` | Evaluated decisions whose real rerun recovered. |
-| `benchmark-false-positives` | Evaluated decisions whose real rerun did not recover. |
-| `benchmark-unknown-outcomes` | Decisions without an observed rerun outcome. |
-| `benchmark-observed-precision` | Recoveries divided by evaluated decisions. |
+| `benchmark-evaluated-decisions` | Shadow decisions with a ground-truth-evaluable rerun outcome. |
+| `benchmark-recoveries` | Evaluated decisions with `VALIDATED_RECOVERY`. |
+| `benchmark-false-positives` | Evaluated decisions with an observed failed rerun. |
+| `benchmark-unknown-outcomes` | Decisions with no rerun or an unverified/inconsistent later success. |
+| `benchmark-observed-precision` | Validated recoveries divided by ground-truth-evaluated decisions. |
 | `benchmark-decision-coverage` | Shadow decisions divided by first-attempt failed jobs. |
 | `benchmark-evaluated-coverage` | Evaluated decisions divided by first-attempt failed jobs. |
 | `benchmark-rerun-blocked` | Rerun-enriched failures blocked from becoming safe candidates. |
@@ -261,8 +281,8 @@ Benchmark Mode emits:
 | `benchmark-rejection-non-transient` | Other non-auto-rerun categories such as resource/flaky-test classes. |
 | `benchmark-unknown-patterns` | Distinct normalized UNKNOWN signatures found in the benchmark samples. |
 | `benchmark-unknown-repeated-patterns` | UNKNOWN signatures observed at least twice. |
-| `benchmark-unknown-evaluated-reruns` | UNKNOWN cases with an observed real rerun outcome. |
-| `benchmark-unknown-recoveries` | UNKNOWN cases whose real rerun recovered. |
+| `benchmark-unknown-evaluated-reruns` | UNKNOWN cases with a ground-truth-evaluable rerun outcome. |
+| `benchmark-unknown-recoveries` | UNKNOWN cases with a validated recovery. |
 | `benchmark-unknown-failed-again` | UNKNOWN cases whose real rerun failed again. |
 | `benchmark-unknown-promotion-candidates` | Advisory UNKNOWN patterns meeting the conservative investigation threshold. |
 | `benchmark-unknown-promotion-candidate-ids` | Comma-separated IDs of those advisory patterns. |
@@ -279,7 +299,7 @@ This tool cannot prove that rerunning arbitrary third-party workflows is safe. I
 
 ## Validation
 
-The action has unit coverage for transient failures, code failures, unknown failures, causal-vs-non-causal log evidence, execution provenance binding, provenance mismatch/unavailable blocking, weak transient evidence discounting, secret redaction, side-effect blocking, attempt caps, runtime accounting, historical transient-waste accounting, recurring failure detection, fingerprint stability under dynamic log values, fingerprint separation for different failures, real-vs-copied rerun detection, rerun-recovery metrics, Policy Learning thresholds, Shadow Mode look-back isolation, Benchmark Mode repository isolation, unknown counterfactual handling, benchmark precision/coverage aggregation, UNKNOWN signature extraction, cross-repository UNKNOWN clustering, promotion thresholds, and UNKNOWN side-effect guards.
+The action has unit coverage for transient failures, code failures, unknown failures, causal-vs-non-causal log evidence, execution provenance binding, provenance mismatch/unavailable blocking, recovery ground-truth validation, unverified/inconsistent recovery exclusion, weak transient evidence discounting, secret redaction, side-effect blocking, attempt caps, runtime accounting, historical transient-waste accounting, recurring failure detection, fingerprint stability under dynamic log values, fingerprint separation for different failures, real-vs-copied rerun detection, Policy Learning thresholds, Shadow Mode look-back isolation, Benchmark Mode repository isolation, unknown counterfactual handling, benchmark precision/coverage aggregation, UNKNOWN signature extraction, cross-repository UNKNOWN clustering, promotion thresholds, and UNKNOWN side-effect guards.
 
 Selective Safe Rerun has also been tested end-to-end in GitHub Actions: a mixed run containing a transient network failure and a code regression caused only the transient job to execute again; the code-regression job remained blocked, and the attempt cap prevented a third loop.
 

@@ -18,8 +18,15 @@ from ci_retry_gate import (
 from history_ci_waste import (
     HistoricalFailure,
     _jobs_for_attempt,
-    _later_rerun_outcome,
     failure_fingerprint,
+)
+from recovery_ground_truth import (
+    RECOVERY_NOT_RECOVERED,
+    RECOVERY_VALIDATED,
+    assess_recovery_ground_truth,
+    is_ground_truth_evaluable,
+    is_validated_recovery,
+    later_rerun_result,
 )
 from policy_shadow import simulate_shadow
 from unknown_failure_intelligence import (
@@ -285,12 +292,20 @@ def _collect_failures_for_runs(
                     classification.evidence,
                 )
             own_side_effect_risk, _ = detect_side_effect_risk(job)
-            rerun_observed, recovered = _later_rerun_outcome(
+            rerun_observed, recovered, rerun_job = later_rerun_result(
                 attempt_jobs,
                 1,
                 attempts,
                 job_name,
                 str(job.get("started_at") or ""),
+            )
+            recovery = assess_recovery_ground_truth(
+                original_job=job,
+                provenance_status=provenance.status,
+                provenance_step=provenance.step_name,
+                rerun_observed=rerun_observed,
+                recovered=recovered,
+                rerun_job=rerun_job,
             )
             failures.append(
                 HistoricalFailure(
@@ -308,6 +323,8 @@ def _collect_failures_for_runs(
                     ),
                     attempt=1,
                     provenance_status=provenance.status,
+                    recovery_status=recovery.status,
+                    recovery_evidence=recovery.evidence,
                 )
             )
 
@@ -395,12 +412,14 @@ def _rerun_validation(
 ) -> tuple[int, int, int, int, int]:
     candidates = [item for item in failures if _is_rerun_candidate(item)]
     recoveries = sum(
-        item.rerun_observed and item.recovered_after_rerun for item in candidates
+        is_validated_recovery(item.recovery_status) for item in candidates
     )
     false_positives = sum(
-        item.rerun_observed and not item.recovered_after_rerun for item in candidates
+        item.recovery_status == RECOVERY_NOT_RECOVERED for item in candidates
     )
-    unknown = sum(not item.rerun_observed for item in candidates)
+    unknown = sum(
+        not is_ground_truth_evaluable(item.recovery_status) for item in candidates
+    )
     evaluated = recoveries + false_positives
     return len(candidates), evaluated, recoveries, false_positives, unknown
 
@@ -462,12 +481,12 @@ def summarize_benchmark(
             category_failed[item.category] += 1
             if _is_rerun_candidate(item):
                 category_candidates[item.category] += 1
-                if item.rerun_observed:
+                if is_validated_recovery(item.recovery_status):
                     category_evaluated[item.category] += 1
-                    if item.recovered_after_rerun:
-                        category_recoveries[item.category] += 1
-                    else:
-                        category_false_positives[item.category] += 1
+                    category_recoveries[item.category] += 1
+                elif item.recovery_status == RECOVERY_NOT_RECOVERED:
+                    category_evaluated[item.category] += 1
+                    category_false_positives[item.category] += 1
                 else:
                     category_unknown[item.category] += 1
             else:
@@ -475,12 +494,12 @@ def summarize_benchmark(
                 if reason is None:
                     continue
                 rejection_blocked[reason] += 1
-                if not item.rerun_observed:
-                    rejection_unknown[reason] += 1
-                elif item.recovered_after_rerun:
+                if is_validated_recovery(item.recovery_status):
                     rejection_recovered[reason] += 1
-                else:
+                elif item.recovery_status == RECOVERY_NOT_RECOVERED:
                     rejection_failed_again[reason] += 1
+                else:
+                    rejection_unknown[reason] += 1
 
         repo_rows.append(
             RepositoryBenchmark(
@@ -620,11 +639,11 @@ def render_benchmark_report(summary: BenchmarkSummary) -> str:
         f"Historical rerun runs sampled: **{summary.rerun_runs_analyzed}**",
         f"First-attempt failed jobs in rerun runs: **{summary.rerun_failed_jobs}**",
         f"Base safety candidates (high-confidence transient, confirmed execution provenance, no side effects): **{summary.rerun_candidates}**",
-        f"Candidates with observed real rerun outcomes: **{summary.rerun_evaluated}**",
-        f"Observed recoveries: **{summary.rerun_recoveries}**",
-        f"Observed false positives: **{summary.rerun_false_positives}**",
-        f"Unknown candidate outcomes: **{summary.rerun_unknown_outcomes}**",
-        f"Observed candidate precision: **{summary.rerun_observed_precision:.1%}**",
+        f"Candidates with ground-truth-evaluable rerun outcomes: **{summary.rerun_evaluated}**",
+        f"Validated recoveries: **{summary.rerun_recoveries}**",
+        f"Observed failed reruns: **{summary.rerun_false_positives}**",
+        f"Unknown or unverified candidate outcomes: **{summary.rerun_unknown_outcomes}**",
+        f"Ground-truth candidate precision: **{summary.rerun_observed_precision:.1%}**",
         f"Candidate coverage inside rerun-enriched failures: **{summary.rerun_candidate_coverage:.1%}**",
         "",
     ]
@@ -666,12 +685,12 @@ def render_benchmark_report(summary: BenchmarkSummary) -> str:
                 f"UNKNOWN failures across natural + rerun-enriched samples: **{unknown.unknown_failures}**",
                 f"Distinct UNKNOWN signatures: **{len(unknown.patterns)}**",
                 f"Repeated UNKNOWN signatures: **{unknown.repeated_patterns}**",
-                f"UNKNOWN cases with observed real reruns: **{unknown.evaluated_reruns}**",
-                f"Observed UNKNOWN recoveries: **{unknown.recoveries}**",
+                f"UNKNOWN cases with ground-truth-evaluable reruns: **{unknown.evaluated_reruns}**",
+                f"Validated UNKNOWN recoveries: **{unknown.recoveries}**",
                 f"Observed UNKNOWN failures after rerun: **{unknown.failed_again}**",
                 f"Investigation candidates for a possible future transient classifier rule: **{len(unknown.promotion_candidates)}**",
                 "",
-                "| Pattern | Occurrences | Repositories | Real reruns | Recoveries | Failed again | Recovery rate | Status | Signature |",
+                "| Pattern | Occurrences | Repositories | GT-evaluable reruns | Validated recoveries | Failed again | Recovery rate | Status | Signature |",
                 "|---|---:|---:|---:|---:|---:|---:|---|---|",
             ]
         )
@@ -685,7 +704,7 @@ def render_benchmark_report(summary: BenchmarkSummary) -> str:
         lines.extend(
             [
                 "",
-                "> INVESTIGATE_TRANSIENT_PATTERN is advisory only. It requires a stable repeated signature, at least 3 observed real reruns, at least 80% recovery, and no side-effect occurrence. It does not modify the runtime classifier or authorize reruns.",
+                "> INVESTIGATE_TRANSIENT_PATTERN is advisory only. It requires a stable repeated signature, at least 3 ground-truth-evaluable reruns, at least 80% validated recovery, and no side-effect occurrence. It does not modify the runtime classifier or authorize reruns.",
                 "",
             ]
         )
@@ -735,7 +754,7 @@ def render_benchmark_report(summary: BenchmarkSummary) -> str:
             "",
             "> The natural sample measures how often the learned policy would act in ordinary recent CI history.",
             "> The rerun-enriched sample deliberately over-samples runs that were actually rerun, so its precision must not be interpreted as prevalence or natural coverage.",
-            "> Candidate precision is recoveries / evaluated high-confidence transient candidates with confirmed failed-step provenance and no workflow side-effect signal. UNKNOWN outcomes are excluded rather than guessed.",
+            "> Candidate precision is validated recoveries / ground-truth-evaluable high-confidence transient candidates with confirmed failed-step provenance and no workflow side-effect signal. Later successes that cannot be tied back to the original failed step remain unknown rather than being credited as recoveries.",
             "> Benchmark results describe only the sampled repositories and historical runs. They are not a guarantee of future production behavior.",
         ]
     )

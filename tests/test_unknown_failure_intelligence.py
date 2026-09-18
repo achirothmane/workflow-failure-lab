@@ -2,6 +2,12 @@ from __future__ import annotations
 
 from benchmark_mode import render_benchmark_report, summarize_benchmark
 from history_ci_waste import HistoricalFailure
+from recovery_ground_truth import (
+    RECOVERY_NOT_OBSERVED,
+    RECOVERY_NOT_RECOVERED,
+    RECOVERY_UNVERIFIED,
+    RECOVERY_VALIDATED,
+)
 from unknown_failure_intelligence import (
     STATUS_INSUFFICIENT_EVIDENCE,
     STATUS_INVESTIGATE_TRANSIENT,
@@ -21,7 +27,15 @@ def _unknown(
     recovered: bool = True,
     observed: bool = True,
     side_effect: bool = False,
+    recovery_status: str | None = None,
 ) -> HistoricalFailure:
+    if recovery_status is None:
+        if not observed:
+            recovery_status = RECOVERY_NOT_OBSERVED
+        elif recovered:
+            recovery_status = RECOVERY_VALIDATED
+        else:
+            recovery_status = RECOVERY_NOT_RECOVERED
     return HistoricalFailure(
         run_id=run_id,
         job_name="build",
@@ -34,6 +48,7 @@ def _unknown(
         rerun_observed=observed,
         side_effect_risk=side_effect,
         attempt=1,
+        recovery_status=recovery_status,
     )
 
 
@@ -226,3 +241,41 @@ def test_noise_only_unknown_signature_cannot_be_promoted():
     summary = summarize_unknown_patterns({}, reruns)
     assert summary.patterns[0].status == STATUS_INSUFFICIENT_EVIDENCE
     assert summary.promotion_candidates == ()
+
+
+def test_unknown_unverified_success_does_not_promote_pattern():
+    signature = "temporary resolver exploded"
+    rerun = {
+        "acme/repo": (
+            [
+                _unknown(
+                    1,
+                    signature=signature,
+                    recovered=True,
+                    recovery_status=RECOVERY_UNVERIFIED,
+                ),
+                _unknown(
+                    2,
+                    signature=signature,
+                    recovered=True,
+                    recovery_status=RECOVERY_UNVERIFIED,
+                ),
+                _unknown(
+                    3,
+                    signature=signature,
+                    recovered=True,
+                    recovery_status=RECOVERY_UNVERIFIED,
+                ),
+            ],
+            3,
+        )
+    }
+
+    summary = summarize_unknown_patterns({}, rerun)
+    pattern = summary.patterns[0]
+
+    assert pattern.rerun_observations == 0
+    assert pattern.recoveries == 0
+    assert pattern.unknown_outcomes == 3
+    assert pattern.promotion_candidate is False
+

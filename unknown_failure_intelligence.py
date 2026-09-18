@@ -7,6 +7,11 @@ from dataclasses import dataclass
 
 from ci_retry_gate import redact
 from history_ci_waste import HistoricalFailure, normalize_signature_line
+from recovery_ground_truth import (
+    RECOVERY_NOT_RECOVERED,
+    is_ground_truth_evaluable,
+    is_validated_recovery,
+)
 
 _ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 _RUNNER_TIMESTAMP_RE = re.compile(
@@ -186,11 +191,11 @@ def summarize_unknown_patterns(
                 if item.side_effect_risk:
                     side_effect_occurrences[pattern_id] += 1
                 if is_rerun_sample:
-                    if item.rerun_observed:
+                    if is_ground_truth_evaluable(item.recovery_status):
                         rerun_observations[pattern_id] += 1
-                        if item.recovered_after_rerun:
+                        if is_validated_recovery(item.recovery_status):
                             recoveries[pattern_id] += 1
-                        else:
+                        elif item.recovery_status == RECOVERY_NOT_RECOVERED:
                             failed_again[pattern_id] += 1
                     else:
                         unknown_outcomes[pattern_id] += 1
