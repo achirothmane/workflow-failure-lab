@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -361,6 +362,34 @@ def render_causal_dominance_shadow(
     return "\n".join(lines) + "\n"
 
 
+def shadow_summary_payload(
+    summary: CausalDominanceShadowSummary,
+    *,
+    repositories_requested: int,
+    repositories_analyzed: int,
+    repositories_skipped: int,
+) -> dict[str, object]:
+    return {
+        "repositories_requested": repositories_requested,
+        "repositories_analyzed": repositories_analyzed,
+        "repositories_skipped": repositories_skipped,
+        "qualifying": summary.qualifying,
+        "dominance_candidates": len(summary.candidates),
+        "evaluable_candidates": len(summary.evaluable_candidates),
+        "validated_candidate_recoveries": summary.validated_recoveries,
+        "candidate_failed_again": summary.failed_again,
+        "candidate_unknown_outcomes": summary.unknown_outcomes,
+        "observed_candidate_precision": summary.observed_precision,
+        "authority_safe_validated_candidates": summary.authority_safe_validated,
+        "primary_deterministic_blocked": summary.primary_deterministic_blocked,
+        "ordering_unproven": summary.ordering_unproven,
+        "no_causal_5xx": summary.no_causal_5xx,
+        "unresolved": summary.unresolved,
+        "independent_candidate_runs": summary.independent_candidate_runs,
+        "independent_candidate_repositories": summary.independent_candidate_repositories,
+    }
+
+
 def _collect_repository(
     token: str,
     repository: str,
@@ -436,6 +465,18 @@ def main() -> int:
         report += "\n### Skipped repositories\n\n"
         for repository, error in sorted(skipped):
             report += f"- `{repository}` — {error.replace('|', '/')}\n"
+
+    result_path = os.environ.get("INPUT_DOMINANCE_RESULT_PATH", "").strip()
+    if result_path:
+        payload = shadow_summary_payload(
+            summary,
+            repositories_requested=len(repositories),
+            repositories_analyzed=len(histories),
+            repositories_skipped=len(skipped),
+        )
+        with open(result_path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2, sort_keys=True)
+            handle.write("\n")
 
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
