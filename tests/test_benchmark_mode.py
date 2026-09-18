@@ -16,6 +16,14 @@ from benchmark_mode import (
     render_benchmark_report,
     summarize_benchmark,
 )
+from coverage_attribution import (
+    GATE_CAUSAL_EVIDENCE,
+    GATE_CLASSIFICATION_UNKNOWN,
+    GATE_ELIGIBLE,
+    GATE_LOW_CONFIDENCE,
+    GATE_PROVENANCE,
+    GATE_SIDE_EFFECT,
+)
 from history_ci_waste import HistoricalFailure
 from recovery_ground_truth import (
     RECOVERY_NOT_OBSERVED,
@@ -36,6 +44,7 @@ def _failure(
     side_effect: bool = False,
     provenance: str = "CONFIRMED",
     recovery_status: str | None = None,
+    causal_count: int = 1,
 ) -> HistoricalFailure:
     if recovery_status is None:
         if not observed:
@@ -60,6 +69,7 @@ def _failure(
         attempt=1,
         provenance_status=provenance,
         recovery_status=recovery_status,
+        causal_evidence_count=causal_count,
     )
 
 
@@ -495,4 +505,38 @@ def test_rerun_precision_excludes_unverified_later_success():
     assert summary.rerun_false_positives == 1
     assert summary.rerun_unknown_outcomes == 1
     assert summary.rerun_observed_precision == 0.5
+
+
+def test_benchmark_coverage_attribution_reports_first_limiting_layer():
+    rerun = {
+        "acme/one": (
+            [
+                _failure(1),
+                _failure(2, category="UNKNOWN", confidence="low", causal_count=0),
+                _failure(3, confidence="medium", causal_count=0),
+                _failure(4, confidence="medium", causal_count=1),
+                _failure(5, provenance="MISMATCH"),
+                _failure(6, side_effect=True),
+            ],
+            6,
+        )
+    }
+
+    summary = summarize_benchmark(
+        {"acme/one": ([], 0)},
+        rerun_histories=rerun,
+    )
+    by_gate = {item.gate: item for item in summary.coverage_attribution}
+
+    assert by_gate[GATE_ELIGIBLE].failures == 1
+    assert by_gate[GATE_CLASSIFICATION_UNKNOWN].failures == 1
+    assert by_gate[GATE_CAUSAL_EVIDENCE].failures == 1
+    assert by_gate[GATE_LOW_CONFIDENCE].failures == 1
+    assert by_gate[GATE_PROVENANCE].failures == 1
+    assert by_gate[GATE_SIDE_EFFECT].failures == 1
+
+    report = render_benchmark_report(summary)
+    assert "Coverage Attribution — first limiting layer" in report
+    assert "Failures stopped at evidence-gap layers: **4**" in report
+    assert "diagnostic only" in report
 
