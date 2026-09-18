@@ -28,6 +28,7 @@ def _unknown(
     observed: bool = True,
     side_effect: bool = False,
     recovery_status: str | None = None,
+    unknown_cause: str = "",
 ) -> HistoricalFailure:
     if recovery_status is None:
         if not observed:
@@ -49,6 +50,7 @@ def _unknown(
         side_effect_risk=side_effect,
         attempt=1,
         recovery_status=recovery_status,
+        unknown_cause=unknown_cause,
     )
 
 
@@ -278,4 +280,79 @@ def test_unknown_unverified_success_does_not_promote_pattern():
     assert pattern.recoveries == 0
     assert pattern.unknown_outcomes == 3
     assert pattern.promotion_candidate is False
+
+
+def test_unknown_cause_summary_aggregates_by_family_and_repository():
+    histories = {
+        "acme/one": (
+            [
+                _unknown(
+                    1,
+                    signature="error: permission denied",
+                    unknown_cause="AUTH_PERMISSION",
+                ),
+                _unknown(
+                    2,
+                    signature="error: failed to push some refs",
+                    unknown_cause="GIT_VCS",
+                ),
+            ],
+            2,
+        ),
+        "acme/two": (
+            [
+                _unknown(
+                    3,
+                    signature="fatal: authentication failed",
+                    unknown_cause="AUTH_PERMISSION",
+                )
+            ],
+            1,
+        ),
+    }
+    reruns = {
+        "acme/one": (
+            [
+                _unknown(
+                    4,
+                    signature="error: permission denied",
+                    recovered=False,
+                    unknown_cause="AUTH_PERMISSION",
+                )
+            ],
+            1,
+        )
+    }
+
+    summary = summarize_unknown_patterns(histories, reruns)
+    by_cause = {item.cause: item for item in summary.causes}
+
+    assert by_cause["AUTH_PERMISSION"].occurrences == 3
+    assert by_cause["AUTH_PERMISSION"].repositories == 2
+    assert by_cause["AUTH_PERMISSION"].rerun_observations == 1
+    assert by_cause["AUTH_PERMISSION"].failed_again == 1
+    assert by_cause["GIT_VCS"].occurrences == 1
+
+
+def test_benchmark_report_surfaces_unknown_cause_decomposition():
+    summary = summarize_benchmark(
+        {
+            "acme/repo": (
+                [
+                    _unknown(
+                        1,
+                        signature="error: permission denied",
+                        unknown_cause="AUTH_PERMISSION",
+                    )
+                ],
+                1,
+            )
+        }
+    )
+
+    report = render_benchmark_report(summary)
+
+    assert "UNKNOWN Cause Decomposition" in report
+    assert "`AUTH_PERMISSION`" in report
+    assert "diagnostic buckets only" in report
 
