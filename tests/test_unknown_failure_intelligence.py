@@ -15,6 +15,7 @@ from unknown_failure_intelligence import (
     PROMOTION_BLOCKER_RECOVERY_RATE,
     PROMOTION_BLOCKER_SEMANTIC_EVIDENCE,
     PROMOTION_BLOCKER_SIDE_EFFECT,
+    PROMOTION_BLOCKER_TRANSIENT_MECHANISM,
     PROMOTION_ELIGIBLE,
     STATUS_INSUFFICIENT_EVIDENCE,
     STATUS_INVESTIGATE_TRANSIENT,
@@ -482,8 +483,8 @@ def test_no_stable_signature_is_explicit_promotion_blocker():
 
 
 def test_promotion_blocker_counts_and_near_candidates_are_exposed():
-    ready_signature = "fatal: cache unavailable"
-    low_recovery_signature = "fatal: flaky helper"
+    ready_signature = "fatal: service unavailable"
+    low_recovery_signature = "fatal: connection reset by peer"
     summary = summarize_unknown_patterns(
         {},
         {
@@ -571,4 +572,114 @@ def test_specific_failure_signature_still_promotes_when_other_thresholds_pass():
     assert pattern.promotion_candidate is True
     assert pattern.promotion_blockers == ()
     assert pattern.semantic_accepted_segments == (signature,)
+
+
+def test_deterministic_command_config_cannot_promote_from_recovery_alone():
+    signature = "could not find file: /workspace/uv.toml"
+    reruns = {
+        "acme/repo": (
+            [
+                _unknown(
+                    1,
+                    signature=signature,
+                    recovered=True,
+                    unknown_cause="COMMAND_CONFIG",
+                ),
+                _unknown(
+                    2,
+                    signature=signature,
+                    recovered=True,
+                    unknown_cause="COMMAND_CONFIG",
+                ),
+                _unknown(
+                    3,
+                    signature=signature,
+                    recovered=True,
+                    unknown_cause="COMMAND_CONFIG",
+                ),
+            ],
+            3,
+        )
+    }
+
+    pattern = summarize_unknown_patterns({}, reruns).patterns[0]
+
+    assert pattern.recovery_rate == 1.0
+    assert pattern.promotion_candidate is False
+    assert pattern.promotion_blockers == (PROMOTION_BLOCKER_TRANSIENT_MECHANISM,)
+    assert pattern.mechanism_status == "DETERMINISTIC_MECHANISM"
+    assert pattern.mechanism_reasons == ("COMMAND_CONFIG",)
+
+
+def test_specific_but_unproven_mechanism_cannot_promote_from_recovery_alone():
+    signature = "fatal: remote cache checksum mismatch"
+    reruns = {
+        "acme/repo": (
+            [
+                _unknown(
+                    1,
+                    signature=signature,
+                    recovered=True,
+                    unknown_cause="AMBIGUOUS_OPERATIONAL",
+                ),
+                _unknown(
+                    2,
+                    signature=signature,
+                    recovered=True,
+                    unknown_cause="AMBIGUOUS_OPERATIONAL",
+                ),
+                _unknown(
+                    3,
+                    signature=signature,
+                    recovered=True,
+                    unknown_cause="AMBIGUOUS_OPERATIONAL",
+                ),
+            ],
+            3,
+        )
+    }
+
+    pattern = summarize_unknown_patterns({}, reruns).patterns[0]
+
+    assert pattern.promotion_candidate is False
+    assert pattern.promotion_blockers == (PROMOTION_BLOCKER_TRANSIENT_MECHANISM,)
+    assert pattern.mechanism_status == "TRANSIENT_MECHANISM_UNPROVEN"
+    assert pattern.mechanism_reasons == ("NO_TRANSIENT_MECHANISM_EVIDENCE",)
+
+
+def test_explicit_transient_mechanism_can_override_deterministic_diagnostic_family():
+    signature = "error: command failed after connection reset by peer"
+    reruns = {
+        "acme/repo": (
+            [
+                _unknown(
+                    1,
+                    signature=signature,
+                    recovered=True,
+                    unknown_cause="COMMAND_CONFIG",
+                ),
+                _unknown(
+                    2,
+                    signature=signature,
+                    recovered=True,
+                    unknown_cause="COMMAND_CONFIG",
+                ),
+                _unknown(
+                    3,
+                    signature=signature,
+                    recovered=True,
+                    unknown_cause="COMMAND_CONFIG",
+                ),
+            ],
+            3,
+        )
+    }
+
+    pattern = summarize_unknown_patterns({}, reruns).patterns[0]
+
+    assert pattern.promotion_candidate is True
+    assert pattern.promotion_blockers == ()
+    assert pattern.mechanism_status == "TRANSIENT_MECHANISM_SUPPORTED"
+    assert "CONNECTION_RESET" in pattern.mechanism_reasons
+    assert pattern.mechanism_causes == ("COMMAND_CONFIG",)
 

@@ -16,6 +16,10 @@ from semantic_promotion_gate import (
     SEMANTIC_PROMOTION_ELIGIBLE,
     assess_semantic_promotion_signature,
 )
+from transient_mechanism_gate import (
+    MECHANISM_TRANSIENT_SUPPORTED,
+    assess_transient_mechanism,
+)
 
 _ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 _RUNNER_TIMESTAMP_RE = re.compile(
@@ -48,6 +52,7 @@ PROMOTION_BLOCKER_INSUFFICIENT_GT_RERUNS = "INSUFFICIENT_GT_RERUNS"
 PROMOTION_BLOCKER_RECOVERY_RATE = "RECOVERY_RATE_BELOW_THRESHOLD"
 PROMOTION_BLOCKER_SIDE_EFFECT = "SIDE_EFFECT_CONTAMINATION"
 PROMOTION_BLOCKER_SEMANTIC_EVIDENCE = "SEMANTIC_EVIDENCE_QUALITY"
+PROMOTION_BLOCKER_TRANSIENT_MECHANISM = "TRANSIENT_MECHANISM_EVIDENCE"
 PROMOTION_ELIGIBLE = "ELIGIBLE_FOR_CLASSIFIER_RESEARCH"
 
 
@@ -72,6 +77,10 @@ class UnknownPattern:
     semantic_reasons: tuple[str, ...] = ()
     semantic_accepted_segments: tuple[str, ...] = ()
     semantic_rejected_segments: tuple[str, ...] = ()
+    mechanism_status: str = ""
+    mechanism_reasons: tuple[str, ...] = ()
+    mechanism_evidence: tuple[str, ...] = ()
+    mechanism_causes: tuple[str, ...] = ()
 
     @property
     def recovery_rate(self) -> float:
@@ -220,13 +229,18 @@ def _promotion_blockers_for(
     recoveries: int,
     side_effect_occurrences: int,
     signature: str,
+    causes: tuple[str, ...] = (),
 ) -> tuple[str, ...]:
     blockers: list[str] = []
     semantic = assess_semantic_promotion_signature(signature)
-    if signature == "unknown without stable evidence":
+    mechanism = assess_transient_mechanism(signature, causes)
+    stable_signature = signature != "unknown without stable evidence"
+    if not stable_signature:
         blockers.append(PROMOTION_BLOCKER_NO_STABLE_SIGNATURE)
-    if not semantic.eligible:
+    elif not semantic.eligible:
         blockers.append(PROMOTION_BLOCKER_SEMANTIC_EVIDENCE)
+    elif not mechanism.supported:
+        blockers.append(PROMOTION_BLOCKER_TRANSIENT_MECHANISM)
     if occurrences < MIN_UNKNOWN_OCCURRENCES:
         blockers.append(PROMOTION_BLOCKER_INSUFFICIENT_OCCURRENCES)
     if rerun_observations < MIN_UNKNOWN_RERUN_SAMPLES:
@@ -246,12 +260,15 @@ def _status_for(
     recoveries: int,
     side_effect_occurrences: int,
     signature: str,
+    causes: tuple[str, ...] = (),
 ) -> str:
     if side_effect_occurrences:
         return STATUS_SIDE_EFFECT_GUARDED
     if signature == "unknown without stable evidence":
         return STATUS_INSUFFICIENT_EVIDENCE
     if not assess_semantic_promotion_signature(signature).eligible:
+        return STATUS_INSUFFICIENT_EVIDENCE
+    if not assess_transient_mechanism(signature, causes).supported:
         return STATUS_INSUFFICIENT_EVIDENCE
     if occurrences < MIN_UNKNOWN_OCCURRENCES or rerun_observations < MIN_UNKNOWN_RERUN_SAMPLES:
         return STATUS_INSUFFICIENT_EVIDENCE
@@ -273,6 +290,7 @@ def summarize_unknown_patterns(
     unknown_outcomes: dict[str, int] = defaultdict(int)
     side_effect_occurrences: dict[str, int] = defaultdict(int)
     signatures: dict[str, str] = {}
+    pattern_causes: dict[str, set[str]] = defaultdict(set)
 
     cause_occurrences: dict[str, int] = defaultdict(int)
     cause_repos: dict[str, set[str]] = defaultdict(set)
@@ -296,6 +314,7 @@ def summarize_unknown_patterns(
                 repos[pattern_id].add(repo)
 
                 cause = item.unknown_cause or "UNDECOMPOSED"
+                pattern_causes[pattern_id].add(cause)
                 cause_occurrences[cause] += 1
                 cause_repos[cause].add(repo)
                 if signature not in cause_examples[cause] and len(cause_examples[cause]) < 3:
@@ -321,13 +340,16 @@ def summarize_unknown_patterns(
     patterns: list[UnknownPattern] = []
     for pattern_id, count in occurrences.items():
         signature = signatures[pattern_id]
+        causes = tuple(sorted(pattern_causes[pattern_id]))
         semantic = assess_semantic_promotion_signature(signature)
+        mechanism = assess_transient_mechanism(signature, causes)
         blockers = _promotion_blockers_for(
             count,
             rerun_observations[pattern_id],
             recoveries[pattern_id],
             side_effect_occurrences[pattern_id],
             signature,
+            causes,
         )
         recovery_rate = (
             recoveries[pattern_id] / rerun_observations[pattern_id]
@@ -351,6 +373,7 @@ def summarize_unknown_patterns(
                     recoveries[pattern_id],
                     side_effect_occurrences[pattern_id],
                     signature,
+                    causes,
                 ),
                 promotion_blocker=(
                     blockers[0] if blockers else PROMOTION_ELIGIBLE
@@ -369,6 +392,10 @@ def summarize_unknown_patterns(
                 semantic_reasons=semantic.reasons,
                 semantic_accepted_segments=semantic.accepted_segments,
                 semantic_rejected_segments=semantic.rejected_segments,
+                mechanism_status=mechanism.status,
+                mechanism_reasons=mechanism.reasons,
+                mechanism_evidence=mechanism.transient_evidence,
+                mechanism_causes=causes,
             )
         )
 
