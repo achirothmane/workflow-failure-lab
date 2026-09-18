@@ -51,6 +51,7 @@ _NON_CAUSAL_LOG_PATTERNS = tuple(
         r"^##\[(?:group|endgroup|debug)\]",
         r":(?:ref|class|func|meth|doc|option):\\?`",
         r"^(?:print|printf|echo|assert|raise)\b.*(?:timeout|timed out|connection reset|could not resolve host)",
+        r"^\*\s+\[new\s+(?:branch|tag)\]\s+",
         r"^[A-Za-z0-9_.-]+:\s*(?:error|warn|warning|ignore)$",
     ]
 )
@@ -168,6 +169,10 @@ _SIDE_EFFECT_PATTERNS = tuple(
         r"\bmigrat(?:e|ion|ing)\b",
         r"\bdatabase\s+(write|update|seed)\b",
         r"\bpush\s+image\b",
+        r"\bgit\s+push\b",
+        r"\bpush(?:ing)?\s+branch\b",
+        r"\bcreate\s+(?:a\s+)?pr\b",
+        r"\bcreate\s+pull\s+request\b",
         r"\bnpm\s+publish\b",
         r"\bpypi\b",
     ]
