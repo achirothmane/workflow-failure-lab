@@ -182,10 +182,23 @@ For each UNKNOWN pattern it reports:
 
 - stable pattern ID and normalized signature;
 - occurrences and number of repositories;
-- observed real reruns;
-- recoveries, repeated failures, and unknown outcomes;
+- ground-truth-evaluable reruns;
+- validated recoveries, repeated failures, and unknown outcomes;
 - side-effect occurrences;
 - an advisory status.
+
+UNKNOWN Cause Decomposition adds a second diagnostic view across those same failures. It assigns one cause family without changing runtime classification:
+
+- `NO_STABLE_ERROR_EVIDENCE`
+- `AUTH_PERMISSION`
+- `GIT_VCS`
+- `COMMAND_CONFIG`
+- `TEST_BUILD`
+- `PACKAGE_TOOL`
+- `TOOL_ACTION_SPECIFIC`
+- `AMBIGUOUS_OPERATIONAL`
+
+Each family reports occurrences, repository count, ground-truth outcomes, side-effect occurrences, and representative normalized signatures. These families are research buckets only: an UNKNOWN failure remains UNKNOWN until a separate classifier rule is justified and tested.
 
 `INVESTIGATE_TRANSIENT_PATTERN` is emitted only when the UNKNOWN signature is stable, appears at least 3 times, has at least 3 observed real reruns, at least 80% of those reruns recover, and no side-effect occurrence is present. This status is **research evidence only**: it does not change the runtime classifier and never grants rerun authority.
 
@@ -313,6 +326,14 @@ Benchmark Mode emits:
 | `benchmark-unknown-failed-again` | UNKNOWN cases whose real rerun failed again. |
 | `benchmark-unknown-promotion-candidates` | Advisory UNKNOWN patterns meeting the conservative investigation threshold. |
 | `benchmark-unknown-promotion-candidate-ids` | Comma-separated IDs of those advisory patterns. |
+| `benchmark-unknown-cause-no-stable-error-evidence` | UNKNOWN failures with no stable error-like evidence after semantic filtering. |
+| `benchmark-unknown-cause-auth-permission` | UNKNOWN failures grouped diagnostically as authentication/permission errors. |
+| `benchmark-unknown-cause-git-vcs` | UNKNOWN failures grouped diagnostically as Git/version-control errors. |
+| `benchmark-unknown-cause-command-config` | UNKNOWN failures grouped diagnostically as command/configuration errors. |
+| `benchmark-unknown-cause-test-build` | UNKNOWN failures grouped diagnostically as test/build errors. |
+| `benchmark-unknown-cause-package-tool` | UNKNOWN failures grouped diagnostically as package/dependency-tool errors. |
+| `benchmark-unknown-cause-tool-action-specific` | UNKNOWN failures grouped diagnostically as recognized tool/action errors. |
+| `benchmark-unknown-cause-ambiguous-operational` | UNKNOWN failures with stable operational evidence not matching another family. |
 
 ## Safety model
 
@@ -326,7 +347,7 @@ This tool cannot prove that rerunning arbitrary third-party workflows is safe. I
 
 ## Validation
 
-The action has unit coverage for transient failures, code failures, unknown failures, causal-vs-non-causal log evidence, execution provenance binding, provenance mismatch/unavailable blocking, recovery ground-truth validation, unverified/inconsistent recovery exclusion, first-gate coverage attribution, evidence-gap versus authority-boundary separation, weak transient evidence discounting, secret redaction, side-effect blocking, attempt caps, runtime accounting, historical transient-waste accounting, recurring failure detection, fingerprint stability under dynamic log values, fingerprint separation for different failures, real-vs-copied rerun detection, Policy Learning thresholds, Shadow Mode look-back isolation, Benchmark Mode repository isolation, unknown counterfactual handling, benchmark precision/coverage aggregation, UNKNOWN signature extraction, cross-repository UNKNOWN clustering, promotion thresholds, and UNKNOWN side-effect guards.
+The action has unit coverage for transient failures, code failures, unknown failures, causal-vs-non-causal log evidence, execution provenance binding, provenance mismatch/unavailable blocking, recovery ground-truth validation, unverified/inconsistent recovery exclusion, first-gate coverage attribution, evidence-gap versus authority-boundary separation, UNKNOWN cause decomposition, cause-family aggregation, weak transient evidence discounting, secret redaction, side-effect blocking, attempt caps, runtime accounting, historical transient-waste accounting, recurring failure detection, fingerprint stability under dynamic log values, fingerprint separation for different failures, real-vs-copied rerun detection, Policy Learning thresholds, Shadow Mode look-back isolation, Benchmark Mode repository isolation, unknown counterfactual handling, benchmark precision/coverage aggregation, UNKNOWN signature extraction, cross-repository UNKNOWN clustering, promotion thresholds, and UNKNOWN side-effect guards.
 
 Selective Safe Rerun has also been tested end-to-end in GitHub Actions: a mixed run containing a transient network failure and a code regression caused only the transient job to execute again; the code-regression job remained blocked, and the attempt cap prevented a third loop.
 

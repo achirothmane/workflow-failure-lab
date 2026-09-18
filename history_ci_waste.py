@@ -64,6 +64,8 @@ class HistoricalFailure:
     recovery_evidence: tuple[str, ...] = ()
     causal_evidence_count: int = 0
     ambiguous_evidence_count: int = 0
+    unknown_cause: str = ""
+    unknown_cause_evidence: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
