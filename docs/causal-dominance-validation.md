@@ -60,3 +60,31 @@ The current research cycle is closed with:
 This is strong evidence for continuing to a **shadow-only override evaluation**. It is not proof of universal correctness and is not sufficient by itself to enable a production classifier override.
 
 The next layer therefore keeps the runtime classifier unchanged and measures the causal-dominance proposal counterfactually through `causal_dominance_shadow.py`.
+
+
+## Positive-Control + Holdout Gate
+
+The 11/11 recovery result from Waves 1–3 is now preserved as an immutable evidence ledger in `causal_dominance_evidence.py`:
+
+- Wave 1: 4 validated recoveries
+- Wave 2: 1 validated recovery
+- Wave 3: 6 validated recoveries
+- Total: 11 validated recoveries, 0 observed failed-again outcomes in that evidence set
+
+These 11 cases are **mechanism-family evidence**, not 11 causal-dominance positives. Most were already `UNKNOWN`, `RUNNER_INFRA`, or `DEPENDENCY_NETWORK`. The currently pinned real case that actually exercises the causal-dominance override is the SWC dprint HTTP 504 case: baseline `CODE_REGRESSION` → research-only `DOMINANCE_CANDIDATE` → `VALIDATED_RECOVERY`.
+
+To avoid confusing specificity with sensitivity, the new validation gate combines:
+
+1. **Real positive control** — SWC dprint must remain a dominance candidate and retain validated recovery ground truth.
+2. **Deterministic negative controls** — strong assertion/type errors must block dominance even when a 5xx is present.
+3. **Ordering negative control** — a failure wrapper before the 5xx must not be promoted when root-cause ordering is unproven.
+4. **UNKNOWN boundary control** — ordinary UNKNOWN 5xx evidence remains outside the causal-dominance override path.
+5. **50-repository holdout** — the shadow search must complete without skipped repositories, unresolved lookups, failed-again candidates, or unknown candidate outcomes.
+
+The workflow is `.github/workflows/causal-dominance-positive-control.yml`.
+
+### Production promotion threshold
+
+Passing the mechanics above is intentionally **not enough** to install a production override. The current gate requires at least **3 independent real causal-dominance positive-control runs** before `production_promotion_ready` can become true.
+
+At present the pinned count is **1/3**, so a clean positive-control + holdout run should report that the validation mechanics pass while production promotion remains blocked pending **2 additional independent real dominance-positive cases**.
