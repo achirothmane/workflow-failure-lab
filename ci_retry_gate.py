@@ -688,9 +688,13 @@ def render_report(repo: str, run_id: int, run_attempt: int, assessments: list[Jo
         else:
             lines.append("- No strong signature found in the available log.")
         if item.provenance_evidence:
-            lines.append("Execution provenance:")
+            lines.append("Retry-authority execution provenance:")
             for evidence in item.provenance_evidence:
                 lines.append(f"- `{evidence.replace('`', "\'")}`")
+        if item.failure_step_evidence:
+            lines.append("Outcome failure-step provenance:")
+            for evidence in item.failure_step_evidence:
+                lines.append(f"- `{evidence.replace(chr(96), chr(39))}`")
         if item.side_effect_evidence:
             lines.append("Side-effect signals:")
             for evidence in item.side_effect_evidence:
