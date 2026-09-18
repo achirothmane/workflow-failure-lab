@@ -132,6 +132,30 @@ class UnknownIntelligenceSummary:
     def promotion_candidates(self) -> tuple[UnknownPattern, ...]:
         return tuple(item for item in self.patterns if item.promotion_candidate)
 
+    @property
+    def near_promotion_candidates(self) -> tuple[UnknownPattern, ...]:
+        return tuple(
+            item
+            for item in self.patterns
+            if not item.promotion_candidate and item.promotion_distance == 1
+        )
+
+    @property
+    def promotion_blocker_counts(self) -> tuple[tuple[str, int], ...]:
+        counts: dict[str, int] = defaultdict(int)
+        for item in self.patterns:
+            if item.promotion_candidate:
+                counts[PROMOTION_ELIGIBLE] += 1
+                continue
+            for blocker in item.promotion_blockers:
+                counts[blocker] += 1
+        return tuple(
+            sorted(
+                counts.items(),
+                key=lambda pair: (-pair[1], pair[0]),
+            )
+        )
+
 
 def _semantic_log_content(raw_line: str) -> str:
     """Return the user/tool message without runner timestamps, ANSI, or benign metadata."""
