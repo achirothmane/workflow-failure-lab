@@ -1,7 +1,7 @@
 import http.client
 
 import ci_retry_gate
-from ci_retry_gate import AMBIGUOUS, CAUSAL, NON_CAUSAL, TRANSIENT_CATEGORIES, GitHubAPI, assess_job, causal_evidence_role, classify_log, detect_side_effect_risk, rerun_decision
+from ci_retry_gate import AMBIGUOUS, CAUSAL, NON_CAUSAL, PROVENANCE_CONFIRMED, PROVENANCE_MISMATCH, PROVENANCE_UNAVAILABLE, TRANSIENT_CATEGORIES, GitHubAPI, assess_job, causal_evidence_role, classify_log, detect_side_effect_risk, rerun_decision
 
 
 def fake_job(name="tests", steps=None, start="2026-09-17T01:00:00Z", end="2026-09-17T01:04:30Z"):
@@ -12,6 +12,24 @@ def fake_job(name="tests", steps=None, start="2026-09-17T01:00:00Z", end="2026-0
         "completed_at": end,
         "steps": steps or [],
     }
+
+
+def failed_step(name="Install dependencies", start="2026-09-17T01:01:00Z", end="2026-09-17T01:02:00Z"):
+    return {
+        "name": name,
+        "conclusion": "failure",
+        "started_at": start,
+        "completed_at": end,
+    }
+
+
+def timestamped_network_log(signal_time="2026-09-17T01:01:30.0000000Z"):
+    return (
+        "2026-09-17T01:01:00.1000000Z ##[group]Run npm ci\n"
+        f"{signal_time} npm ERR! code ETIMEDOUT\n"
+        "2026-09-17T01:01:31.0000000Z Error: connection reset by peer\n"
+        "2026-09-17T01:01:32.0000000Z Process completed with exit code 1\n"
+    )
 
 
 def test_network_transient_high_confidence():
@@ -119,9 +137,13 @@ def test_safe_rerun_requires_all_failed_jobs_safe():
 
 
 def test_safe_rerun_for_transient_without_side_effects():
-    a = assess_job(fake_job("install deps"), "ETIMEDOUT\nconnection reset by peer\ncould not resolve host")
+    a = assess_job(
+        fake_job("install deps", [failed_step()]),
+        timestamped_network_log(),
+    )
     safe, reason = rerun_decision([a], run_attempt=1, max_attempts=2)
     assert safe is True
+    assert a.provenance_status == PROVENANCE_CONFIRMED
     assert "high-confidence transient" in reason
 
 
@@ -279,3 +301,46 @@ def test_ambiguous_timeout_hint_is_discounted():
     result = classify_log("connection timed out")
     assert result.category == "UNKNOWN"
     assert result.score == 1
+
+
+def test_execution_provenance_binds_signal_to_failed_step_and_command():
+    assessment = assess_job(
+        fake_job("install deps", [failed_step()]),
+        timestamped_network_log(),
+    )
+    assert assessment.category == "DEPENDENCY_NETWORK"
+    assert assessment.confidence == "high"
+    assert assessment.provenance_status == PROVENANCE_CONFIRMED
+    assert assessment.provenance_step == "Install dependencies"
+    assert assessment.provenance_command == "npm ci"
+    assert any("signal: npm ERR! code ETIMEDOUT" in item for item in assessment.provenance_evidence)
+    assert any("exit: Process completed with exit code 1" in item for item in assessment.provenance_evidence)
+
+
+def test_execution_provenance_fails_closed_without_timestamps():
+    assessment = assess_job(
+        fake_job("install deps", [failed_step()]),
+        "npm ERR! code ETIMEDOUT\nError: connection reset by peer\n",
+    )
+    assert assessment.category == "DEPENDENCY_NETWORK"
+    assert assessment.confidence == "high"
+    assert assessment.provenance_status == PROVENANCE_UNAVAILABLE
+
+    safe, reason = rerun_decision([assessment], run_attempt=1, max_attempts=2)
+    assert safe is False
+    assert "Execution provenance" in reason
+
+
+def test_execution_provenance_detects_signal_outside_failed_step_window():
+    assessment = assess_job(
+        fake_job("install deps", [failed_step()]),
+        timestamped_network_log(signal_time="2026-09-17T01:03:30.0000000Z"),
+    )
+    assert assessment.category == "DEPENDENCY_NETWORK"
+    assert assessment.confidence == "high"
+    assert assessment.provenance_status == PROVENANCE_MISMATCH
+
+    safe, reason = rerun_decision([assessment], run_attempt=1, max_attempts=2)
+    assert safe is False
+    assert "MISMATCH" in reason
+
