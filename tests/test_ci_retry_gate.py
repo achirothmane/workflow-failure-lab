@@ -349,3 +349,35 @@ def test_execution_provenance_detects_signal_outside_failed_step_window():
     assert safe is False
     assert "MISMATCH" in reason
 
+
+def test_git_new_branch_ref_with_error_token_is_non_causal():
+    line = "* [new branch] fix/http-client-spurious-econnreset -> upstream/fix/http-client-spurious-econnreset"
+    assert causal_evidence_role(line) == NON_CAUSAL
+
+
+def test_git_ref_names_do_not_create_dependency_network_classification():
+    result = classify_log(
+        "2026-09-16T12:04:37.0410523Z  * [new branch] fix/http-client-spurious-econnreset -> upstream/fix/http-client-spurious-econnreset\n"
+        "2026-09-16T12:04:52.4008814Z  * [new branch] fix/http-client-spurious-econnreset -> origin/fix/http-client-spurious-econnreset\n"
+        "2026-09-16T12:05:24.9938186Z  ! [rejected] HEAD -> release_2_9.7 (non-fast-forward)\n"
+        "2026-09-16T12:05:24.9939182Z error: failed to push some refs to 'https://github.com/denoland/deno'\n"
+        "2026-09-16T12:05:25.0159723Z Process completed with exit code 1.\n"
+    )
+    assert result.category != "DEPENDENCY_NETWORK"
+
+
+def test_create_pr_step_is_side_effect():
+    risk, evidence = detect_side_effect_risk(
+        fake_job("version bump", [{"name": "Create PR"}])
+    )
+    assert risk is True
+    assert evidence == ("Create PR",)
+
+
+def test_git_push_step_is_side_effect():
+    risk, evidence = detect_side_effect_risk(
+        fake_job("helper", [{"name": "git push origin HEAD"}])
+    )
+    assert risk is True
+    assert evidence == ("git push origin HEAD",)
+
