@@ -595,18 +595,24 @@ def test_deterministic_command_config_cannot_promote_from_recovery_alone():
                     signature=signature,
                     recovered=True,
                     unknown_cause="COMMAND_CONFIG",
+                    mechanism_causality_status=MECHANISM_CAUSAL_UNCONFIRMED,
+                    mechanism_causality_reasons=(),
                 ),
                 _unknown(
                     2,
                     signature=signature,
                     recovered=True,
                     unknown_cause="COMMAND_CONFIG",
+                    mechanism_causality_status=MECHANISM_CAUSAL_UNCONFIRMED,
+                    mechanism_causality_reasons=(),
                 ),
                 _unknown(
                     3,
                     signature=signature,
                     recovered=True,
                     unknown_cause="COMMAND_CONFIG",
+                    mechanism_causality_status=MECHANISM_CAUSAL_UNCONFIRMED,
+                    mechanism_causality_reasons=(),
                 ),
             ],
             3,
@@ -632,18 +638,24 @@ def test_specific_but_unproven_mechanism_cannot_promote_from_recovery_alone():
                     signature=signature,
                     recovered=True,
                     unknown_cause="AMBIGUOUS_OPERATIONAL",
+                    mechanism_causality_status=MECHANISM_CAUSAL_UNCONFIRMED,
+                    mechanism_causality_reasons=(),
                 ),
                 _unknown(
                     2,
                     signature=signature,
                     recovered=True,
                     unknown_cause="AMBIGUOUS_OPERATIONAL",
+                    mechanism_causality_status=MECHANISM_CAUSAL_UNCONFIRMED,
+                    mechanism_causality_reasons=(),
                 ),
                 _unknown(
                     3,
                     signature=signature,
                     recovered=True,
                     unknown_cause="AMBIGUOUS_OPERATIONAL",
+                    mechanism_causality_status=MECHANISM_CAUSAL_UNCONFIRMED,
+                    mechanism_causality_reasons=(),
                 ),
             ],
             3,
@@ -668,18 +680,21 @@ def test_explicit_transient_mechanism_can_override_deterministic_diagnostic_fami
                     signature=signature,
                     recovered=True,
                     unknown_cause="COMMAND_CONFIG",
+                    mechanism_causality_reasons=("CONNECTION_RESET",),
                 ),
                 _unknown(
                     2,
                     signature=signature,
                     recovered=True,
                     unknown_cause="COMMAND_CONFIG",
+                    mechanism_causality_reasons=("CONNECTION_RESET",),
                 ),
                 _unknown(
                     3,
                     signature=signature,
                     recovered=True,
                     unknown_cause="COMMAND_CONFIG",
+                    mechanism_causality_reasons=("CONNECTION_RESET",),
                 ),
             ],
             3,
@@ -830,4 +845,42 @@ def test_cross_repository_replication_is_tracked_without_becoming_mandatory():
     assert pattern.independent_repositories == 2
     assert pattern.replication_repositories == ("acme/repo", "other/project")
     assert pattern.promotion_candidate is True
+
+
+def test_causal_server_5xx_evidence_survives_numeric_signature_normalization():
+    signature = "##[error]unexpected http response: <n>"
+    reruns = {
+        "acme/repo": (
+            [
+                _unknown(
+                    101,
+                    signature=signature,
+                    recovered=True,
+                    mechanism_causality_reasons=("SERVER_5XX",),
+                ),
+                _unknown(
+                    202,
+                    signature=signature,
+                    recovered=True,
+                    mechanism_causality_reasons=("SERVER_5XX",),
+                ),
+                _unknown(
+                    303,
+                    signature=signature,
+                    recovered=True,
+                    mechanism_causality_reasons=("SERVER_5XX",),
+                ),
+            ],
+            3,
+        )
+    }
+
+    pattern = summarize_unknown_patterns({}, reruns).patterns[0]
+
+    assert pattern.mechanism_status == "TRANSIENT_MECHANISM_SUPPORTED"
+    assert pattern.mechanism_reasons == ("SERVER_5XX",)
+    assert pattern.mechanism_causal_gt_reruns == 3
+    assert pattern.independent_runs == 3
+    assert pattern.promotion_candidate is True
+    assert pattern.promotion_blockers == ()
 

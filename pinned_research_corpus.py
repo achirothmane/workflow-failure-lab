@@ -102,4 +102,114 @@ SERDE_ATTESTATION_HTTP_500 = PinnedResearchCase(
 )
 
 
-PINNED_RESEARCH_CASES = (SERDE_ATTESTATION_HTTP_500,)
+TRAEFIK_GOLANGCI_HTTP_504 = PinnedResearchCase(
+    case_id="traefik-golangci-http-504-2026-09-14",
+    repository="traefik/traefik",
+    run_id=34857150924,
+    failed_attempt=1,
+    rerun_attempt=2,
+    failed_job_id=104019537901,
+    rerun_job_id=104021344977,
+    job_name="lint",
+    failure_log=(
+        "2026-09-14T14:41:01.8192949Z ##[group]Run "
+        "golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20\n"
+        "2026-09-14T14:41:04.0517701Z Downloading binary "
+        "https://github.com/golangci/golangci-lint/releases/download/v2.13.2/"
+        "golangci-lint-2.13.2-linux-amd64.tar.gz ...\n"
+        "2026-09-14T14:41:04.0680755Z Unexpected HTTP response: 504\n"
+        "2026-09-14T14:41:21.0866690Z Unexpected HTTP response: 504\n"
+        "2026-09-14T14:41:39.1163363Z ##[error]Failed to run: "
+        "Error: Unexpected HTTP response: 504, Error: Unexpected HTTP response: 504\n"
+        "2026-09-14T14:41:39.1174318Z ##[error]Unexpected HTTP response: 504\n"
+    ),
+    failed_job={
+        "id": 104019537901,
+        "name": "lint",
+        "conclusion": "failure",
+        "started_at": "2026-09-14T14:40:38Z",
+        "completed_at": "2026-09-14T14:41:40Z",
+        "steps": [
+            {
+                "name": "Check out code",
+                "conclusion": "success",
+                "started_at": "2026-09-14T14:40:39Z",
+                "completed_at": "2026-09-14T14:40:41Z",
+            },
+            {
+                "name": "Set up Go",
+                "conclusion": "success",
+                "started_at": "2026-09-14T14:40:41Z",
+                "completed_at": "2026-09-14T14:40:42Z",
+            },
+            {
+                "name": "Restore go modules cache",
+                "conclusion": "success",
+                "started_at": "2026-09-14T14:40:42Z",
+                "completed_at": "2026-09-14T14:40:53Z",
+            },
+            {
+                "name": "Restore go build cache",
+                "conclusion": "success",
+                "started_at": "2026-09-14T14:40:53Z",
+                "completed_at": "2026-09-14T14:41:01Z",
+            },
+            {
+                "name": "golangci-lint",
+                "conclusion": "failure",
+                "started_at": "2026-09-14T14:41:01Z",
+                "completed_at": "2026-09-14T14:41:39Z",
+            },
+        ],
+    },
+    rerun_job={
+        "id": 104021344977,
+        "name": "lint",
+        "conclusion": "success",
+        "started_at": "2026-09-14T14:45:23Z",
+        "completed_at": "2026-09-14T14:49:27Z",
+        "steps": [
+            {
+                "name": "Check out code",
+                "conclusion": "success",
+                "started_at": "2026-09-14T14:45:26Z",
+                "completed_at": "2026-09-14T14:45:27Z",
+            },
+            {
+                "name": "Set up Go",
+                "conclusion": "success",
+                "started_at": "2026-09-14T14:45:27Z",
+                "completed_at": "2026-09-14T14:45:29Z",
+            },
+            {
+                "name": "Restore go modules cache",
+                "conclusion": "success",
+                "started_at": "2026-09-14T14:45:29Z",
+                "completed_at": "2026-09-14T14:45:40Z",
+            },
+            {
+                "name": "Restore go build cache",
+                "conclusion": "success",
+                "started_at": "2026-09-14T14:45:40Z",
+                "completed_at": "2026-09-14T14:45:50Z",
+            },
+            {
+                "name": "golangci-lint",
+                "conclusion": "success",
+                "started_at": "2026-09-14T14:45:50Z",
+                "completed_at": "2026-09-14T14:49:24Z",
+            },
+        ],
+    },
+    expected_runtime_category="UNKNOWN",
+    expected_mechanism_status="TRANSIENT_MECHANISM_SUPPORTED",
+    expected_mechanism_reason="SERVER_5XX",
+    expected_recovery_status="VALIDATED_RECOVERY",
+    expected_side_effect_risk=False,
+)
+
+
+PINNED_RESEARCH_CASES = (
+    SERDE_ATTESTATION_HTTP_500,
+    TRAEFIK_GOLANGCI_HTTP_504,
+)
