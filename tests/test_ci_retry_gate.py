@@ -1,7 +1,7 @@
 import http.client
 
 import ci_retry_gate
-from ci_retry_gate import GitHubAPI, assess_job, classify_log, detect_side_effect_risk, rerun_decision
+from ci_retry_gate import TRANSIENT_CATEGORIES, GitHubAPI, assess_job, classify_log, detect_side_effect_risk, rerun_decision
 
 
 def fake_job(name="tests", steps=None, start="2026-09-17T01:00:00Z", end="2026-09-17T01:04:30Z"):
@@ -210,3 +210,21 @@ def test_github_api_does_not_retry_post_on_incomplete_response(monkeypatch):
         raise AssertionError("POST transport interruption must fail closed")
 
     assert api.opener.calls == 1
+
+
+def test_requests_httpbin_handshake_timeout_is_not_auto_rerun_transient():
+    result = classify_log(
+        "2026-08-24T16:58:07.7655465Z data before giving up, as a float, or a :ref:\`(connect timeout,\n"
+        "2026-08-24T16:58:07.7709068Z data before giving up, as a float, or a :ref:\`(connect timeout,\n"
+        "2026-08-24T16:59:01.0000000Z pytest-httpbin server hit an exception serving request: "
+        "_ssl.c:1015: The handshake operation timed out\n"
+        "2026-08-24T16:59:02.0000000Z Process completed with exit code 1\n"
+    )
+
+    assert result.category == "RESOURCE_TIMEOUT"
+    assert result.confidence == "low"
+    assert result.category not in TRANSIENT_CATEGORIES
+    assert result.evidence == (
+        "pytest-httpbin server hit an exception serving request: "
+        "_ssl.c:1015: The handshake operation timed out",
+    )
