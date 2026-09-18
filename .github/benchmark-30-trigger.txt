@@ -1,1 +1,1 @@
-run-final-30-repository-benchmark
+run-parallel-final-30-repository-benchmark
