@@ -762,6 +762,30 @@ def render_benchmark_report(summary: BenchmarkSummary) -> str:
                 "|---|---:|---:|---:|---:|---:|---:|---|---|",
             ]
         )
+        if unknown.causes:
+            lines.extend(
+                [
+                    "",
+                    "#### UNKNOWN Cause Decomposition",
+                    "",
+                    "| Cause family | Occurrences | Repositories | GT-evaluable reruns | Validated recoveries | Failed again | Unknown / unverified | Side-effect occurrences |",
+                    "|---|---:|---:|---:|---:|---:|---:|---:|",
+                ]
+            )
+            for cause in unknown.causes:
+                lines.append(
+                    f"| `{cause.cause}` | {cause.occurrences} | {cause.repositories} | "
+                    f"{cause.rerun_observations} | {cause.recoveries} | {cause.failed_again} | "
+                    f"{cause.unknown_outcomes} | {cause.side_effect_occurrences} |"
+                )
+            lines.extend(
+                [
+                    "",
+                    "> Cause families are diagnostic buckets only. They do not modify UNKNOWN runtime classification or authorize reruns.",
+                    "",
+                ]
+            )
+
         for item in unknown.patterns[:20]:
             safe_signature = item.signature.replace("|", "/")
             lines.append(
@@ -1038,6 +1062,24 @@ def main() -> int:
         "benchmark-unknown-promotion-candidate-ids",
         ",".join(item.pattern_id for item in summary.unknown_intelligence.promotion_candidates),
     )
+    unknown_causes = {
+        item.cause: item.occurrences
+        for item in summary.unknown_intelligence.causes
+    }
+    for cause_name in (
+        "NO_STABLE_ERROR_EVIDENCE",
+        "AUTH_PERMISSION",
+        "GIT_VCS",
+        "COMMAND_CONFIG",
+        "TEST_BUILD",
+        "PACKAGE_TOOL",
+        "TOOL_ACTION_SPECIFIC",
+        "AMBIGUOUS_OPERATIONAL",
+    ):
+        _write_output(
+            "benchmark-unknown-cause-" + cause_name.lower().replace("_", "-"),
+            str(unknown_causes.get(cause_name, 0)),
+        )
     return 0
 
 
