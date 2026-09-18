@@ -38,6 +38,13 @@ STATUS_INSUFFICIENT_EVIDENCE = "INSUFFICIENT_EVIDENCE"
 STATUS_SIDE_EFFECT_GUARDED = "SIDE_EFFECT_GUARDED"
 STATUS_NOT_TRANSIENT = "NOT_TRANSIENT"
 
+PROMOTION_BLOCKER_NO_STABLE_SIGNATURE = "NO_STABLE_SIGNATURE"
+PROMOTION_BLOCKER_INSUFFICIENT_OCCURRENCES = "INSUFFICIENT_OCCURRENCES"
+PROMOTION_BLOCKER_INSUFFICIENT_GT_RERUNS = "INSUFFICIENT_GT_RERUNS"
+PROMOTION_BLOCKER_RECOVERY_RATE = "RECOVERY_RATE_BELOW_THRESHOLD"
+PROMOTION_BLOCKER_SIDE_EFFECT = "SIDE_EFFECT_CONTAMINATION"
+PROMOTION_ELIGIBLE = "ELIGIBLE_FOR_CLASSIFIER_RESEARCH"
+
 
 @dataclass(frozen=True)
 class UnknownPattern:
@@ -51,6 +58,11 @@ class UnknownPattern:
     unknown_outcomes: int
     side_effect_occurrences: int
     status: str
+    promotion_blocker: str = PROMOTION_ELIGIBLE
+    promotion_blockers: tuple[str, ...] = ()
+    occurrence_deficit: int = 0
+    gt_rerun_deficit: int = 0
+    recovery_rate_deficit: float = 0.0
 
     @property
     def recovery_rate(self) -> float:
@@ -65,6 +77,10 @@ class UnknownPattern:
     @property
     def promotion_candidate(self) -> bool:
         return self.status == STATUS_INVESTIGATE_TRANSIENT
+
+    @property
+    def promotion_distance(self) -> int:
+        return len(self.promotion_blockers)
 
 
 @dataclass(frozen=True)
@@ -165,6 +181,29 @@ def unknown_pattern_id(signature: str) -> str:
     return f"UF-{digest}"
 
 
+def _promotion_blockers_for(
+    occurrences: int,
+    rerun_observations: int,
+    recoveries: int,
+    side_effect_occurrences: int,
+    signature: str,
+) -> tuple[str, ...]:
+    blockers: list[str] = []
+    if signature == "unknown without stable evidence":
+        blockers.append(PROMOTION_BLOCKER_NO_STABLE_SIGNATURE)
+    if occurrences < MIN_UNKNOWN_OCCURRENCES:
+        blockers.append(PROMOTION_BLOCKER_INSUFFICIENT_OCCURRENCES)
+    if rerun_observations < MIN_UNKNOWN_RERUN_SAMPLES:
+        blockers.append(PROMOTION_BLOCKER_INSUFFICIENT_GT_RERUNS)
+    if rerun_observations >= MIN_UNKNOWN_RERUN_SAMPLES:
+        recovery_rate = recoveries / rerun_observations
+        if recovery_rate < MIN_UNKNOWN_RECOVERY_RATE:
+            blockers.append(PROMOTION_BLOCKER_RECOVERY_RATE)
+    if side_effect_occurrences:
+        blockers.append(PROMOTION_BLOCKER_SIDE_EFFECT)
+    return tuple(blockers)
+
+
 def _status_for(
     occurrences: int,
     rerun_observations: int,
@@ -244,6 +283,18 @@ def summarize_unknown_patterns(
     patterns: list[UnknownPattern] = []
     for pattern_id, count in occurrences.items():
         signature = signatures[pattern_id]
+        blockers = _promotion_blockers_for(
+            count,
+            rerun_observations[pattern_id],
+            recoveries[pattern_id],
+            side_effect_occurrences[pattern_id],
+            signature,
+        )
+        recovery_rate = (
+            recoveries[pattern_id] / rerun_observations[pattern_id]
+            if rerun_observations[pattern_id]
+            else 0.0
+        )
         patterns.append(
             UnknownPattern(
                 pattern_id=pattern_id,
@@ -262,12 +313,26 @@ def summarize_unknown_patterns(
                     side_effect_occurrences[pattern_id],
                     signature,
                 ),
+                promotion_blocker=(
+                    blockers[0] if blockers else PROMOTION_ELIGIBLE
+                ),
+                promotion_blockers=blockers,
+                occurrence_deficit=max(0, MIN_UNKNOWN_OCCURRENCES - count),
+                gt_rerun_deficit=max(
+                    0,
+                    MIN_UNKNOWN_RERUN_SAMPLES - rerun_observations[pattern_id],
+                ),
+                recovery_rate_deficit=max(
+                    0.0,
+                    MIN_UNKNOWN_RECOVERY_RATE - recovery_rate,
+                ),
             )
         )
 
     patterns.sort(
         key=lambda item: (
             not item.promotion_candidate,
+            item.promotion_distance,
             -item.rerun_observations,
             -item.occurrences,
             -item.repositories,
