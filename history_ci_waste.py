@@ -16,6 +16,14 @@ from ci_retry_gate import (
     detect_side_effect_risk,
     job_duration_minutes,
 )
+from recovery_ground_truth import (
+    RECOVERY_NOT_OBSERVED,
+    RECOVERY_VALIDATED,
+    assess_recovery_ground_truth,
+    is_ground_truth_evaluable,
+    is_validated_recovery,
+    later_rerun_result,
+)
 
 
 _DYNAMIC_PATTERNS = (
@@ -49,6 +57,8 @@ class HistoricalFailure:
     side_effect_risk: bool = False
     attempt: int = 1
     provenance_status: str = PROVENANCE_CONFIRMED
+    recovery_status: str = RECOVERY_NOT_OBSERVED
+    recovery_evidence: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -71,12 +81,20 @@ class FingerprintSummary:
     rerun_recoveries: int
     high_confidence_occurrences: int
     side_effect_seen: bool
+    validated_rerun_observations: int = 0
+    validated_rerun_recoveries: int = 0
 
     @property
     def rerun_recovery_rate(self) -> float:
         if self.rerun_observations <= 0:
             return 0.0
         return self.rerun_recoveries / self.rerun_observations
+
+    @property
+    def ground_truth_recovery_rate(self) -> float:
+        if self.validated_rerun_observations <= 0:
+            return 0.0
+        return self.validated_rerun_recoveries / self.validated_rerun_observations
 
     @property
     def high_confidence_rate(self) -> float:
@@ -105,6 +123,7 @@ class HistorySummary:
     fingerprints: tuple[FingerprintSummary, ...] = ()
     policies: tuple[PolicyRecommendation, ...] = ()
     rerun_recoveries: int = 0
+    validated_rerun_recoveries: int = 0
 
 
 def normalize_signature_line(line: str) -> str:
@@ -155,13 +174,16 @@ def recommend_policy(item: FingerprintSummary) -> PolicyRecommendation:
             item.high_confidence_rate,
         )
 
-    if item.rerun_observations < MIN_POLICY_RERUN_SAMPLES:
+    if item.validated_rerun_observations < MIN_POLICY_RERUN_SAMPLES:
         return PolicyRecommendation(
             item.fingerprint,
             POLICY_MANUAL_REVIEW,
-            f"Only {item.rerun_observations} real rerun samples are available; at least {MIN_POLICY_RERUN_SAMPLES} are required.",
-            item.rerun_observations,
-            item.rerun_recovery_rate,
+            (
+                f"Only {item.validated_rerun_observations} ground-truth-evaluable rerun "
+                f"samples are available; at least {MIN_POLICY_RERUN_SAMPLES} are required."
+            ),
+            item.validated_rerun_observations,
+            item.ground_truth_recovery_rate,
             item.high_confidence_rate,
         )
 
@@ -170,37 +192,48 @@ def recommend_policy(item: FingerprintSummary) -> PolicyRecommendation:
             item.fingerprint,
             POLICY_MANUAL_REVIEW,
             f"High-confidence classification rate is {item.high_confidence_rate:.0%}, below the {MIN_HIGH_CONFIDENCE_RATE:.0%} threshold.",
-            item.rerun_observations,
-            item.rerun_recovery_rate,
+            item.validated_rerun_observations,
+            item.ground_truth_recovery_rate,
             item.high_confidence_rate,
         )
 
-    if item.rerun_recovery_rate >= MIN_AUTO_RECOVERY_RATE:
+    if item.ground_truth_recovery_rate >= MIN_AUTO_RECOVERY_RATE:
         return PolicyRecommendation(
             item.fingerprint,
             POLICY_AUTO_RERUN_ONCE,
-            f"Recovered after {item.rerun_recoveries}/{item.rerun_observations} observed reruns ({item.rerun_recovery_rate:.0%}).",
-            item.rerun_observations,
-            item.rerun_recovery_rate,
+            (
+                f"Ground-truth validated recovery occurred after "
+                f"{item.validated_rerun_recoveries}/{item.validated_rerun_observations} "
+                f"evaluable reruns ({item.ground_truth_recovery_rate:.0%})."
+            ),
+            item.validated_rerun_observations,
+            item.ground_truth_recovery_rate,
             item.high_confidence_rate,
         )
 
-    if item.rerun_recovery_rate <= MAX_BLOCK_RECOVERY_RATE:
+    if item.ground_truth_recovery_rate <= MAX_BLOCK_RECOVERY_RATE:
         return PolicyRecommendation(
             item.fingerprint,
             POLICY_DO_NOT_AUTO_RERUN,
-            f"Only {item.rerun_recoveries}/{item.rerun_observations} observed reruns recovered ({item.rerun_recovery_rate:.0%}).",
-            item.rerun_observations,
-            item.rerun_recovery_rate,
+            (
+                f"Only {item.validated_rerun_recoveries}/{item.validated_rerun_observations} "
+                f"ground-truth-evaluable reruns validated recovery "
+                f"({item.ground_truth_recovery_rate:.0%})."
+            ),
+            item.validated_rerun_observations,
+            item.ground_truth_recovery_rate,
             item.high_confidence_rate,
         )
 
     return PolicyRecommendation(
         item.fingerprint,
         POLICY_MANUAL_REVIEW,
-        f"Observed rerun recovery rate is {item.rerun_recovery_rate:.0%}; evidence is not decisive enough for automatic policy.",
-        item.rerun_observations,
-        item.rerun_recovery_rate,
+        (
+            f"Ground-truth recovery rate is {item.ground_truth_recovery_rate:.0%}; "
+            "evidence is not decisive enough for automatic policy."
+        ),
+        item.validated_rerun_observations,
+        item.ground_truth_recovery_rate,
         item.high_confidence_rate,
     )
 
@@ -244,6 +277,8 @@ def summarize_history(
     fp_reruns: Counter[str] = Counter()
     fp_recoveries: Counter[str] = Counter()
     fp_high_confidence: Counter[str] = Counter()
+    fp_validated_observations: Counter[str] = Counter()
+    fp_validated_recoveries: Counter[str] = Counter()
     fp_side_effect: dict[str, bool] = defaultdict(bool)
     fp_example: dict[str, HistoricalFailure] = {}
     for item in failures:
@@ -257,6 +292,10 @@ def summarize_history(
             fp_recoveries[item.fingerprint] += 1
         if item.confidence == "high":
             fp_high_confidence[item.fingerprint] += 1
+        if is_ground_truth_evaluable(item.recovery_status):
+            fp_validated_observations[item.fingerprint] += 1
+        if is_validated_recovery(item.recovery_status):
+            fp_validated_recoveries[item.fingerprint] += 1
         if item.side_effect_risk:
             fp_side_effect[item.fingerprint] = True
         fp_example.setdefault(item.fingerprint, item)
@@ -273,6 +312,8 @@ def summarize_history(
             rerun_recoveries=fp_recoveries[fingerprint],
             high_confidence_occurrences=fp_high_confidence[fingerprint],
             side_effect_seen=fp_side_effect[fingerprint],
+            validated_rerun_observations=fp_validated_observations[fingerprint],
+            validated_rerun_recoveries=fp_validated_recoveries[fingerprint],
         )
         for fingerprint, count in fp_counts.items()
     ]
@@ -295,6 +336,9 @@ def summarize_history(
         fingerprints=tuple(fingerprints),
         policies=policies,
         rerun_recoveries=sum(1 for item in failures if item.recovered_after_rerun),
+        validated_rerun_recoveries=sum(
+            1 for item in failures if is_validated_recovery(item.recovery_status)
+        ),
     )
 
 
@@ -313,7 +357,8 @@ def render_history_report(summary: HistorySummary) -> str:
         f"Historical failed-job runtime: **{summary.failed_minutes:.2f} min**",
         f"High-confidence transient CI waste: **{summary.transient_waste_minutes:.2f} min**",
         f"Failure fingerprints observed: **{len(summary.fingerprints)}**",
-        f"Failures recovered by a later rerun: **{summary.rerun_recoveries}**",
+        f"Jobs that later succeeded after a rerun: **{summary.rerun_recoveries}**",
+        f"Ground-truth validated recoveries: **{summary.validated_rerun_recoveries}**",
         f"Learned policy recommendations: **{auto_count} auto-rerun · {manual_count} manual-review · {blocked_count} blocked**",
         "",
     ]
@@ -323,8 +368,8 @@ def render_history_report(summary: HistorySummary) -> str:
             [
                 "### Recurring failure fingerprints",
                 "",
-                "| Fingerprint | Job | Category | Occurrences | Real reruns | Recoveries | Suggested policy | Failed runtime |",
-                "|---|---|---|---:|---:|---:|---|---:|",
+                "| Fingerprint | Job | Category | Occurrences | Real reruns | Later successes | GT evaluated | GT recoveries | Suggested policy | Failed runtime |",
+                "|---|---|---|---:|---:|---:|---:|---:|---|---:|",
             ]
         )
         for item in recurring_fingerprints[:10]:
@@ -332,6 +377,7 @@ def render_history_report(summary: HistorySummary) -> str:
             lines.append(
                 f"| `{item.fingerprint}` | {item.job_name.replace('|', '/')} | `{item.category}` | "
                 f"{item.occurrences} | {item.rerun_observations} | {item.rerun_recoveries} | "
+                f"{item.validated_rerun_observations} | {item.validated_rerun_recoveries} | "
                 f"`{policy.policy}` | {item.failed_minutes:.2f} min |"
             )
             lines.append(f"|  | Signature | `{item.signature.replace('`', "'")}` |  |  |  | {policy.reason.replace('|', '/')} |  |")
@@ -387,19 +433,15 @@ def _later_rerun_outcome(
     job_name: str,
     original_started_at: str,
 ) -> tuple[bool, bool]:
-    """Return (rerun_observed, recovered) while ignoring GitHub's copied untouched jobs."""
-    observed = False
-    for later_attempt in range(current_attempt + 1, attempts + 1):
-        for candidate in attempt_jobs.get(later_attempt, []):
-            if str(candidate.get("name") or "") != job_name:
-                continue
-            later_started_at = str(candidate.get("started_at") or "")
-            if not later_started_at or later_started_at == original_started_at:
-                continue
-            observed = True
-            if str(candidate.get("conclusion") or "").lower() == "success":
-                return True, True
-    return observed, False
+    """Backward-compatible raw rerun outcome; ground-truth validation is separate."""
+    observed, recovered, _ = later_rerun_result(
+        attempt_jobs,
+        current_attempt,
+        attempts,
+        job_name,
+        original_started_at,
+    )
+    return observed, recovered
 
 
 def collect_history(
@@ -463,12 +505,20 @@ def collect_history(
                     classification.evidence,
                 )
                 side_effect_risk, _ = detect_side_effect_risk(job)
-                rerun_observed, recovered = _later_rerun_outcome(
+                rerun_observed, recovered, rerun_job = later_rerun_result(
                     attempt_jobs,
                     attempt,
                     attempts,
                     job_name,
                     str(job.get("started_at") or ""),
+                )
+                recovery = assess_recovery_ground_truth(
+                    original_job=job,
+                    provenance_status=provenance.status,
+                    provenance_step=provenance.step_name,
+                    rerun_observed=rerun_observed,
+                    recovered=recovered,
+                    rerun_job=rerun_job,
                 )
                 failures.append(
                     HistoricalFailure(
@@ -484,6 +534,8 @@ def collect_history(
                         side_effect_risk=side_effect_risk,
                         attempt=attempt,
                         provenance_status=provenance.status,
+                        recovery_status=recovery.status,
+                        recovery_evidence=recovery.evidence,
                     )
                 )
 
