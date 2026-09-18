@@ -1,3 +1,4 @@
+from server5xx_counterexample_search import search_server5xx_counterexamples
 from classifier_rule_research import evaluate_server5xx_shadow_rule
 from ci_retry_gate import (
     FAILURE_STEP_CONFIRMED,
@@ -259,4 +260,26 @@ def test_pinned_server_5xx_cases_support_shadow_classifier_hypothesis():
     assert summary.independent_runs == 2
     assert summary.independent_repositories == 2
     assert summary.side_effect_matches == 0
+
+
+def test_pinned_server_5xx_cases_have_no_counterexample():
+    serde = _historical_from_pinned_case(SERDE_ATTESTATION_HTTP_500)
+    traefik = _historical_from_pinned_case(TRAEFIK_GOLANGCI_HTTP_504)
+
+    summary = search_server5xx_counterexamples(
+        {
+            SERDE_ATTESTATION_HTTP_500.repository: ([serde], 1),
+            TRAEFIK_GOLANGCI_HTTP_504.repository: ([traefik], 1),
+        }
+    )
+
+    assert len(summary.matches) == 2
+    assert len(summary.evaluable_matches) == 2
+    assert summary.validated_recoveries == 2
+    assert summary.failed_again == 0
+    assert summary.outcome_counterexamples == ()
+    assert summary.classification_contradictions == ()
+    assert summary.observed_recovery_rate == 1.0
+    assert summary.independent_runs == 2
+    assert summary.independent_repositories == 2
 

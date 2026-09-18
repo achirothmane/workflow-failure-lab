@@ -377,6 +377,36 @@ outputs:
   benchmark-research-side-effect-matches:
     description: 'Shadow classifier matches that cross a side-effect boundary; reported separately from classifier false positives.'
     value: ${{ steps.benchmark.outputs.benchmark-research-side-effect-matches }}
+  benchmark-research-counterexample-causal-matches:
+    description: 'Causal SERVER_5XX matches found across all runtime categories during falsification search.'
+    value: ${{ steps.benchmark.outputs.benchmark-research-counterexample-causal-matches }}
+  benchmark-research-counterexample-evaluable:
+    description: 'Counterexample-search matches with ground-truth-evaluable rerun outcomes.'
+    value: ${{ steps.benchmark.outputs.benchmark-research-counterexample-evaluable }}
+  benchmark-research-counterexample-validated-recoveries:
+    description: 'Counterexample-search causal SERVER_5XX matches with VALIDATED_RECOVERY.'
+    value: ${{ steps.benchmark.outputs.benchmark-research-counterexample-validated-recoveries }}
+  benchmark-research-counterexample-failed-again:
+    description: 'Strong falsifiers: causal SERVER_5XX matches whose rerun failed again.'
+    value: ${{ steps.benchmark.outputs.benchmark-research-counterexample-failed-again }}
+  benchmark-research-counterexample-unknown-outcomes:
+    description: 'Counterexample-search causal SERVER_5XX matches without an evaluable rerun outcome.'
+    value: ${{ steps.benchmark.outputs.benchmark-research-counterexample-unknown-outcomes }}
+  benchmark-research-counterexample-recovery-rate:
+    description: 'Validated recoveries divided by evaluable causal SERVER_5XX matches across all categories.'
+    value: ${{ steps.benchmark.outputs.benchmark-research-counterexample-recovery-rate }}
+  benchmark-research-counterexample-classification-contradictions:
+    description: 'Causal SERVER_5XX matches coexisting with a non-transient, non-UNKNOWN runtime category.'
+    value: ${{ steps.benchmark.outputs.benchmark-research-counterexample-classification-contradictions }}
+  benchmark-research-counterexample-independent-runs:
+    description: 'Distinct workflow run IDs among evaluable broad SERVER_5XX matches.'
+    value: ${{ steps.benchmark.outputs.benchmark-research-counterexample-independent-runs }}
+  benchmark-research-counterexample-independent-repositories:
+    description: 'Distinct repositories among evaluable broad SERVER_5XX matches.'
+    value: ${{ steps.benchmark.outputs.benchmark-research-counterexample-independent-repositories }}
+  benchmark-research-counterexample-side-effect-matches:
+    description: 'Broad SERVER_5XX matches crossing a side-effect boundary; authority signal only.'
+    value: ${{ steps.benchmark.outputs.benchmark-research-counterexample-side-effect-matches }}
   benchmark-unknown-promotion-blocker-side-effect-contamination:
     description: 'UNKNOWN patterns blocked because at least one occurrence crossed a workflow side-effect boundary.'
     value: ${{ steps.benchmark.outputs.benchmark-unknown-promotion-blocker-side-effect-contamination }}
