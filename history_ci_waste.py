@@ -403,7 +403,7 @@ def render_history_report(summary: HistorySummary) -> str:
     lines.extend(
         [
             "",
-            "> Policy Learning is advisory only. AUTO_RERUN_ONCE is suggested only for transient fingerprints with at least 5 real rerun samples, at least 80% recovery, at least 80% high-confidence classifications, and no observed side-effect signal.",
+            "> Policy Learning is advisory only. AUTO_RERUN_ONCE is suggested only for transient fingerprints with at least 5 ground-truth-evaluable rerun samples, at least 80% validated recovery, at least 80% high-confidence classifications, and no observed side-effect signal.",
             "> Fingerprints are deterministic hashes of the job, failure category, and normalized evidence lines. Timestamps, IP addresses, long hex IDs, and standalone numbers are normalized so the same underlying failure can match across runs.",
             "> Failed-job runtime is not automatically waste. The transient-waste figure counts only jobs whose logs match a high-confidence runner/infrastructure or dependency/network signature.",
         ]
@@ -590,6 +590,10 @@ def main() -> int:
     _write_output("failure-fingerprints", str(len(summary.fingerprints)))
     _write_output("recurring-fingerprints", str(recurring_fingerprints))
     _write_output("rerun-recoveries", str(summary.rerun_recoveries))
+    _write_output(
+        "validated-rerun-recoveries",
+        str(summary.validated_rerun_recoveries),
+    )
     _write_output("policy-auto-rerun-fingerprints", str(auto_policies))
     _write_output("policy-manual-review-fingerprints", str(manual_policies))
     _write_output("policy-blocked-fingerprints", str(blocked_policies))
