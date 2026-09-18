@@ -21,6 +21,10 @@ from ci_retry_gate import (
     detect_side_effect_risk,
     job_duration_minutes,
 )
+from mechanism_causality_gate import (
+    MECHANISM_CAUSAL_UNCONFIRMED,
+    assess_mechanism_causality,
+)
 from recovery_ground_truth import (
     RECOVERY_NOT_OBSERVED,
     RECOVERY_VALIDATED,
@@ -70,6 +74,9 @@ class HistoricalFailure:
     ambiguous_evidence_count: int = 0
     unknown_cause: str = ""
     unknown_cause_evidence: tuple[str, ...] = ()
+    mechanism_causality_status: str = MECHANISM_CAUSAL_UNCONFIRMED
+    mechanism_causality_reasons: tuple[str, ...] = ()
+    mechanism_causal_evidence: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -519,6 +526,7 @@ def collect_history(
                 )
                 provenance = assess_execution_provenance(job, log_text, classification)
                 failure_step = assess_failure_step_provenance(job)
+                mechanism_causality = assess_mechanism_causality(job, log_text)
                 fingerprint, signature = failure_fingerprint(
                     job_name,
                     classification.category,
@@ -560,6 +568,9 @@ def collect_history(
                         recovery_evidence=recovery.evidence,
                         causal_evidence_count=causal_evidence_count,
                         ambiguous_evidence_count=ambiguous_evidence_count,
+                        mechanism_causality_status=mechanism_causality.status,
+                        mechanism_causality_reasons=mechanism_causality.reasons,
+                        mechanism_causal_evidence=mechanism_causality.evidence,
                     )
                 )
 

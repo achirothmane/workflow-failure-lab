@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from benchmark_mode import render_benchmark_report, summarize_benchmark
 from history_ci_waste import HistoricalFailure
+from mechanism_causality_gate import (
+    MECHANISM_CAUSAL_CONFIRMED,
+    MECHANISM_CAUSAL_UNCONFIRMED,
+)
 from recovery_ground_truth import (
     RECOVERY_NOT_OBSERVED,
     RECOVERY_NOT_RECOVERED,
@@ -11,6 +15,7 @@ from recovery_ground_truth import (
 from unknown_failure_intelligence import (
     PROMOTION_BLOCKER_INSUFFICIENT_GT_RERUNS,
     PROMOTION_BLOCKER_INSUFFICIENT_OCCURRENCES,
+    PROMOTION_BLOCKER_MECHANISM_CAUSALITY,
     PROMOTION_BLOCKER_NO_STABLE_SIGNATURE,
     PROMOTION_BLOCKER_RECOVERY_RATE,
     PROMOTION_BLOCKER_SEMANTIC_EVIDENCE,
@@ -37,6 +42,8 @@ def _unknown(
     side_effect: bool = False,
     recovery_status: str | None = None,
     unknown_cause: str = "",
+    mechanism_causality_status: str = MECHANISM_CAUSAL_CONFIRMED,
+    mechanism_causality_reasons: tuple[str, ...] = ("TEMPORARY_UNAVAILABLE",),
 ) -> HistoricalFailure:
     if recovery_status is None:
         if not observed:
@@ -59,6 +66,9 @@ def _unknown(
         attempt=1,
         recovery_status=recovery_status,
         unknown_cause=unknown_cause,
+        mechanism_causality_status=mechanism_causality_status,
+        mechanism_causality_reasons=mechanism_causality_reasons,
+        mechanism_causal_evidence=("Error: transient mechanism evidence",),
     )
 
 
@@ -682,4 +692,69 @@ def test_explicit_transient_mechanism_can_override_deterministic_diagnostic_fami
     assert pattern.mechanism_status == "TRANSIENT_MECHANISM_SUPPORTED"
     assert "CONNECTION_RESET" in pattern.mechanism_reasons
     assert pattern.mechanism_causes == ("COMMAND_CONFIG",)
+
+
+def test_transient_token_without_failed_step_causality_blocks_promotion():
+    signature = "fatal: connection reset by peer"
+    reruns = {
+        "acme/repo": (
+            [
+                _unknown(
+                    1,
+                    signature=signature,
+                    recovered=True,
+                    mechanism_causality_status=MECHANISM_CAUSAL_UNCONFIRMED,
+                    mechanism_causality_reasons=(),
+                ),
+                _unknown(
+                    2,
+                    signature=signature,
+                    recovered=True,
+                    mechanism_causality_status=MECHANISM_CAUSAL_UNCONFIRMED,
+                    mechanism_causality_reasons=(),
+                ),
+                _unknown(
+                    3,
+                    signature=signature,
+                    recovered=True,
+                    mechanism_causality_status=MECHANISM_CAUSAL_UNCONFIRMED,
+                    mechanism_causality_reasons=(),
+                ),
+            ],
+            3,
+        )
+    }
+
+    pattern = summarize_unknown_patterns({}, reruns).patterns[0]
+
+    assert pattern.mechanism_status == "TRANSIENT_MECHANISM_SUPPORTED"
+    assert pattern.mechanism_causal_gt_reruns == 0
+    assert pattern.promotion_candidate is False
+    assert pattern.promotion_blockers == (PROMOTION_BLOCKER_MECHANISM_CAUSALITY,)
+
+
+def test_all_ground_truth_reruns_require_causal_mechanism_binding():
+    signature = "fatal: connection reset by peer"
+    reruns = {
+        "acme/repo": (
+            [
+                _unknown(1, signature=signature, recovered=True),
+                _unknown(2, signature=signature, recovered=True),
+                _unknown(
+                    3,
+                    signature=signature,
+                    recovered=True,
+                    mechanism_causality_status=MECHANISM_CAUSAL_UNCONFIRMED,
+                    mechanism_causality_reasons=(),
+                ),
+            ],
+            3,
+        )
+    }
+
+    pattern = summarize_unknown_patterns({}, reruns).patterns[0]
+
+    assert pattern.rerun_observations == 3
+    assert pattern.mechanism_causal_gt_reruns == 2
+    assert pattern.promotion_blockers == (PROMOTION_BLOCKER_MECHANISM_CAUSALITY,)
 

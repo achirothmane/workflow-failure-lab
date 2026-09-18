@@ -6,6 +6,10 @@ from ci_retry_gate import (
 )
 from history_ci_waste import HistoricalFailure
 from pinned_research_corpus import SERDE_ATTESTATION_HTTP_500
+from mechanism_causality_gate import (
+    MECHANISM_CAUSAL_CONFIRMED,
+    assess_mechanism_causality,
+)
 from recovery_ground_truth import RECOVERY_VALIDATED, assess_recovery_ground_truth
 from transient_mechanism_gate import (
     MECHANISM_TRANSIENT_SUPPORTED,
@@ -47,10 +51,17 @@ def test_pinned_serde_http_500_remains_research_only_transient_candidate():
     signature = unknown_signature(case.failure_log)
     cause = decompose_unknown_cause(case.failure_log)
     mechanism = assess_transient_mechanism(signature, (cause.cause,))
+    mechanism_causality = assess_mechanism_causality(
+        case.failed_job,
+        case.failure_log,
+    )
 
     assert mechanism.status == case.expected_mechanism_status == MECHANISM_TRANSIENT_SUPPORTED
     assert case.expected_mechanism_reason == REASON_SERVER_5XX
     assert REASON_SERVER_5XX in mechanism.reasons
+    assert mechanism_causality.status == MECHANISM_CAUSAL_CONFIRMED
+    assert mechanism_causality.reasons == (REASON_SERVER_5XX,)
+    assert any("HTTP 500" in line for line in mechanism_causality.evidence)
 
     failure = HistoricalFailure(
         run_id=case.run_id,
@@ -68,6 +79,9 @@ def test_pinned_serde_http_500_remains_research_only_transient_candidate():
         unknown_cause=cause.cause,
         failure_step_status=failure_step.status,
         failure_step=failure_step.step_name,
+        mechanism_causality_status=mechanism_causality.status,
+        mechanism_causality_reasons=mechanism_causality.reasons,
+        mechanism_causal_evidence=mechanism_causality.evidence,
     )
     intelligence = summarize_unknown_patterns(
         {},
@@ -83,6 +97,8 @@ def test_pinned_serde_http_500_remains_research_only_transient_candidate():
     assert pattern.occurrence_deficit == 2
     assert pattern.gt_rerun_deficit == 2
     assert pattern.mechanism_status == MECHANISM_TRANSIENT_SUPPORTED
+    assert pattern.mechanism_causal_gt_reruns == 1
+    assert pattern.mechanism_causality_reasons == (REASON_SERVER_5XX,)
 
 
 def test_pinned_corpus_metadata_matches_observed_public_run():

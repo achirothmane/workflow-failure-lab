@@ -19,6 +19,7 @@ from ci_retry_gate import (
     detect_side_effect_risk,
     job_duration_minutes,
 )
+from mechanism_causality_gate import assess_mechanism_causality
 from history_ci_waste import (
     HistoricalFailure,
     _jobs_for_attempt,
@@ -51,6 +52,7 @@ from unknown_cause_decomposition import decompose_unknown_cause
 from unknown_failure_intelligence import (
     PROMOTION_BLOCKER_INSUFFICIENT_GT_RERUNS,
     PROMOTION_BLOCKER_INSUFFICIENT_OCCURRENCES,
+    PROMOTION_BLOCKER_MECHANISM_CAUSALITY,
     PROMOTION_BLOCKER_NO_STABLE_SIGNATURE,
     PROMOTION_BLOCKER_RECOVERY_RATE,
     PROMOTION_BLOCKER_SEMANTIC_EVIDENCE,
@@ -312,6 +314,7 @@ def _collect_failures_for_runs(
             )
             provenance = assess_execution_provenance(job, log_text, classification)
             failure_step = assess_failure_step_provenance(job)
+            mechanism_causality = assess_mechanism_causality(job, log_text)
             unknown_cause = ""
             unknown_cause_evidence: tuple[str, ...] = ()
             if classification.category == "UNKNOWN":
@@ -373,6 +376,9 @@ def _collect_failures_for_runs(
                     ambiguous_evidence_count=ambiguous_evidence_count,
                     unknown_cause=unknown_cause,
                     unknown_cause_evidence=unknown_cause_evidence,
+                    mechanism_causality_status=mechanism_causality.status,
+                    mechanism_causality_reasons=mechanism_causality.reasons,
+                    mechanism_causal_evidence=mechanism_causality.evidence,
                 )
             )
 
@@ -808,8 +814,8 @@ def render_benchmark_report(summary: BenchmarkSummary) -> str:
                 "",
                 "#### UNKNOWN Pattern Promotion Readiness",
                 "",
-                "| Pattern | Occurrences | Repositories | GT reruns | Recoveries | Recovery rate | Primary blocker | Semantic reasons | Mechanism | Mechanism reasons | All blockers | Gap | Signature |",
-                "|---|---:|---:|---:|---:|---:|---|---|---|---|---|---|---|",
+                "| Pattern | Occurrences | Repositories | GT reruns | Recoveries | Recovery rate | Primary blocker | Semantic reasons | Mechanism | Mechanism reasons | Causal GT mechanisms | Causal reasons | All blockers | Gap | Signature |",
+                "|---|---:|---:|---:|---:|---:|---|---|---|---|---:|---|---|---|---|",
             ]
         )
 
@@ -818,6 +824,7 @@ def render_benchmark_report(summary: BenchmarkSummary) -> str:
             blockers = ", ".join(item.promotion_blockers) or PROMOTION_ELIGIBLE
             semantic_reasons = ", ".join(item.semantic_reasons) or "specific failure evidence"
             mechanism_reasons = ", ".join(item.mechanism_reasons) or "none"
+            causal_reasons = ", ".join(item.mechanism_causality_reasons) or "none"
             gaps: list[str] = []
             if item.occurrence_deficit:
                 gaps.append(f"+{item.occurrence_deficit} occurrence(s)")
@@ -836,12 +843,13 @@ def render_benchmark_report(summary: BenchmarkSummary) -> str:
                 f"{item.rerun_observations} | {item.recoveries} | "
                 f"{item.recovery_rate:.1%} | `{item.promotion_blocker}` | "
                 f"{semantic_reasons} | `{item.mechanism_status}` | "
-                f"{mechanism_reasons} | {blockers} | {gap_text} | {safe_signature} |"
+                f"{mechanism_reasons} | {item.mechanism_causal_gt_reruns} | "
+                f"{causal_reasons} | {blockers} | {gap_text} | {safe_signature} |"
             )
         lines.extend(
             [
                 "",
-                "> Promotion Blocker Attribution is diagnostic only. A pattern becomes ELIGIBLE_FOR_CLASSIFIER_RESEARCH only after stable, semantically specific evidence, positive transient-mechanism evidence, at least 3 occurrences, at least 3 ground-truth-evaluable reruns, at least 80% validated recovery, and zero side-effect occurrences. Eligibility still does not modify the runtime classifier or authorize reruns.",
+                "> Promotion Blocker Attribution is diagnostic only. A pattern becomes ELIGIBLE_FOR_CLASSIFIER_RESEARCH only after stable, semantically specific evidence, positive transient-mechanism evidence, causal binding of that mechanism inside every ground-truth-evaluable failed-step sample, at least 3 occurrences, at least 3 ground-truth-evaluable reruns, at least 80% validated recovery, and zero side-effect occurrences. Eligibility still does not modify the runtime classifier or authorize reruns.",
                 "",
             ]
         )
@@ -1115,6 +1123,7 @@ def main() -> int:
     for blocker_name in (
         PROMOTION_BLOCKER_NO_STABLE_SIGNATURE,
         PROMOTION_BLOCKER_INSUFFICIENT_OCCURRENCES,
+        PROMOTION_BLOCKER_MECHANISM_CAUSALITY,
         PROMOTION_BLOCKER_INSUFFICIENT_GT_RERUNS,
         PROMOTION_BLOCKER_RECOVERY_RATE,
         PROMOTION_BLOCKER_SEMANTIC_EVIDENCE,

@@ -84,6 +84,20 @@ _DETERMINISTIC_CAUSES = {
 }
 
 
+def detect_transient_mechanisms(text: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    reasons: list[str] = []
+    evidence: list[str] = []
+    for reason, pattern in _TRANSIENT_PATTERNS:
+        match = pattern.search(text or "")
+        if match:
+            reasons.append(reason)
+            evidence.append(match.group(0))
+    return (
+        tuple(dict.fromkeys(reasons)),
+        tuple(dict.fromkeys(evidence)),
+    )
+
+
 @dataclass(frozen=True)
 class TransientMechanismAssessment:
     status: str
@@ -107,20 +121,13 @@ def assess_transient_mechanism(
     signature then provides stronger, direct evidence about the failure mechanism.
     """
     text = (signature or "").strip()
-    transient_reasons: list[str] = []
-    transient_evidence: list[str] = []
-
-    for reason, pattern in _TRANSIENT_PATTERNS:
-        match = pattern.search(text)
-        if match:
-            transient_reasons.append(reason)
-            transient_evidence.append(match.group(0))
+    transient_reasons, transient_evidence = detect_transient_mechanisms(text)
 
     if transient_reasons:
         return TransientMechanismAssessment(
             MECHANISM_TRANSIENT_SUPPORTED,
-            reasons=tuple(dict.fromkeys(transient_reasons)),
-            transient_evidence=tuple(dict.fromkeys(transient_evidence)),
+            reasons=transient_reasons,
+            transient_evidence=transient_evidence,
             deterministic_causes=tuple(
                 cause for cause in causes if cause in _DETERMINISTIC_CAUSES
             ),
