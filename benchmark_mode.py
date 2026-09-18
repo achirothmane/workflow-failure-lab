@@ -50,6 +50,7 @@ from coverage_attribution import (
 from policy_shadow import simulate_shadow
 from unknown_cause_decomposition import decompose_unknown_cause
 from unknown_failure_intelligence import (
+    PROMOTION_BLOCKER_INDEPENDENT_REPLICATION,
     PROMOTION_BLOCKER_INSUFFICIENT_GT_RERUNS,
     PROMOTION_BLOCKER_INSUFFICIENT_OCCURRENCES,
     PROMOTION_BLOCKER_MECHANISM_CAUSALITY,
@@ -814,8 +815,8 @@ def render_benchmark_report(summary: BenchmarkSummary) -> str:
                 "",
                 "#### UNKNOWN Pattern Promotion Readiness",
                 "",
-                "| Pattern | Occurrences | Repositories | GT reruns | Recoveries | Recovery rate | Primary blocker | Semantic reasons | Mechanism | Mechanism reasons | Causal GT mechanisms | Causal reasons | All blockers | Gap | Signature |",
-                "|---|---:|---:|---:|---:|---:|---|---|---|---|---:|---|---|---|---|",
+                "| Pattern | Occurrences | Repositories | GT reruns | Recoveries | Recovery rate | Primary blocker | Semantic reasons | Mechanism | Mechanism reasons | Causal GT mechanisms | Independent runs | Independent repos | Causal reasons | All blockers | Gap | Signature |",
+                "|---|---:|---:|---:|---:|---:|---|---|---|---|---:|---:|---:|---|---|---|---|",
             ]
         )
 
@@ -828,6 +829,8 @@ def render_benchmark_report(summary: BenchmarkSummary) -> str:
             gaps: list[str] = []
             if item.occurrence_deficit:
                 gaps.append(f"+{item.occurrence_deficit} occurrence(s)")
+            if item.independent_run_deficit:
+                gaps.append(f"+{item.independent_run_deficit} independent run(s)")
             if item.gt_rerun_deficit:
                 gaps.append(f"+{item.gt_rerun_deficit} GT rerun(s)")
             if (
@@ -844,12 +847,13 @@ def render_benchmark_report(summary: BenchmarkSummary) -> str:
                 f"{item.recovery_rate:.1%} | `{item.promotion_blocker}` | "
                 f"{semantic_reasons} | `{item.mechanism_status}` | "
                 f"{mechanism_reasons} | {item.mechanism_causal_gt_reruns} | "
+                f"{item.independent_runs} | {item.independent_repositories} | "
                 f"{causal_reasons} | {blockers} | {gap_text} | {safe_signature} |"
             )
         lines.extend(
             [
                 "",
-                "> Promotion Blocker Attribution is diagnostic only. A pattern becomes ELIGIBLE_FOR_CLASSIFIER_RESEARCH only after stable, semantically specific evidence, positive transient-mechanism evidence, causal binding of that mechanism inside every ground-truth-evaluable failed-step sample, at least 3 occurrences, at least 3 ground-truth-evaluable reruns, at least 80% validated recovery, and zero side-effect occurrences. Eligibility still does not modify the runtime classifier or authorize reruns.",
+                "> Promotion Blocker Attribution is diagnostic only. A pattern becomes ELIGIBLE_FOR_CLASSIFIER_RESEARCH only after stable, semantically specific evidence, positive transient-mechanism evidence, causal binding inside every ground-truth-evaluable failed-step sample, replication across at least 2 independent workflow runs, at least 3 occurrences, at least 3 ground-truth-evaluable reruns, at least 80% validated recovery, and zero side-effect occurrences. Cross-repository replication is reported as stronger evidence but is not mandatory. Eligibility still does not modify the runtime classifier or authorize reruns.",
                 "",
             ]
         )
@@ -1124,6 +1128,7 @@ def main() -> int:
         PROMOTION_BLOCKER_NO_STABLE_SIGNATURE,
         PROMOTION_BLOCKER_INSUFFICIENT_OCCURRENCES,
         PROMOTION_BLOCKER_MECHANISM_CAUSALITY,
+        PROMOTION_BLOCKER_INDEPENDENT_REPLICATION,
         PROMOTION_BLOCKER_INSUFFICIENT_GT_RERUNS,
         PROMOTION_BLOCKER_RECOVERY_RATE,
         PROMOTION_BLOCKER_SEMANTIC_EVIDENCE,
