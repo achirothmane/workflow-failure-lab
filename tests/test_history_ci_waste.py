@@ -1,3 +1,9 @@
+from recovery_ground_truth import (
+    RECOVERY_NOT_OBSERVED,
+    RECOVERY_NOT_RECOVERED,
+    RECOVERY_VALIDATED,
+)
+
 from history_ci_waste import (
     POLICY_AUTO_RERUN_ONCE,
     POLICY_DO_NOT_AUTO_RERUN,
@@ -26,7 +32,15 @@ def failure(
     rerun=False,
     side_effect=False,
     attempt=1,
+    recovery_status=None,
 ):
+    if recovery_status is None:
+        if not rerun:
+            recovery_status = RECOVERY_NOT_OBSERVED
+        elif recovered:
+            recovery_status = RECOVERY_VALIDATED
+        else:
+            recovery_status = RECOVERY_NOT_RECOVERED
     return HistoricalFailure(
         run_id=run_id,
         job_name=job,
@@ -39,6 +53,7 @@ def failure(
         rerun_observed=rerun,
         side_effect_risk=side_effect,
         attempt=attempt,
+        recovery_status=recovery_status,
     )
 
 
@@ -62,6 +77,8 @@ def fp_summary(
         rerun_recoveries=recoveries,
         high_confidence_occurrences=high_confidence,
         side_effect_seen=side_effect,
+        validated_rerun_observations=reruns,
+        validated_rerun_recoveries=recoveries,
     )
 
 
@@ -207,7 +224,11 @@ def test_fingerprint_summary_counts_real_reruns_and_recoveries():
     assert item.rerun_recoveries == 1
     assert item.rerun_recovery_rate == 0.5
     assert item.high_confidence_rate == 1.0
+    assert item.validated_rerun_observations == 2
+    assert item.validated_rerun_recoveries == 1
+    assert item.ground_truth_recovery_rate == 0.5
     assert summary.rerun_recoveries == 1
+    assert summary.validated_rerun_recoveries == 1
 
 
 def test_copied_untouched_job_is_not_counted_as_real_rerun():
