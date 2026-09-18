@@ -17,12 +17,12 @@ _TIMESTAMP_RE = re.compile(
 )
 _ANSI_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 _CLI_TIMEOUT_OPTION_RE = re.compile(
-    r"(?<!\\S)--?timeout(?:=(?:[^\\s`\"\']+)|\\s+[^\\s`\"\']+)",
+    r"(?<!\S)--?timeout(?:=(?:[^\s`\"\']+)|\s+[^\s`\"\']+)",
     re.IGNORECASE,
 )
 _TRANSIENT_IDENTIFIER_RE = re.compile(
-    r"\\b(?:[A-Za-z0-9_.]+[-_/])+(?:timeout|econnreset|etimedout)"
-    r"(?:[-_/][A-Za-z0-9_.]+)*\\b",
+    r"\b(?:[A-Za-z0-9_.]+[-_/])+(?:timeout|econnreset|etimedout)"
+    r"(?:[-_/][A-Za-z0-9_.]+)*\b",
     re.IGNORECASE,
 )
 
