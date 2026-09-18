@@ -40,7 +40,7 @@ _NON_CAUSAL_LOG_PATTERNS = tuple(
     re.compile(pattern, re.IGNORECASE)
     for pattern in [
         r"^##\[(?:group|endgroup|debug)\]",
-        r":(?:ref|class|func|meth|doc|option):\`",
+        r":(?:ref|class|func|meth|doc|option):\\?`",
         r"^(?:print|printf|echo|assert|raise)\b.*(?:timeout|timed out|connection reset|could not resolve host)",
         r"^[A-Za-z0-9_.-]+:\s*(?:error|warn|warning|ignore)$",
     ]
