@@ -6,6 +6,7 @@ from benchmark_mode import (
     REJECTION_CODE_REGRESSION,
     REJECTION_LOW_CONFIDENCE_TRANSIENT,
     REJECTION_NON_TRANSIENT,
+    REJECTION_UNCONFIRMED_PROVENANCE,
     REJECTION_SIDE_EFFECT,
     REJECTION_UNKNOWN,
     _rejection_reason,
@@ -27,6 +28,7 @@ def _failure(
     recovered: bool = True,
     observed: bool = True,
     side_effect: bool = False,
+    provenance: str = "CONFIRMED",
 ) -> HistoricalFailure:
     return HistoricalFailure(
         run_id=run_id,
@@ -40,6 +42,7 @@ def _failure(
         rerun_observed=observed,
         side_effect_risk=side_effect,
         attempt=1,
+        provenance_status=provenance,
     )
 
 
@@ -191,7 +194,12 @@ class _FakeAPI:
                                     "conclusion": "failure",
                                     "started_at": f"2026-01-01T00:{run_id % 60:02d}:00Z",
                                     "completed_at": f"2026-01-01T00:{run_id % 60:02d}:30Z",
-                                    "steps": [{"name": "Run tests"}],
+                                    "steps": [{
+                                        "name": "Run tests",
+                                        "conclusion": "failure",
+                                        "started_at": f"2026-01-01T00:{run_id % 60:02d}:00Z",
+                                        "completed_at": f"2026-01-01T00:{run_id % 60:02d}:30Z",
+                                    }],
                                 }
                             ]
                         }
@@ -203,7 +211,12 @@ class _FakeAPI:
                                 "conclusion": "success",
                                 "started_at": f"2026-01-01T01:{run_id % 60:02d}:00Z",
                                 "completed_at": f"2026-01-01T01:{run_id % 60:02d}:30Z",
-                                "steps": [{"name": "Run tests"}],
+                                "steps": [{
+                            "name": "Run tests",
+                            "conclusion": "failure",
+                            "started_at": "2026-01-01T00:00:00Z",
+                            "completed_at": "2026-01-01T00:01:00Z",
+                        }],
                             }
                         ]
                     }
@@ -212,7 +225,14 @@ class _FakeAPI:
 
     def get_job_logs(self, repo: str, job_id: int) -> str:
         assert repo == "acme/repo"
-        return "npm ERR! code ETIMEDOUT\nError: connection reset by peer\n"
+        run_id = job_id // 10
+        minute = run_id % 60
+        return (
+            f"2026-01-01T00:{minute:02d}:05.0000000Z ##[group]Run npm ci\n"
+            f"2026-01-01T00:{minute:02d}:10.0000000Z npm ERR! code ETIMEDOUT\n"
+            f"2026-01-01T00:{minute:02d}:11.0000000Z Error: connection reset by peer\n"
+            f"2026-01-01T00:{minute:02d}:12.0000000Z Process completed with exit code 1\n"
+        )
 
     def get_jobs(self, repo: str, run_id: int):
         raise AssertionError("fallback should not be used")
@@ -291,7 +311,11 @@ class _SideEffectWorkflowAPI:
         raise AssertionError(f"unexpected request: {method} {path}")
 
     def get_job_logs(self, repo: str, job_id: int) -> str:
-        return "npm ERR! code ETIMEDOUT\nError: connection reset by peer\n"
+        return (
+            "2026-01-01T00:00:10.0000000Z npm ERR! code ETIMEDOUT\n"
+            "2026-01-01T00:00:11.0000000Z Error: connection reset by peer\n"
+            "2026-01-01T00:00:12.0000000Z Process completed with exit code 1\n"
+        )
 
     def get_jobs(self, repo: str, run_id: int):
         raise AssertionError("fallback should not be used")
@@ -324,7 +348,10 @@ def test_rejection_reason_explains_why_non_candidates_are_blocked():
     assert _rejection_reason(
         _failure(5, category="RESOURCE_TIMEOUT", confidence="high")
     ) == REJECTION_NON_TRANSIENT
-    assert _rejection_reason(_failure(6)) is None
+    assert _rejection_reason(
+        _failure(6, provenance="UNAVAILABLE")
+    ) == REJECTION_UNCONFIRMED_PROVENANCE
+    assert _rejection_reason(_failure(7)) is None
 
 
 def test_benchmark_counts_blocked_recoveries_by_rejection_reason():
@@ -395,3 +422,28 @@ def test_benchmark_report_surfaces_blocked_and_missed_recovery_intelligence():
     assert "`SIDE_EFFECT_RISK`" in report
     assert "`CODE_REGRESSION`" in report
     assert "coverage signal, not proof that automatic rerun was safe" in report
+
+
+def test_rerun_candidate_requires_confirmed_execution_provenance():
+    rerun = {
+        "acme/one": (
+            [
+                _failure(1, provenance="CONFIRMED", recovered=True),
+                _failure(2, provenance="UNAVAILABLE", recovered=True),
+                _failure(3, provenance="MISMATCH", recovered=False),
+            ],
+            3,
+        )
+    }
+
+    summary = summarize_benchmark(
+        {"acme/one": ([], 0)},
+        rerun_histories=rerun,
+    )
+
+    assert summary.rerun_candidates == 1
+    by_reason = {item.reason: item for item in summary.rejections}
+    assert by_reason[REJECTION_UNCONFIRMED_PROVENANCE].blocked == 2
+    assert by_reason[REJECTION_UNCONFIRMED_PROVENANCE].recovered == 1
+    assert by_reason[REJECTION_UNCONFIRMED_PROVENANCE].failed_again == 1
+
