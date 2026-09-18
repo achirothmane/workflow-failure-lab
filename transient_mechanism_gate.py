@@ -84,7 +84,6 @@ _DETERMINISTIC_CAUSES = {
 }
 
 
-@dataclass(frozen=True)
 def detect_transient_mechanisms(text: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
     reasons: list[str] = []
     evidence: list[str] = []
@@ -99,6 +98,7 @@ def detect_transient_mechanisms(text: str) -> tuple[tuple[str, ...], tuple[str, 
     )
 
 
+@dataclass(frozen=True)
 class TransientMechanismAssessment:
     status: str
     reasons: tuple[str, ...]
