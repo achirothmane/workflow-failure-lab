@@ -13,6 +13,7 @@ from mechanism_causality_gate import (
 from recovery_ground_truth import RECOVERY_VALIDATED, assess_recovery_ground_truth
 from transient_mechanism_gate import (
     MECHANISM_TRANSIENT_SUPPORTED,
+    MECHANISM_UNPROVEN,
     REASON_SERVER_5XX,
     assess_transient_mechanism,
 )
@@ -185,12 +186,23 @@ def test_pinned_traefik_http_504_is_causal_validated_recovery():
     mechanism = assess_transient_mechanism(signature, (cause.cause,))
     mechanism_causality = assess_mechanism_causality(case.failed_job, case.failure_log)
 
-    assert mechanism.status == case.expected_mechanism_status == MECHANISM_TRANSIENT_SUPPORTED
+    # The normalized UNKNOWN signature replaces 504 with <n>, so the signature-only
+    # heuristic cannot recover the 5xx code. Direct failed-step causal evidence is stronger.
+    assert mechanism.status == MECHANISM_UNPROVEN
+    assert case.expected_mechanism_status == MECHANISM_TRANSIENT_SUPPORTED
     assert case.expected_mechanism_reason == REASON_SERVER_5XX
-    assert REASON_SERVER_5XX in mechanism.reasons
     assert mechanism_causality.status == MECHANISM_CAUSAL_CONFIRMED
     assert mechanism_causality.reasons == (REASON_SERVER_5XX,)
     assert any("504" in line for line in mechanism_causality.evidence)
+
+    failure = _historical_from_pinned_case(case)
+    intelligence = summarize_unknown_patterns(
+        {},
+        {case.repository: ([failure], 1)},
+    )
+    pattern = intelligence.patterns[0]
+    assert pattern.mechanism_status == MECHANISM_TRANSIENT_SUPPORTED
+    assert pattern.mechanism_reasons == (REASON_SERVER_5XX,)
 
 
 def test_pinned_server_5xx_mechanism_family_is_cross_repository_replicated():
