@@ -54,14 +54,30 @@ def test_single_npm_econnreset_is_high_confidence():
     assert result.confidence == "high"
 
 
-def test_documentation_connect_timeout_does_not_become_high_confidence():
+def test_documentation_connect_timeout_fails_closed_as_unknown():
     result = classify_log(
-        "data before giving up, as a float, or a (connect timeout, read timeout) tuple\n"
-        "data before giving up, as a float, or a (connect timeout, read timeout) tuple\n"
-        "Process completed with exit code 1"
+        "2026-08-24T16:58:07.7655465Z             data before giving up, as a float, or a :ref:\`(connect timeout,\n"
+        "2026-08-24T16:58:07.7709068Z             data before giving up, as a float, or a :ref:\`(connect timeout,\n"
+        "2026-08-24T16:58:08.0000000Z Process completed with exit code 1"
     )
+    assert result.category == "UNKNOWN"
+    assert result.confidence == "low"
+
+
+def test_duplicate_timestamped_transient_prose_is_scored_once():
+    result = classify_log(
+        "2026-08-24T16:58:07.7655465Z connection timed out\n"
+        "2026-08-24T16:58:07.7709068Z connection timed out\n"
+    )
+    assert result.category == "UNKNOWN"
+    assert result.score == 2
+
+
+def test_single_429_signal_remains_low_confidence_transient():
+    result = classify_log("HTTP 429 Too Many Requests")
     assert result.category == "DEPENDENCY_NETWORK"
-    assert result.confidence != "high"
+    assert result.confidence == "low"
+    assert result.score == 3
 
 
 def test_code_failure_is_not_transient():

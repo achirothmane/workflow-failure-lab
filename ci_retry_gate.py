@@ -28,6 +28,9 @@ _SECRET_PATTERNS = [
 # GitHub logs can contain terminal color/control sequences inside error lines.
 # Strip them before matching so operational signatures are not split by escape bytes.
 _ANSI_ESCAPE_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+_RUNNER_TIMESTAMP_RE = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\s+"
+)
 
 _CATEGORY_RULES: dict[str, tuple[tuple[int, re.Pattern[str]], ...]] = {
     "RUNNER_INFRA": tuple(
@@ -159,7 +162,8 @@ def redact(text: str) -> str:
 
 
 def _useful_line(line: str) -> str:
-    line = _ANSI_ESCAPE_RE.sub("", redact(line)).strip()
+    line = _ANSI_ESCAPE_RE.sub("", redact(line))
+    line = _RUNNER_TIMESTAMP_RE.sub("", line).strip()
     if len(line) > 300:
         line = line[:297] + "..."
     return line
@@ -172,10 +176,12 @@ def classify_log(log_text: str) -> Classification:
         name: [] for name in _HIGH_SPECIFICITY_TRANSIENT_RULES
     }
 
+    seen_lines: set[str] = set()
     for raw_line in log_text.splitlines():
         line = _useful_line(raw_line)
-        if not line:
+        if not line or line in seen_lines:
             continue
+        seen_lines.add(line)
         for category, rules in _CATEGORY_RULES.items():
             for weight, pattern in rules:
                 if pattern.search(line):
@@ -192,8 +198,8 @@ def classify_log(log_text: str) -> Classification:
     top_category, top_score = ranked[0]
     second_score = ranked[1][1]
 
-    if top_score == 0:
-        return Classification("UNKNOWN", "low", 0, tuple())
+    if top_score < 3:
+        return Classification("UNKNOWN", "low", top_score, tuple())
 
     margin = top_score - second_score
     if top_score >= 7 and margin >= 3:
