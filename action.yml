@@ -276,6 +276,30 @@ outputs:
   benchmark-unknown-promotion-candidate-ids:
     description: 'Comma-separated advisory UNKNOWN pattern IDs meeting the investigation threshold.'
     value: ${{ steps.benchmark.outputs.benchmark-unknown-promotion-candidate-ids }}
+  benchmark-unknown-cause-no-stable-error-evidence:
+    description: 'UNKNOWN failures with no stable error-like evidence after semantic filtering.'
+    value: ${{ steps.benchmark.outputs.benchmark-unknown-cause-no-stable-error-evidence }}
+  benchmark-unknown-cause-auth-permission:
+    description: 'UNKNOWN failures diagnostically grouped as authentication or permission errors.'
+    value: ${{ steps.benchmark.outputs.benchmark-unknown-cause-auth-permission }}
+  benchmark-unknown-cause-git-vcs:
+    description: 'UNKNOWN failures diagnostically grouped as Git or version-control errors.'
+    value: ${{ steps.benchmark.outputs.benchmark-unknown-cause-git-vcs }}
+  benchmark-unknown-cause-command-config:
+    description: 'UNKNOWN failures diagnostically grouped as command, argument, file, or configuration errors.'
+    value: ${{ steps.benchmark.outputs.benchmark-unknown-cause-command-config }}
+  benchmark-unknown-cause-test-build:
+    description: 'UNKNOWN failures diagnostically grouped as test or build errors.'
+    value: ${{ steps.benchmark.outputs.benchmark-unknown-cause-test-build }}
+  benchmark-unknown-cause-package-tool:
+    description: 'UNKNOWN failures diagnostically grouped as package-manager or dependency-tool errors.'
+    value: ${{ steps.benchmark.outputs.benchmark-unknown-cause-package-tool }}
+  benchmark-unknown-cause-tool-action-specific:
+    description: 'UNKNOWN failures diagnostically grouped as errors from recognized CI/deployment/developer tools.'
+    value: ${{ steps.benchmark.outputs.benchmark-unknown-cause-tool-action-specific }}
+  benchmark-unknown-cause-ambiguous-operational:
+    description: 'UNKNOWN failures with stable operational error evidence that does not match another diagnostic cause family.'
+    value: ${{ steps.benchmark.outputs.benchmark-unknown-cause-ambiguous-operational }}
 
 runs:
   using: 'composite'
