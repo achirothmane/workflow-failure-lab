@@ -193,7 +193,9 @@ def test_benchmark_report_surfaces_unknown_intelligence_without_promoting_runtim
 
     report = render_benchmark_report(summary)
     assert "Unknown Failure Intelligence" in report
-    assert "INVESTIGATE_TRANSIENT_PATTERN" in report
+    assert "UNKNOWN Promotion Blocker Attribution" in report
+    assert "UNKNOWN Pattern Promotion Readiness" in report
+    assert "ELIGIBLE_FOR_CLASSIFIER_RESEARCH" in report
     assert "does not modify the runtime classifier or authorize reruns" in report
     assert len(summary.unknown_intelligence.promotion_candidates) == 1
 
