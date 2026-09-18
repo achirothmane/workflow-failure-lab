@@ -1,0 +1,100 @@
+name: Targeted SERVER 5XX Expansion Search
+
+on:
+  push:
+    branches:
+      - test/targeted-server5xx-expansion
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  search:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Search SERVER_5XX across expansion corpus
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+          import os
+
+          from benchmark_mode import collect_repository_samples
+          from ci_retry_gate import GitHubAPI
+          from targeted_replication_search import search_targeted_replication
+
+          repos = [
+              "facebook/react",
+              "microsoft/vscode",
+              "microsoft/playwright",
+              "pytorch/pytorch",
+              "scikit-learn/scikit-learn",
+              "matplotlib/matplotlib",
+              "ansible/ansible",
+              "home-assistant/core",
+              "getsentry/sentry",
+              "caddyserver/caddy",
+              "traefik/traefik",
+              "ollama/ollama",
+              "huggingface/transformers",
+              "langchain-ai/langchain",
+              "openai/openai-python",
+              "prisma/prisma",
+              "electron/electron",
+              "webpack/webpack",
+              "grpc/grpc",
+              "curl/curl"
+          ]
+          token = os.environ["INPUT_GITHUB_TOKEN"]
+
+          def collect(repo):
+              api = GitHubAPI(token)
+              try:
+                  _natural, enriched = collect_repository_samples(api, repo, 1, 50, 500)
+                  return repo, enriched, None
+              except RuntimeError as exc:
+                  return repo, None, str(exc)[:240]
+
+          histories, skipped = {}, []
+          with ThreadPoolExecutor(max_workers=5) as pool:
+              futures = [pool.submit(collect, repo) for repo in repos]
+              for future in as_completed(futures):
+                  repo, enriched, error = future.result()
+                  if error:
+                      skipped.append((repo, error))
+                  else:
+                      histories[repo] = enriched
+
+          summary = search_targeted_replication(histories, "SERVER_5XX")
+
+          print("=== TARGETED SERVER_5XX EXPANSION SEARCH ===")
+          print(f"repositories_analyzed={len(histories)}")
+          print(f"repositories_skipped={len(skipped)}")
+          print(f"total_matches={len(summary.matches)}")
+          print(f"usable_matches={len(summary.usable_matches)}")
+          print(f"independent_runs={summary.independent_runs}")
+          print(f"independent_repositories={summary.independent_repositories}")
+          print(f"validated_recoveries={summary.validated_recoveries}")
+          print(f"failed_again={summary.failed_again}")
+          print(f"recovery_rate={summary.recovery_rate:.4f}")
+          print(f"side_effect_contaminated={summary.side_effect_contaminated}")
+          print(f"replicated={str(summary.replicated).lower()}")
+          print(f"cross_repository_replicated={str(summary.cross_repository_replicated).lower()}")
+
+          for item in summary.matches:
+              print(
+                  f"MATCH_START repo={item.repository} run_id={item.run_id} job={item.job_name!r} "
+                  f"pattern={item.pattern_id} recovery={item.recovery_status} "
+                  f"side_effect={item.side_effect_risk} reasons={item.mechanism_reasons!r}"
+              )
+              for evidence in item.evidence:
+                  safe = evidence.replace("##[", "GH_ANNOTATION[")
+                  print(f"MATCH_EVIDENCE {safe}")
+              print(f"MATCH_SIGNATURE {item.signature.replace('##[', 'GH_ANNOTATION[')}")
+              print("MATCH_END")
+          for repo, error in sorted(skipped):
+              print(f"skipped repo={repo} error={error!r}")
+          PY
