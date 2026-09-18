@@ -68,9 +68,29 @@ class UnknownPattern:
 
 
 @dataclass(frozen=True)
+class UnknownCauseSummary:
+    cause: str
+    occurrences: int
+    repositories: int
+    rerun_observations: int
+    recoveries: int
+    failed_again: int
+    unknown_outcomes: int
+    side_effect_occurrences: int
+    examples: tuple[str, ...] = ()
+
+    @property
+    def recovery_rate(self) -> float:
+        if self.rerun_observations <= 0:
+            return 0.0
+        return self.recoveries / self.rerun_observations
+
+
+@dataclass(frozen=True)
 class UnknownIntelligenceSummary:
     unknown_failures: int
     patterns: tuple[UnknownPattern, ...]
+    causes: tuple[UnknownCauseSummary, ...] = ()
 
     @property
     def repeated_patterns(self) -> int:
@@ -177,6 +197,15 @@ def summarize_unknown_patterns(
     side_effect_occurrences: dict[str, int] = defaultdict(int)
     signatures: dict[str, str] = {}
 
+    cause_occurrences: dict[str, int] = defaultdict(int)
+    cause_repos: dict[str, set[str]] = defaultdict(set)
+    cause_rerun_observations: dict[str, int] = defaultdict(int)
+    cause_recoveries: dict[str, int] = defaultdict(int)
+    cause_failed_again: dict[str, int] = defaultdict(int)
+    cause_unknown_outcomes: dict[str, int] = defaultdict(int)
+    cause_side_effect_occurrences: dict[str, int] = defaultdict(int)
+    cause_examples: dict[str, list[str]] = defaultdict(list)
+
     # Natural and rerun-enriched samples are intentionally disjoint in Benchmark Mode.
     for source, is_rerun_sample in ((histories, False), (rerun_histories, True)):
         for repo, (failures, _runs) in source.items():
@@ -188,17 +217,29 @@ def summarize_unknown_patterns(
                 signatures[pattern_id] = signature
                 occurrences[pattern_id] += 1
                 repos[pattern_id].add(repo)
+
+                cause = item.unknown_cause or "UNDECOMPOSED"
+                cause_occurrences[cause] += 1
+                cause_repos[cause].add(repo)
+                if signature not in cause_examples[cause] and len(cause_examples[cause]) < 3:
+                    cause_examples[cause].append(signature)
+
                 if item.side_effect_risk:
                     side_effect_occurrences[pattern_id] += 1
+                    cause_side_effect_occurrences[cause] += 1
                 if is_rerun_sample:
                     if is_ground_truth_evaluable(item.recovery_status):
                         rerun_observations[pattern_id] += 1
+                        cause_rerun_observations[cause] += 1
                         if is_validated_recovery(item.recovery_status):
                             recoveries[pattern_id] += 1
+                            cause_recoveries[cause] += 1
                         elif item.recovery_status == RECOVERY_NOT_RECOVERED:
                             failed_again[pattern_id] += 1
+                            cause_failed_again[cause] += 1
                     else:
                         unknown_outcomes[pattern_id] += 1
+                        cause_unknown_outcomes[cause] += 1
 
     patterns: list[UnknownPattern] = []
     for pattern_id, count in occurrences.items():
@@ -233,7 +274,31 @@ def summarize_unknown_patterns(
             item.pattern_id,
         )
     )
+
+    causes = [
+        UnknownCauseSummary(
+            cause=cause,
+            occurrences=count,
+            repositories=len(cause_repos[cause]),
+            rerun_observations=cause_rerun_observations[cause],
+            recoveries=cause_recoveries[cause],
+            failed_again=cause_failed_again[cause],
+            unknown_outcomes=cause_unknown_outcomes[cause],
+            side_effect_occurrences=cause_side_effect_occurrences[cause],
+            examples=tuple(cause_examples[cause]),
+        )
+        for cause, count in cause_occurrences.items()
+    ]
+    causes.sort(
+        key=lambda item: (
+            -item.occurrences,
+            -item.rerun_observations,
+            item.cause,
+        )
+    )
+
     return UnknownIntelligenceSummary(
         unknown_failures=sum(occurrences.values()),
         patterns=tuple(patterns),
+        causes=tuple(causes),
     )
