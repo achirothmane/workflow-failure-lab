@@ -10,6 +10,10 @@ from classifier_rule_research import (
     evaluate_server5xx_shadow_rule,
     render_server5xx_rule_research,
 )
+from server5xx_counterexample_search import (
+    render_server5xx_counterexample_report,
+    search_server5xx_counterexamples,
+)
 from ci_retry_gate import (
     AMBIGUOUS,
     CAUSAL,
@@ -1006,8 +1010,15 @@ def main() -> int:
         if research_rule == RULE_SERVER_5XX_CAUSAL_UNKNOWN
         else None
     )
+    counterexample_search = (
+        search_server5xx_counterexamples(rerun_histories)
+        if research_rule == RULE_SERVER_5XX_CAUSAL_UNKNOWN
+        else None
+    )
     if rule_research is not None:
         report += "\n" + render_server5xx_rule_research(rule_research)
+    if counterexample_search is not None:
+        report += "\n" + render_server5xx_counterexample_report(counterexample_search)
 
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
@@ -1234,6 +1245,47 @@ def main() -> int:
         _write_output(
             "benchmark-research-side-effect-matches",
             str(rule_research.side_effect_matches),
+        )
+    if counterexample_search is not None:
+        _write_output(
+            "benchmark-research-counterexample-causal-matches",
+            str(len(counterexample_search.matches)),
+        )
+        _write_output(
+            "benchmark-research-counterexample-evaluable",
+            str(len(counterexample_search.evaluable_matches)),
+        )
+        _write_output(
+            "benchmark-research-counterexample-validated-recoveries",
+            str(counterexample_search.validated_recoveries),
+        )
+        _write_output(
+            "benchmark-research-counterexample-failed-again",
+            str(counterexample_search.failed_again),
+        )
+        _write_output(
+            "benchmark-research-counterexample-unknown-outcomes",
+            str(counterexample_search.unknown_outcomes),
+        )
+        _write_output(
+            "benchmark-research-counterexample-recovery-rate",
+            f"{counterexample_search.observed_recovery_rate:.4f}",
+        )
+        _write_output(
+            "benchmark-research-counterexample-classification-contradictions",
+            str(len(counterexample_search.classification_contradictions)),
+        )
+        _write_output(
+            "benchmark-research-counterexample-independent-runs",
+            str(counterexample_search.independent_runs),
+        )
+        _write_output(
+            "benchmark-research-counterexample-independent-repositories",
+            str(counterexample_search.independent_repositories),
+        )
+        _write_output(
+            "benchmark-research-counterexample-side-effect-matches",
+            str(counterexample_search.side_effect_matches),
         )
     _write_output(
         "benchmark-unknown-near-promotion-candidates",
