@@ -1,0 +1,210 @@
+name: Causal Dominance Wave 4
+
+on:
+  push:
+    branches:
+      - research/causal-dominance-wave4
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  search:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - name: Search causal transient dominance across 50 new repos
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+          import os
+
+          from benchmark_mode import collect_repository_samples
+          from ci_retry_gate import GitHubAPI
+          from mechanism_causality_gate import MECHANISM_CAUSAL_CONFIRMED
+          from root_cause_precedence import (
+              DOMINANCE_CANDIDATE,
+              DOMINANCE_PRIMARY_DETERMINISTIC_EVIDENCE,
+              assess_causal_dominance,
+          )
+          from transient_mechanism_gate import REASON_SERVER_5XX
+
+          repos = [
+              "facebook/react",
+              "vercel/next.js",
+              "vitejs/vite",
+              "webpack/webpack",
+              "rollup/rollup",
+              "denoland/deno",
+              "nodejs/node",
+              "oven-sh/bun",
+              "microsoft/TypeScript",
+              "microsoft/vscode",
+              "angular/angular",
+              "vuejs/core",
+              "sveltejs/svelte",
+              "nuxt/nuxt",
+              "remix-run/react-router",
+              "babel/babel",
+              "eslint/eslint",
+              "prettier/prettier",
+              "pnpm/pnpm",
+              "yarnpkg/berry",
+              "rust-lang/rust",
+              "rust-lang/cargo",
+              "tokio-rs/tokio",
+              "clap-rs/clap",
+              "BurntSushi/ripgrep",
+              "starship/starship",
+              "helix-editor/helix",
+              "fish-shell/fish-shell",
+              "nushell/nushell",
+              "rustdesk/rustdesk",
+              "golang/go",
+              "golangci/golangci-lint",
+              "gohugoio/hugo",
+              "prometheus/prometheus",
+              "prometheus/node_exporter",
+              "pandas-dev/pandas",
+              "numpy/numpy",
+              "pytorch/pytorch",
+              "huggingface/transformers",
+              "huggingface/datasets",
+              "scikit-learn/scikit-learn",
+              "fastapi/fastapi",
+              "django/django",
+              "ansible/ansible",
+              "saltstack/salt",
+              "pytest-dev/pytest",
+              "psf/requests",
+              "pallets/flask",
+              "encode/httpx",
+              "psf/black"
+          ]
+          token = os.environ["INPUT_GITHUB_TOKEN"]
+
+          def collect(repo):
+              api = GitHubAPI(token)
+              try:
+                  _natural, enriched = collect_repository_samples(api, repo, 1, 50, 500)
+                  return repo, enriched, None
+              except RuntimeError as exc:
+                  return repo, None, str(exc)[:300]
+
+          histories, skipped = {}, []
+          with ThreadPoolExecutor(max_workers=5) as pool:
+              futures = [pool.submit(collect, repo) for repo in repos]
+              for future in as_completed(futures):
+                  repo, enriched, error = future.result()
+                  if error:
+                      skipped.append((repo, error))
+                  else:
+                      histories[repo] = enriched
+
+          candidates = []
+          blocked_primary = []
+          unresolved = []
+          qualifying = []
+
+          for repo, history in histories.items():
+              failures, _run_count = history
+              api = GitHubAPI(token)
+              for failure in failures:
+                  if failure.category not in {"CODE_REGRESSION", "FLAKY_TEST"}:
+                      continue
+                  if failure.mechanism_causality_status != MECHANISM_CAUSAL_CONFIRMED:
+                      continue
+                  if REASON_SERVER_5XX not in failure.mechanism_causality_reasons:
+                      continue
+
+                  qualifying.append((repo, failure))
+                  attempt = int(failure.attempt or 1)
+                  try:
+                      data = api.request(
+                          "GET",
+                          f"/repos/{repo}/actions/runs/{failure.run_id}/attempts/{attempt}/jobs?per_page=100",
+                      )
+                      jobs = list(data.get("jobs") or [])
+                      matches = [
+                          job for job in jobs
+                          if str(job.get("name") or "") == failure.job_name
+                          and str(job.get("conclusion") or "").lower() in {"failure", "cancelled", "timed_out", "action_required", "startup_failure"}
+                      ]
+                      if len(matches) != 1:
+                          unresolved.append((repo, failure, f"job_match_count={len(matches)}"))
+                          continue
+                      job = matches[0]
+                      log = api.get_job_logs(repo, int(job.get("id") or 0))
+                      dominance = assess_causal_dominance(job, log)
+                  except RuntimeError as exc:
+                      unresolved.append((repo, failure, str(exc)[:240]))
+                      continue
+
+                  record = (repo, failure, dominance)
+                  if dominance.status == DOMINANCE_CANDIDATE:
+                      candidates.append(record)
+                  elif dominance.status == DOMINANCE_PRIMARY_DETERMINISTIC_EVIDENCE:
+                      blocked_primary.append(record)
+                  else:
+                      unresolved.append((repo, failure, dominance.status))
+
+          validated = [
+              item for item in candidates
+              if item[1].recovery_status == "VALIDATED_RECOVERY"
+          ]
+          failed_again = [
+              item for item in candidates
+              if item[1].recovery_status == "FAILED_AGAIN"
+          ]
+          safe_validated = [
+              item for item in validated
+              if not item[1].side_effect_risk
+          ]
+
+          print("=== CAUSAL DOMINANCE WAVE 4 ===")
+          print(f"repositories_analyzed={len(histories)}")
+          print(f"repositories_skipped={len(skipped)}")
+          print(f"qualifying_causal_5xx_contradictions={len(qualifying)}")
+          print(f"dominance_candidates={len(candidates)}")
+          print(f"validated_candidate_recoveries={len(validated)}")
+          print(f"candidate_failed_again={len(failed_again)}")
+          print(f"authority_safe_validated_candidates={len(safe_validated)}")
+          print(f"primary_deterministic_blocked={len(blocked_primary)}")
+          print(f"unresolved={len(unresolved)}")
+          print(f"candidate_independent_repositories={len(set(repo for repo, _f, _d in candidates))}")
+          print(f"validated_candidate_independent_repositories={len(set(repo for repo, _f, _d in validated))}")
+
+          for repo, failure, dominance in candidates:
+              print(
+                  f"DOMINANCE_CANDIDATE repo={repo} run_id={failure.run_id} "
+                  f"attempt={failure.attempt} job={failure.job_name!r} "
+                  f"baseline={failure.category} recovery={failure.recovery_status} "
+                  f"side_effect={failure.side_effect_risk} proposed={dominance.proposed_category}"
+              )
+              for line in dominance.transient_evidence:
+                  print(f"TRANSIENT_EVIDENCE {line.replace('##[','GH_ANNOTATION[')}")
+              for line in dominance.downstream_evidence:
+                  print(f"DOWNSTREAM_EVIDENCE {line.replace('##[','GH_ANNOTATION[')}")
+
+          for repo, failure, dominance in blocked_primary:
+              print(
+                  f"PRIMARY_BLOCK repo={repo} run_id={failure.run_id} "
+                  f"job={failure.job_name!r} baseline={failure.category} "
+                  f"recovery={failure.recovery_status}"
+              )
+              for line in dominance.blocking_evidence:
+                  print(f"BLOCKING_EVIDENCE {line.replace('##[','GH_ANNOTATION[')}")
+
+          for repo, failure, reason in unresolved:
+              print(
+                  f"UNRESOLVED repo={repo} run_id={failure.run_id} "
+                  f"job={failure.job_name!r} reason={reason!r}"
+              )
+
+          for repo, error in sorted(skipped):
+              print(f"SKIPPED repo={repo} error={error!r}")
+          PY
