@@ -173,3 +173,56 @@ def test_benchmark_report_surfaces_unknown_intelligence_without_promoting_runtim
     assert "INVESTIGATE_TRANSIENT_PATTERN" in report
     assert "does not modify the runtime classifier or authorize reruns" in report
     assert len(summary.unknown_intelligence.promotion_candidates) == 1
+
+
+def test_unknown_evidence_ignores_benign_digest_mismatch_setting_and_shell_comment():
+    evidence = extract_unknown_evidence(
+        "2026-09-18T00:15:16.1305147Z digest-mismatch: error\n"
+        "2026-09-18T00:15:16.1305200Z # beep on error\n"
+    )
+    assert evidence == ()
+
+
+def test_unknown_evidence_keeps_real_digest_mismatch_error():
+    evidence = extract_unknown_evidence(
+        "2026-09-18T00:15:16.1305147Z Error: digest mismatch expected abc got def\n"
+    )
+    assert evidence == ("error: digest mismatch expected abc got def",)
+
+
+def test_unknown_evidence_keeps_github_error_annotation():
+    evidence = extract_unknown_evidence(
+        "2026-09-18T00:15:16.1305147Z ##[error]The operation was canceled.\n"
+    )
+    assert evidence == ("##[error]the operation was canceled.",)
+
+
+def test_unknown_evidence_does_not_match_error_inside_package_name():
+    evidence = extract_unknown_evidence(
+        "2026-09-18T00:15:16.1305147Z downloaded proc-macro-error-attr2 v2.0.0\n"
+    )
+    assert evidence == ()
+
+
+def test_noise_only_unknown_signature_cannot_be_promoted():
+    noisy_log = (
+        "2026-09-18T00:15:16.1305147Z digest-mismatch: error\n"
+        "2026-09-18T00:15:16.1305200Z # beep on error\n"
+    )
+    signature = unknown_signature(noisy_log)
+    assert signature == "unknown without stable evidence"
+
+    reruns = {
+        "acme/repo": (
+            [
+                _unknown(1, signature=signature, recovered=True),
+                _unknown(2, signature=signature, recovered=True),
+                _unknown(3, signature=signature, recovered=True),
+                _unknown(4, signature=signature, recovered=True),
+            ],
+            4,
+        )
+    }
+    summary = summarize_unknown_patterns({}, reruns)
+    assert summary.patterns[0].status == STATUS_INSUFFICIENT_EVIDENCE
+    assert summary.promotion_candidates == ()
