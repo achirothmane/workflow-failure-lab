@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import pytest
 
+from ci_retry_gate import FAILURE_STEP_CONFIRMED
+
 from benchmark_mode import (
     REJECTION_CODE_REGRESSION,
     REJECTION_LOW_CONFIDENCE_TRANSIENT,
@@ -539,4 +541,82 @@ def test_benchmark_coverage_attribution_reports_first_limiting_layer():
     assert "Coverage Attribution — first limiting layer" in report
     assert "Failures stopped at evidence-gap layers: **4**" in report
     assert "diagnostic only" in report
+
+
+class _UnknownOutcomeAPI:
+    def request(self, method: str, path: str, payload=None, accept=None):
+        if path.startswith("/repos/acme/repo/actions/runs?status=completed"):
+            return {"workflow_runs": [{"id": 301, "run_attempt": 2}]}
+        if path == "/repos/acme/repo/actions/runs/301/attempts/1/jobs?per_page=100":
+            return {
+                "jobs": [
+                    {
+                        "id": 3011,
+                        "name": "mystery",
+                        "conclusion": "failure",
+                        "started_at": "2026-01-01T00:00:00Z",
+                        "completed_at": "2026-01-01T00:01:00Z",
+                        "steps": [
+                            {
+                                "name": "Mystery step",
+                                "conclusion": "failure",
+                                "started_at": "2026-01-01T00:00:05Z",
+                                "completed_at": "2026-01-01T00:00:55Z",
+                            }
+                        ],
+                    }
+                ]
+            }
+        if path == "/repos/acme/repo/actions/runs/301/attempts/2/jobs?per_page=100":
+            return {
+                "jobs": [
+                    {
+                        "id": 3012,
+                        "name": "mystery",
+                        "conclusion": "success",
+                        "started_at": "2026-01-01T00:02:00Z",
+                        "completed_at": "2026-01-01T00:03:00Z",
+                        "steps": [
+                            {
+                                "name": "Mystery step",
+                                "conclusion": "success",
+                                "started_at": "2026-01-01T00:02:05Z",
+                                "completed_at": "2026-01-01T00:02:55Z",
+                            }
+                        ],
+                    }
+                ]
+            }
+        raise AssertionError(f"unexpected request: {method} {path}")
+
+    def get_job_logs(self, repo: str, job_id: int) -> str:
+        assert repo == "acme/repo"
+        return "2026-01-01T00:00:30.0000000Z Error: mysterious subsystem exploded\n"
+
+    def get_jobs(self, repo: str, run_id: int):
+        raise AssertionError("fallback should not be used")
+
+
+def test_unknown_outcome_can_validate_without_becoming_rerun_candidate():
+    failures, _runs = collect_repository_history(
+        _UnknownOutcomeAPI(),
+        "acme/repo",
+        1,
+    )
+
+    assert len(failures) == 1
+    item = failures[0]
+    assert item.category == "UNKNOWN"
+    assert item.provenance_status == "NOT_APPLICABLE"
+    assert item.failure_step_status == FAILURE_STEP_CONFIRMED
+    assert item.failure_step == "Mystery step"
+    assert item.recovery_status == RECOVERY_VALIDATED
+    assert _rejection_reason(item) == REJECTION_UNKNOWN
+
+    summary = summarize_benchmark(
+        {"acme/repo": ([], 0)},
+        rerun_histories={"acme/repo": (failures, 1)},
+    )
+    assert summary.rerun_candidates == 0
+    assert summary.rejections[0].reason == REJECTION_UNKNOWN
 
