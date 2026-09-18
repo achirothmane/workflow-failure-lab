@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from ci_retry_gate import redact
 from history_ci_waste import HistoricalFailure, normalize_signature_line
+from mechanism_causality_gate import MECHANISM_CAUSAL_CONFIRMED
 from recovery_ground_truth import (
     RECOVERY_NOT_RECOVERED,
     is_ground_truth_evaluable,
@@ -53,6 +54,7 @@ PROMOTION_BLOCKER_RECOVERY_RATE = "RECOVERY_RATE_BELOW_THRESHOLD"
 PROMOTION_BLOCKER_SIDE_EFFECT = "SIDE_EFFECT_CONTAMINATION"
 PROMOTION_BLOCKER_SEMANTIC_EVIDENCE = "SEMANTIC_EVIDENCE_QUALITY"
 PROMOTION_BLOCKER_TRANSIENT_MECHANISM = "TRANSIENT_MECHANISM_EVIDENCE"
+PROMOTION_BLOCKER_MECHANISM_CAUSALITY = "MECHANISM_CAUSALITY_EVIDENCE"
 PROMOTION_ELIGIBLE = "ELIGIBLE_FOR_CLASSIFIER_RESEARCH"
 
 
@@ -81,6 +83,9 @@ class UnknownPattern:
     mechanism_reasons: tuple[str, ...] = ()
     mechanism_evidence: tuple[str, ...] = ()
     mechanism_causes: tuple[str, ...] = ()
+    mechanism_causal_gt_reruns: int = 0
+    mechanism_causality_reasons: tuple[str, ...] = ()
+    mechanism_causal_evidence: tuple[str, ...] = ()
 
     @property
     def recovery_rate(self) -> float:
@@ -230,6 +235,7 @@ def _promotion_blockers_for(
     side_effect_occurrences: int,
     signature: str,
     causes: tuple[str, ...] = (),
+    mechanism_causal_gt_reruns: int = 0,
 ) -> tuple[str, ...]:
     blockers: list[str] = []
     semantic = assess_semantic_promotion_signature(signature)
@@ -241,6 +247,11 @@ def _promotion_blockers_for(
         blockers.append(PROMOTION_BLOCKER_SEMANTIC_EVIDENCE)
     elif not mechanism.supported:
         blockers.append(PROMOTION_BLOCKER_TRANSIENT_MECHANISM)
+    elif (
+        rerun_observations > 0
+        and mechanism_causal_gt_reruns < rerun_observations
+    ):
+        blockers.append(PROMOTION_BLOCKER_MECHANISM_CAUSALITY)
     if occurrences < MIN_UNKNOWN_OCCURRENCES:
         blockers.append(PROMOTION_BLOCKER_INSUFFICIENT_OCCURRENCES)
     if rerun_observations < MIN_UNKNOWN_RERUN_SAMPLES:
@@ -261,6 +272,7 @@ def _status_for(
     side_effect_occurrences: int,
     signature: str,
     causes: tuple[str, ...] = (),
+    mechanism_causal_gt_reruns: int = 0,
 ) -> str:
     if side_effect_occurrences:
         return STATUS_SIDE_EFFECT_GUARDED
@@ -269,6 +281,11 @@ def _status_for(
     if not assess_semantic_promotion_signature(signature).eligible:
         return STATUS_INSUFFICIENT_EVIDENCE
     if not assess_transient_mechanism(signature, causes).supported:
+        return STATUS_INSUFFICIENT_EVIDENCE
+    if (
+        rerun_observations > 0
+        and mechanism_causal_gt_reruns < rerun_observations
+    ):
         return STATUS_INSUFFICIENT_EVIDENCE
     if occurrences < MIN_UNKNOWN_OCCURRENCES or rerun_observations < MIN_UNKNOWN_RERUN_SAMPLES:
         return STATUS_INSUFFICIENT_EVIDENCE
@@ -291,6 +308,9 @@ def summarize_unknown_patterns(
     side_effect_occurrences: dict[str, int] = defaultdict(int)
     signatures: dict[str, str] = {}
     pattern_causes: dict[str, set[str]] = defaultdict(set)
+    mechanism_causal_gt_reruns: dict[str, int] = defaultdict(int)
+    mechanism_causality_reasons: dict[str, set[str]] = defaultdict(set)
+    mechanism_causal_evidence: dict[str, list[str]] = defaultdict(list)
 
     cause_occurrences: dict[str, int] = defaultdict(int)
     cause_repos: dict[str, set[str]] = defaultdict(set)
@@ -327,6 +347,17 @@ def summarize_unknown_patterns(
                     if is_ground_truth_evaluable(item.recovery_status):
                         rerun_observations[pattern_id] += 1
                         cause_rerun_observations[cause] += 1
+                        if item.mechanism_causality_status == MECHANISM_CAUSAL_CONFIRMED:
+                            mechanism_causal_gt_reruns[pattern_id] += 1
+                            mechanism_causality_reasons[pattern_id].update(
+                                item.mechanism_causality_reasons
+                            )
+                            for evidence in item.mechanism_causal_evidence:
+                                if (
+                                    evidence not in mechanism_causal_evidence[pattern_id]
+                                    and len(mechanism_causal_evidence[pattern_id]) < 3
+                                ):
+                                    mechanism_causal_evidence[pattern_id].append(evidence)
                         if is_validated_recovery(item.recovery_status):
                             recoveries[pattern_id] += 1
                             cause_recoveries[cause] += 1
@@ -350,6 +381,7 @@ def summarize_unknown_patterns(
             side_effect_occurrences[pattern_id],
             signature,
             causes,
+            mechanism_causal_gt_reruns[pattern_id],
         )
         recovery_rate = (
             recoveries[pattern_id] / rerun_observations[pattern_id]
@@ -374,6 +406,7 @@ def summarize_unknown_patterns(
                     side_effect_occurrences[pattern_id],
                     signature,
                     causes,
+                    mechanism_causal_gt_reruns[pattern_id],
                 ),
                 promotion_blocker=(
                     blockers[0] if blockers else PROMOTION_ELIGIBLE
@@ -396,6 +429,13 @@ def summarize_unknown_patterns(
                 mechanism_reasons=mechanism.reasons,
                 mechanism_evidence=mechanism.transient_evidence,
                 mechanism_causes=causes,
+                mechanism_causal_gt_reruns=mechanism_causal_gt_reruns[pattern_id],
+                mechanism_causality_reasons=tuple(
+                    sorted(mechanism_causality_reasons[pattern_id])
+                ),
+                mechanism_causal_evidence=tuple(
+                    mechanism_causal_evidence[pattern_id]
+                ),
             )
         )
 
