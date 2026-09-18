@@ -209,7 +209,67 @@ TRAEFIK_GOLANGCI_HTTP_504 = PinnedResearchCase(
 )
 
 
+SWC_DPRINT_HTTP_504 = PinnedResearchCase(
+    case_id="swc-dprint-http-504-2026-09-14",
+    repository="swc-project/swc",
+    run_id=34857087636,
+    failed_attempt=1,
+    rerun_attempt=2,
+    failed_job_id=104020568257,
+    rerun_job_id=104033332582,
+    job_name="Test - swc - macos-latest",
+    failure_log=(
+        "2026-09-14T14:50:45.0086000Z $ dprint fmt\n"
+        "2026-09-14T14:50:56.4658120Z Error downloading dprint zip file. "
+        "Error: Unknown status code 504 : Gateway Time-out\n"
+        "2026-09-14T14:50:56.9435700Z Error: Unknown status code 504 : Gateway Time-out\n"
+        "2026-09-14T14:50:56.9613980Z Error: Error downloading dprint zip file. "
+        "Error: Unknown status code 504 : Gateway Time-out\n"
+        "2026-09-14T14:50:57.0087000Z ELIFECYCLE Command failed with exit code 1.\n"
+        "2026-09-14T14:50:57.1501530Z error: test failed, to rerun pass "
+        "\`-p swc --test exec\`\n"
+        "2026-09-14T14:50:57.1677010Z assertion failed: status.success()\n"
+    ),
+    failed_job={
+        "id": 104020568257,
+        "name": "Test - swc - macos-latest",
+        "conclusion": "failure",
+        "started_at": "2026-09-14T14:43:24Z",
+        "completed_at": "2026-09-14T14:51:03Z",
+        "steps": [
+            {
+                "name": "Run cargo test",
+                "conclusion": "failure",
+                "started_at": "2026-09-14T14:45:30Z",
+                "completed_at": "2026-09-14T14:50:57Z",
+            },
+        ],
+    },
+    rerun_job={
+        "id": 104033332582,
+        "name": "Test - swc - macos-latest",
+        "conclusion": "success",
+        "started_at": "2026-09-14T15:17:06Z",
+        "completed_at": "2026-09-14T15:25:04Z",
+        "steps": [
+            {
+                "name": "Run cargo test",
+                "conclusion": "success",
+                "started_at": "2026-09-14T15:18:53Z",
+                "completed_at": "2026-09-14T15:24:58Z",
+            },
+        ],
+    },
+    expected_runtime_category="CODE_REGRESSION",
+    expected_mechanism_status="TRANSIENT_MECHANISM_SUPPORTED",
+    expected_mechanism_reason="SERVER_5XX",
+    expected_recovery_status="VALIDATED_RECOVERY",
+    expected_side_effect_risk=False,
+)
+
+
 PINNED_RESEARCH_CASES = (
     SERDE_ATTESTATION_HTTP_500,
     TRAEFIK_GOLANGCI_HTTP_504,
+    SWC_DPRINT_HTTP_504,
 )
