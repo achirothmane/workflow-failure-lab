@@ -1,7 +1,7 @@
 from history_ci_waste import HistoricalFailure
 from mechanism_causality_gate import MECHANISM_CAUSAL_CONFIRMED, MECHANISM_CAUSAL_UNCONFIRMED
 from recovery_ground_truth import RECOVERY_NOT_RECOVERED, RECOVERY_VALIDATED
-from targeted_replication_search import search_targeted_replication
+from targeted_replication_search import render_targeted_replication_report, search_targeted_replication
 
 
 def failure(
@@ -119,3 +119,22 @@ def test_targeted_search_reports_ground_truth_outcomes():
     assert summary.validated_recoveries == 1
     assert summary.failed_again == 1
     assert summary.recovery_rate == 0.5
+
+
+
+def test_targeted_replication_report_is_explicitly_research_only():
+    summary = search_targeted_replication(
+        {
+            "acme/repo": ([failure(101)], 1),
+            "other/project": ([failure(202)], 1),
+        },
+        "SERVER_5XX",
+    )
+
+    report = render_targeted_replication_report(summary)
+
+    assert "Targeted Replication Search" in report
+    assert "Independent workflow runs: **2**" in report
+    assert "Cross-repository replication: **YES**" in report
+    assert "research evidence only" in report
+    assert "does not grant rerun authority" in report
