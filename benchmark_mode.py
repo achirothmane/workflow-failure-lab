@@ -48,6 +48,10 @@ from coverage_attribution import (
     summarize_coverage_attribution,
 )
 from policy_shadow import simulate_shadow
+from targeted_replication_search import (
+    render_targeted_replication_report,
+    search_targeted_replication,
+)
 from unknown_cause_decomposition import decompose_unknown_cause
 from unknown_failure_intelligence import (
     PROMOTION_BLOCKER_INDEPENDENT_REPLICATION,
@@ -923,6 +927,7 @@ def main() -> int:
         os.environ.get("INPUT_REPOSITORY") or os.environ.get("GITHUB_REPOSITORY") or ""
     )
     raw_repos = os.environ.get("INPUT_BENCHMARK_REPOSITORIES", "")
+    target_mechanism = os.environ.get("INPUT_BENCHMARK_TARGET_MECHANISM", "").strip().upper()
 
     if not token:
         print("::warning::Benchmark skipped because github-token is missing.")
@@ -977,6 +982,14 @@ def main() -> int:
         skipped=tuple(skipped),
     )
     report = render_benchmark_report(summary)
+    targeted = (
+        search_targeted_replication(rerun_histories, target_mechanism)
+        if target_mechanism
+        else None
+    )
+    if targeted is not None:
+        report += "\n" + render_targeted_replication_report(targeted)
+
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
         with open(summary_path, "a", encoding="utf-8") as handle:
@@ -1119,6 +1132,36 @@ def main() -> int:
         "benchmark-unknown-promotion-candidate-ids",
         ",".join(item.pattern_id for item in summary.unknown_intelligence.promotion_candidates),
     )
+    if targeted is not None:
+        _write_output("benchmark-target-mechanism", targeted.mechanism_reason)
+        _write_output(
+            "benchmark-target-independent-runs",
+            str(targeted.independent_runs),
+        )
+        _write_output(
+            "benchmark-target-independent-repositories",
+            str(targeted.independent_repositories),
+        )
+        _write_output(
+            "benchmark-target-validated-recoveries",
+            str(targeted.validated_recoveries),
+        )
+        _write_output(
+            "benchmark-target-failed-again",
+            str(targeted.failed_again),
+        )
+        _write_output(
+            "benchmark-target-recovery-rate",
+            f"{targeted.recovery_rate:.4f}",
+        )
+        _write_output(
+            "benchmark-target-replicated",
+            str(targeted.replicated).lower(),
+        )
+        _write_output(
+            "benchmark-target-cross-repository-replicated",
+            str(targeted.cross_repository_replicated).lower(),
+        )
     _write_output(
         "benchmark-unknown-near-promotion-candidates",
         str(len(summary.unknown_intelligence.near_promotion_candidates)),
