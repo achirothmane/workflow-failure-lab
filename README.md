@@ -198,7 +198,8 @@ For each UNKNOWN pattern it reports:
 - ground-truth-evaluable reruns;
 - validated recoveries, repeated failures, and unknown outcomes;
 - side-effect occurrences;
-- an advisory status.
+- an advisory status;
+- the primary promotion blocker, the complete blocker set, and the numeric gap to classifier-research eligibility.
 
 UNKNOWN Cause Decomposition adds a second diagnostic view across those same failures. It assigns one cause family without changing runtime classification:
 
@@ -213,7 +214,20 @@ UNKNOWN Cause Decomposition adds a second diagnostic view across those same fail
 
 Each family reports occurrences, repository count, ground-truth outcomes, side-effect occurrences, and representative normalized signatures. These families are research buckets only: an UNKNOWN failure remains UNKNOWN until a separate classifier rule is justified and tested.
 
-`INVESTIGATE_TRANSIENT_PATTERN` is emitted only when the UNKNOWN signature is stable, appears at least 3 times, has at least 3 observed real reruns, at least 80% of those reruns recover, and no side-effect occurrence is present. This status is **research evidence only**: it does not change the runtime classifier and never grants rerun authority.
+### UNKNOWN Promotion Blocker Attribution
+
+Promotion readiness is decomposed into explicit blockers:
+
+- `NO_STABLE_SIGNATURE`
+- `INSUFFICIENT_OCCURRENCES`
+- `INSUFFICIENT_GT_RERUNS`
+- `RECOVERY_RATE_BELOW_THRESHOLD`
+- `SIDE_EFFECT_CONTAMINATION`
+- `ELIGIBLE_FOR_CLASSIFIER_RESEARCH` when no blocker remains.
+
+The benchmark reports all blockers for each pattern, a primary blocker, and the remaining gap such as `+1 occurrence`, `+2 GT reruns`, or a recovery-rate deficit. Patterns with exactly one remaining blocker are counted separately as near-promotion candidates.
+
+`INVESTIGATE_TRANSIENT_PATTERN` is emitted only when the UNKNOWN signature is stable, appears at least 3 times, has at least 3 ground-truth-evaluable reruns, at least 80% validated recovery, and no side-effect occurrence is present. This status is **research evidence only**: it does not change the runtime classifier and never grants rerun authority.
 
 This creates a controlled path from `UNKNOWN` → repeated evidence → candidate classifier rule → separate testing, rather than weakening the production safety gate from a handful of recoveries.
 
@@ -339,6 +353,13 @@ Benchmark Mode emits:
 | `benchmark-unknown-failed-again` | UNKNOWN cases whose real rerun failed again. |
 | `benchmark-unknown-promotion-candidates` | Advisory UNKNOWN patterns meeting the conservative investigation threshold. |
 | `benchmark-unknown-promotion-candidate-ids` | Comma-separated IDs of those advisory patterns. |
+| `benchmark-unknown-near-promotion-candidates` | UNKNOWN patterns exactly one blocker away from classifier-research eligibility. |
+| `benchmark-unknown-promotion-blocker-no-stable-signature` | Patterns blocked because no stable normalized error signature exists. |
+| `benchmark-unknown-promotion-blocker-insufficient-occurrences` | Patterns blocked because fewer than three occurrences are available. |
+| `benchmark-unknown-promotion-blocker-insufficient-gt-reruns` | Patterns blocked because fewer than three ground-truth-evaluable reruns are available. |
+| `benchmark-unknown-promotion-blocker-recovery-rate-below-threshold` | Patterns blocked because validated recovery rate is below 80%. |
+| `benchmark-unknown-promotion-blocker-side-effect-contamination` | Patterns blocked because at least one occurrence crossed a side-effect boundary. |
+| `benchmark-unknown-promotion-blocker-eligible-for-classifier-research` | Patterns satisfying all advisory evidence thresholds for classifier research. |
 | `benchmark-unknown-cause-no-stable-error-evidence` | UNKNOWN failures with no stable error-like evidence after semantic filtering. |
 | `benchmark-unknown-cause-auth-permission` | UNKNOWN failures grouped diagnostically as authentication/permission errors. |
 | `benchmark-unknown-cause-git-vcs` | UNKNOWN failures grouped diagnostically as Git/version-control errors. |
@@ -360,7 +381,7 @@ This tool cannot prove that rerunning arbitrary third-party workflows is safe. I
 
 ## Validation
 
-The action has unit coverage for transient failures, code failures, unknown failures, causal-vs-non-causal log evidence, retry-authority execution provenance, classification-independent failure-step outcome provenance, recovery ground-truth validation, unverified/inconsistent recovery exclusion, first-gate coverage attribution, evidence-gap versus authority-boundary separation, UNKNOWN cause decomposition, cause-family aggregation, weak transient evidence discounting, secret redaction, side-effect blocking, attempt caps, runtime accounting, historical transient-waste accounting, recurring failure detection, fingerprint stability under dynamic log values, fingerprint separation for different failures, real-vs-copied rerun detection, Policy Learning thresholds, Shadow Mode look-back isolation, Benchmark Mode repository isolation, unknown counterfactual handling, benchmark precision/coverage aggregation, UNKNOWN signature extraction, cross-repository UNKNOWN clustering, promotion thresholds, and UNKNOWN side-effect guards.
+The action has unit coverage for transient failures, code failures, unknown failures, causal-vs-non-causal log evidence, retry-authority execution provenance, classification-independent failure-step outcome provenance, recovery ground-truth validation, unverified/inconsistent recovery exclusion, first-gate coverage attribution, evidence-gap versus authority-boundary separation, UNKNOWN cause decomposition, cause-family aggregation, UNKNOWN promotion blocker attribution, promotion-distance accounting, weak transient evidence discounting, secret redaction, side-effect blocking, attempt caps, runtime accounting, historical transient-waste accounting, recurring failure detection, fingerprint stability under dynamic log values, fingerprint separation for different failures, real-vs-copied rerun detection, Policy Learning thresholds, Shadow Mode look-back isolation, Benchmark Mode repository isolation, unknown counterfactual handling, benchmark precision/coverage aggregation, UNKNOWN signature extraction, cross-repository UNKNOWN clustering, promotion thresholds, and UNKNOWN side-effect guards.
 
 Selective Safe Rerun has also been tested end-to-end in GitHub Actions: a mixed run containing a transient network failure and a code regression caused only the transient job to execute again; the code-regression job remained blocked, and the attempt cap prevented a third loop.
 
