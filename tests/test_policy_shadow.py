@@ -1,4 +1,10 @@
 from history_ci_waste import HistoricalFailure, failure_fingerprint
+from recovery_ground_truth import (
+    RECOVERY_NOT_OBSERVED,
+    RECOVERY_NOT_RECOVERED,
+    RECOVERY_UNVERIFIED,
+    RECOVERY_VALIDATED,
+)
 from policy_shadow import (
     SHADOW_NOT_RECOVERED,
     SHADOW_RECOVERED,
@@ -19,7 +25,15 @@ def record(
     category="DEPENDENCY_NETWORK",
     confidence="high",
     side_effect=False,
+    recovery_status=None,
 ):
+    if recovery_status is None:
+        if not rerun:
+            recovery_status = RECOVERY_NOT_OBSERVED
+        elif recovered:
+            recovery_status = RECOVERY_VALIDATED
+        else:
+            recovery_status = RECOVERY_NOT_RECOVERED
     return HistoricalFailure(
         run_id=run_id,
         job_name="install dependencies",
@@ -32,6 +46,7 @@ def record(
         rerun_observed=rerun,
         side_effect_risk=side_effect,
         attempt=attempt,
+        recovery_status=recovery_status,
     )
 
 
@@ -154,6 +169,7 @@ def test_shadow_groups_multiple_fingerprints_separately():
             rerun_observed=True,
             side_effect_risk=False,
             attempt=1,
+            recovery_status=RECOVERY_VALIDATED,
         )
         for i in range(1, 7)
     ]
@@ -162,3 +178,27 @@ def test_shadow_groups_multiple_fingerprints_separately():
 
     assert summary.decisions == 2
     assert len(summary.fingerprints) == 2
+
+
+def test_shadow_keeps_success_without_ground_truth_validation_unknown():
+    failures = [
+        record(1, recovered=True),
+        record(2, recovered=True),
+        record(3, recovered=True),
+        record(4, recovered=True),
+        record(5, recovered=True),
+        record(
+            6,
+            recovered=True,
+            recovery_status=RECOVERY_UNVERIFIED,
+        ),
+    ]
+
+    summary = simulate_shadow(failures)
+
+    assert summary.decisions == 1
+    assert summary.evaluated == 0
+    assert summary.recoveries == 0
+    assert summary.false_positives == 0
+    assert summary.unknown_outcomes == 1
+
