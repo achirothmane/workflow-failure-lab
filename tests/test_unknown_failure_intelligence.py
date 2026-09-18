@@ -248,21 +248,21 @@ def test_unknown_unverified_success_does_not_promote_pattern():
     rerun = {
         "acme/repo": (
             [
-                failure(
+                _unknown(
                     1,
-                    signature,
+                    signature=signature,
                     recovered=True,
                     recovery_status=RECOVERY_UNVERIFIED,
                 ),
-                failure(
+                _unknown(
                     2,
-                    signature,
+                    signature=signature,
                     recovered=True,
                     recovery_status=RECOVERY_UNVERIFIED,
                 ),
-                failure(
+                _unknown(
                     3,
-                    signature,
+                    signature=signature,
                     recovered=True,
                     recovery_status=RECOVERY_UNVERIFIED,
                 ),
