@@ -44,6 +44,18 @@ The gate fails closed:
 
 Automatic and selective reruns require `CONFIRMED` provenance in addition to the existing transient-confidence, side-effect, and retry-attempt guards. Benchmark Mode tracks `UNCONFIRMED_EXECUTION_PROVENANCE` separately so lost coverage can be investigated without weakening the safety boundary.
 
+Execution Provenance is an **authority signal**. It is deliberately not reused as the sole source of historical outcome truth.
+
+### Failure-Step Outcome Provenance
+
+For outcome measurement, CI Retry Gate separately identifies the GitHub step that failed from job-step metadata, independent of the runtime classifier:
+
+- `FAILURE_STEP_CONFIRMED` — exactly one named failed step is present;
+- `FAILURE_STEP_AMBIGUOUS` — multiple failed steps prevent unique attribution;
+- `FAILURE_STEP_UNAVAILABLE` — failed-step metadata is missing.
+
+Failure-Step Outcome Provenance never authorizes a rerun. An `UNKNOWN` failure may therefore have a confirmed failed step for historical measurement while remaining fully blocked from automatic rerun.
+
 ## Failure fingerprints + CI History & Waste
 
 For the same workflow, the action can inspect recent completed runs and report:
@@ -75,15 +87,16 @@ A later successful rerun is not automatically counted as evidence that the origi
 
 A recovery is `VALIDATED_RECOVERY` only when:
 
-- the original failure had `CONFIRMED` Execution Provenance;
-- the provenance identifies the step that actually failed;
+- Failure-Step Outcome Provenance uniquely identifies the original failed step;
 - the same job genuinely executed again rather than being copied untouched by GitHub;
 - that same failed step appears in the later execution and completes successfully.
+
+This validation is classification-independent. It can validate the historical outcome of an `UNKNOWN` failure without changing that failure's runtime retry authority.
 
 Other outcomes remain explicit:
 
 - `NOT_RECOVERED` — the genuine rerun executed but did not succeed;
-- `UNVERIFIED_RECOVERY` — the later job succeeded, but original failure provenance or rerun-step metadata is insufficient;
+- `UNVERIFIED_RECOVERY` — the later job succeeded, but failure-step or rerun-step metadata is insufficient;
 - `INCONSISTENT_RECOVERY` — the later job succeeded without successfully re-executing the step tied to the original failure;
 - `NOT_OBSERVED` — no genuine later execution was observed.
 
@@ -347,7 +360,7 @@ This tool cannot prove that rerunning arbitrary third-party workflows is safe. I
 
 ## Validation
 
-The action has unit coverage for transient failures, code failures, unknown failures, causal-vs-non-causal log evidence, execution provenance binding, provenance mismatch/unavailable blocking, recovery ground-truth validation, unverified/inconsistent recovery exclusion, first-gate coverage attribution, evidence-gap versus authority-boundary separation, UNKNOWN cause decomposition, cause-family aggregation, weak transient evidence discounting, secret redaction, side-effect blocking, attempt caps, runtime accounting, historical transient-waste accounting, recurring failure detection, fingerprint stability under dynamic log values, fingerprint separation for different failures, real-vs-copied rerun detection, Policy Learning thresholds, Shadow Mode look-back isolation, Benchmark Mode repository isolation, unknown counterfactual handling, benchmark precision/coverage aggregation, UNKNOWN signature extraction, cross-repository UNKNOWN clustering, promotion thresholds, and UNKNOWN side-effect guards.
+The action has unit coverage for transient failures, code failures, unknown failures, causal-vs-non-causal log evidence, retry-authority execution provenance, classification-independent failure-step outcome provenance, recovery ground-truth validation, unverified/inconsistent recovery exclusion, first-gate coverage attribution, evidence-gap versus authority-boundary separation, UNKNOWN cause decomposition, cause-family aggregation, weak transient evidence discounting, secret redaction, side-effect blocking, attempt caps, runtime accounting, historical transient-waste accounting, recurring failure detection, fingerprint stability under dynamic log values, fingerprint separation for different failures, real-vs-copied rerun detection, Policy Learning thresholds, Shadow Mode look-back isolation, Benchmark Mode repository isolation, unknown counterfactual handling, benchmark precision/coverage aggregation, UNKNOWN signature extraction, cross-repository UNKNOWN clustering, promotion thresholds, and UNKNOWN side-effect guards.
 
 Selective Safe Rerun has also been tested end-to-end in GitHub Actions: a mixed run containing a transient network failure and a code regression caused only the transient job to execute again; the code-regression job remained blocked, and the attempt cap prevented a third loop.
 
