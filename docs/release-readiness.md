@@ -1,6 +1,6 @@
 # v1 Release Readiness
 
-This checklist is the release gate for CI Retry Gate `v1.0.0`.
+This checklist covers the CI Retry Gate v1 release line. The current Marketplace metadata patch is `v1.0.1`.
 
 ## Required before tagging
 
@@ -26,7 +26,7 @@ The causal-dominance override is explicitly excluded from production scope. It r
 
 1. Merge the release-readiness pull request.
 2. Confirm the post-merge CI run is green.
-3. Create release tag `v1.0.0` from that exact green `main` commit.
+3. Create the patch release tag from the exact green `main` commit.
 4. Create/update the moving major tag `v1` to the same commit so users can pin:
    `othy19904-eng/workflow-failure-lab@v1`.
 5. Publish release notes from `CHANGELOG.md`.

@@ -1,5 +1,5 @@
 name: 'CI Retry Gate'
-description: 'Classify failed GitHub Actions jobs, gate safe reruns, fingerprint recurring failures, learn conservative retry policies, shadow-test them, benchmark across repositories, and surface CI waste.'
+description: 'Classify failed GitHub Actions jobs and safely gate reruns with provenance, side-effect checks, and retry limits.'
 author: 'othy19904-eng'
 
 inputs:

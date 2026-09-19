@@ -43,13 +43,17 @@ def main() -> int:
     require("permissions:" in readme and "actions: read" in readme, "README permission guidance is missing")
 
     require("name: 'CI Retry Gate'" in action, "action.yml product name mismatch")
+    description_match = re.search(r"(?m)^description:\s*['\"](.+?)['\"]\s*$", action)
+    require(description_match is not None, "action.yml description is missing")
+    action_description = description_match.group(1)
+    require(len(action_description) < 125, "action.yml description must be less than 125 characters for Marketplace")
     require(license_text.startswith("MIT License"), "LICENSE must be MIT")
     require("using: 'composite'" in action, "action.yml must remain a composite action")
     require("icon: 'shield'" in action, "action branding icon is missing")
     require(input_default(action, "auto-rerun") == "false", "auto-rerun must default to false")
     require(input_default(action, "selective-rerun") == "false", "selective-rerun must default to false")
 
-    require('version = "1.0.0"' in pyproject, "pyproject version must be 1.0.0 for v1 release")
+    require('version = "1.0.1"' in pyproject, "pyproject version must be 1.0.1 for Marketplace patch release")
 
     # Research-only Causal Dominance must not silently gain production authority.
     production_entrypoints = {
@@ -86,6 +90,7 @@ def main() -> int:
 
     print("release-readiness: PASS")
     print("- v1 metadata present")
+    print(f"- Marketplace description length: {len(action_description)} chars")
     print("- MIT license present")
     print("- fail-closed rerun defaults preserved")
     print("- README quick start and permissions present")

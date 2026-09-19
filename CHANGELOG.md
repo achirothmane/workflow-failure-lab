@@ -4,7 +4,14 @@ All notable changes to CI Retry Gate are documented here.
 
 ## [Unreleased]
 
-Release candidate for `v1.0.0`.
+## [1.0.1] - 2026-09-19
+
+### Changed
+
+- Shortened the GitHub Action Marketplace description to satisfy the 125-character metadata limit.
+- Refreshed stable release guidance for the `@v1` consumer reference.
+
+## [1.0.0] - 2026-09-19
 
 ### Added
 

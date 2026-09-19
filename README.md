@@ -34,7 +34,7 @@ jobs:
 
 This configuration analyzes the failed run and reports its decision without rerunning anything. To enable reruns later, grant `actions: write` and opt into **one** rerun mode explicitly. Do not enable `auto-rerun` and `selective-rerun` together.
 
-> Until the `v1.0.0` release and moving `v1` tag are published, use the latest release tag or `main` only for evaluation.
+> Use `@v1` for the current stable v1 line, or pin an exact `v1.x.y` tag when you need an immutable dependency.
 
 ## Why
 
