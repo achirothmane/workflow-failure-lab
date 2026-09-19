@@ -14,7 +14,7 @@ This checklist is the release gate for CI Retry Gate `v1.0.0`.
 - [x] Causal Dominance remains research-only and is not imported by the production retry entrypoints.
 - [x] Two independent real Causal Dominance positive controls are pinned: SWC and pipx.
 - [ ] Third independent Causal Dominance positive control. This is **not a blocker for v1 release** because the feature remains disabled in production.
-- [ ] License choice. No new license is granted by this release-prep change; repository usage remains subject to the repository owner's chosen licensing terms.
+- [x] MIT License added for the public v1 release.
 
 ## v1 production scope
 
