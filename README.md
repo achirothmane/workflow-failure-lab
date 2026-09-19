@@ -305,6 +305,47 @@ For every adapter, the gate:
 The `v1` branch is advanced only by fast-forward to a commit that has already passed the normal CI, compatibility matrix, and remote-consumer gate. It is never force-moved as part of this process.
 
 
+### 7. Developer triage surface
+
+When `flaky-test-intelligence: 'true'` is enabled, CI Retry Gate now turns the detector and lifecycle state into a bounded developer-facing triage surface.
+
+The step summary includes a table with:
+
+- test ID;
+- current detector/lifecycle state;
+- failure, same-SHA recovery, and persistent-failure evidence;
+- estimated CI waste;
+- a concrete next action.
+
+The action also emits up to 10 GitHub workflow annotations so the highest-priority flaky/regression items are visible from the run without opening raw logs. Lifecycle decisions override detector recommendations in this view, so an active or blocked quarantine is never presented as a fresh candidate.
+
+The new observational outputs are:
+
+- `flaky-triage-items`
+- `flaky-triage-annotations`
+- `flaky-triage-comment-posted`
+
+PR comments remain **opt-in**. To enable one deduplicated triage comment that is updated in place on later runs:
+
+```yaml
+permissions:
+  contents: read
+  actions: read
+  pull-requests: write
+
+steps:
+  - uses: othy19904-eng/workflow-failure-lab@v1
+    with:
+      github-token: ${{ github.token }}
+      flaky-test-intelligence: 'true'
+      flaky-triage-comment: 'true'
+```
+
+If no pull request can be associated with the analyzed workflow run, or if the token cannot write the comment, the action emits a warning and leaves the underlying retry/quarantine decision unchanged.
+
+The triage UI does not grant authority. A `QUARANTINE_CANDIDATE` still requires human approval in the manifest, `BLOCKED_REGRESSION` remains fail-closed, and ACTIVE tests continue to execute so later recovery or regression evidence stays observable.
+
+
 ## Causal Evidence Layer
 
 Before category scoring, CI Retry Gate classifies each cleaned log line as `CAUSAL`, `AMBIGUOUS`, or `NON_CAUSAL`.
