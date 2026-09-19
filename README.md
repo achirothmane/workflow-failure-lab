@@ -147,6 +147,54 @@ The GitHub step summary then shows the highest-waste tests, same-SHA recoveries,
 For workflow reruns, artifacts without an `attempt-N` suffix are skipped because their execution provenance is ambiguous.
 
 
+### 3. Optional temporary quarantine lifecycle
+
+Detection and quarantine are deliberately separate. A test is never quarantined merely because the detector recommends it.
+
+Enable lifecycle evaluation:
+
+```yaml
+- uses: othy19904-eng/workflow-failure-lab@v1
+  with:
+    github-token: ${{ github.token }}
+    flaky-test-intelligence: 'true'
+    quarantine-lifecycle: 'true'
+    quarantine-manifest: '.github/flaky-quarantine.json'
+    quarantine-max-days: '14'
+    quarantine-release-clean-shas: '3'
+```
+
+A maintainer approves a temporary quarantine by adding the test to the version-controlled manifest, normally through a reviewed pull request:
+
+```json
+{
+  "version": 1,
+  "entries": [
+    {
+      "test_id": "pkg.TestCart::test_total",
+      "approved_by": "maintainer-login",
+      "approved_at": "2026-09-19T12:00:00Z",
+      "activated_run_id": 123456789,
+      "expires_at": "2026-09-26T12:00:00Z",
+      "reason": "Temporary isolation while the owner investigates."
+    }
+  ]
+}
+```
+
+The lifecycle engine then evaluates every approved entry:
+
+- `ACTIVE` — approval is valid, the TTL has not expired, and current evidence still supports quarantine.
+- `EXPIRED` — the explicit expiry time has passed; the test is removed from the effective quarantine set.
+- `RELEASED_HEALTHY` — enough later **distinct code revisions** are pass-only; the test is automatically removed from the effective set before expiry.
+- `BLOCKED_REGRESSION` — a persistent failing revision appeared, so quarantine is suspended fail-closed instead of hiding a possible regression.
+- `BLOCKED_UNVERIFIED` — current evidence is missing or no longer meets the quarantine threshold.
+
+The action exposes `active-quarantine-tests-json` plus lifecycle counts so framework-specific adapters can consume the effective quarantine set. The lifecycle layer itself does **not** rewrite test source or silently add skip markers.
+
+The manifest is read from the exact target workflow revision, so approval state is version-controlled and auditable. Repository branch protection/review rules can be used to control who is allowed to approve manifest changes.
+
+
 ## Causal Evidence Layer
 
 Before category scoring, CI Retry Gate classifies each cleaned log line as `CAUSAL`, `AMBIGUOUS`, or `NON_CAUSAL`.
