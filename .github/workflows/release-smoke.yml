@@ -1,0 +1,45 @@
+name: CI Retry Gate v1 Release Smoke
+
+on:
+  workflow_run:
+    workflows: ["CI Retry Gate Release Smoke Fixture"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  verify:
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: ubuntu-latest
+    steps:
+      - id: gate
+        name: Consume published @v1 in report-only mode
+        uses: othy19904-eng/workflow-failure-lab@v1
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ github.event.workflow_run.id }}
+          repository: ${{ github.repository }}
+          auto-rerun: 'false'
+          selective-rerun: 'false'
+          comment-on-pr: 'false'
+          history-runs: '1'
+
+      - name: Assert fail-closed release behavior
+        env:
+          SAFE_TO_RERUN: ${{ steps.gate.outputs.safe-to-rerun }}
+          RERUN_TRIGGERED: ${{ steps.gate.outputs.rerun-triggered }}
+          FAILED_JOBS: ${{ steps.gate.outputs.failed-jobs }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test "$SAFE_TO_RERUN" = "false"
+          test "$RERUN_TRIGGERED" = "false"
+          test "${FAILED_JOBS:-0}" -ge 1
+
+          echo "v1 release smoke: PASS"
+          echo "- consumed othy19904-eng/workflow-failure-lab@v1"
+          echo "- deterministic failure remained blocked"
+          echo "- no rerun was triggered"
