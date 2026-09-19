@@ -53,6 +53,61 @@ To enable reruns later, grant `actions: write` and opt into **one** rerun mode e
 
 > Use `@v1` for the current stable v1 line, or pin an exact `v1.x.y` tag when you need an immutable dependency.
 
+
+## Setup Doctor: validate before rollout
+
+Before enabling retries, quarantine, ownership routing, or write behavior, run the read-only Setup Doctor against the checked-out repository:
+
+```yaml
+permissions:
+  contents: read
+  actions: read
+
+steps:
+  - uses: actions/checkout@v4
+
+  - id: doctor
+    uses: othy19904-eng/workflow-failure-lab/doctor@v1
+    with:
+      github-token: ${{ github.token }}
+      frameworks: 'auto'
+      junit-artifact-prefix: 'junit-results'
+```
+
+The doctor produces a GitHub step summary with one of:
+
+- **READY** — no blocking setup problem was found.
+- **WARN** — rollout can continue, but something deserves attention, such as missing visible JUnit artifact wiring or requested write permissions that the doctor deliberately refuses to probe by creating content.
+- **BLOCKED** — a concrete prerequisite is missing or malformed, such as an undetected requested framework, Jest without `jest-junit`, unreadable Actions history, an invalid ownership map, or a missing/invalid quarantine manifest.
+
+It detects pytest, Jest, and Vitest, validates the Jest JUnit reporter requirement, checks repository/Actions read access, inspects JUnit artifact wiring, and can validate optional ownership and quarantine configuration. For monorepos, point `working-directory` at the package root.
+
+To preflight optional features without granting them write authority yet:
+
+```yaml
+- id: doctor
+  uses: othy19904-eng/workflow-failure-lab/doctor@v1
+  with:
+    github-token: ${{ github.token }}
+    frameworks: 'pytest,jest,vitest'
+    flaky-ownership-routing: 'true'
+    flaky-ownership-map: '.github/flaky-ownership.json'
+    flaky-triage-comment: 'true'
+    flaky-issue-lifecycle: 'true'
+    rerun-mode: 'selective'
+```
+
+The summary prints the exact permission set and a recommended production configuration. The doctor remains **read-only**: it never proves write permission by creating a PR comment, Issue, rerun, or quarantine. `fail-on-blocked` defaults to `true`, while WARN checks never fail the job.
+
+Outputs:
+
+- `ready`
+- `blocked-checks`
+- `warnings`
+- `detected-frameworks`
+- `required-permissions`
+
+
 ## What makes it different from a retry loop?
 
 | Blind retry | CI Retry Gate |
