@@ -156,8 +156,11 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Resolve Vitest major through npx
-        run: npx --yes "vitest@${{ matrix.major }}" --version
+      - name: Resolve Vitest major through npm 11
+        run: |
+          npm install --global "npm@11"
+          npm --version
+          npx --yes "vitest@${{ matrix.major }}" --version
 
       - id: block
         name: Non-quarantined failure stays red
