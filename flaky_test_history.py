@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from ci_retry_gate import GitHubAPI, _bool_env, _event_payload
+from flaky_issue_lifecycle import manage_issue_lifecycle
 from flaky_ownership import (
     load_codeowners_from_github,
     load_ownership_map_from_github,
@@ -255,6 +256,10 @@ def main() -> int:
     quarantine_lifecycle = _bool_env("INPUT_QUARANTINE_LIFECYCLE", False)
     triage_comment = _bool_env("INPUT_FLAKY_TRIAGE_COMMENT", False)
     ownership_routing = _bool_env("INPUT_FLAKY_OWNERSHIP_ROUTING", False)
+    issue_lifecycle = _bool_env("INPUT_FLAKY_ISSUE_LIFECYCLE", False)
+    issue_max_changes = int(
+        os.environ.get("INPUT_FLAKY_ISSUE_MAX_CHANGES", "10")
+    )
     ownership_map_path = os.environ.get(
         "INPUT_FLAKY_OWNERSHIP_MAP",
         ".github/flaky-ownership.json",
@@ -430,6 +435,38 @@ def main() -> int:
                     f"{exc}"
                 )
 
+    issue_created = 0
+    issue_updated = 0
+    issue_reopened = 0
+    issue_closed = 0
+    issue_deferred = 0
+
+    if issue_lifecycle and triage_items:
+        try:
+            issue_result = manage_issue_lifecycle(
+                api,
+                repo,
+                triage_items,
+                run_id=run_id,
+                max_changes=issue_max_changes,
+            )
+            issue_created = issue_result.created
+            issue_updated = issue_result.updated
+            issue_reopened = issue_result.reopened
+            issue_closed = issue_result.closed
+            issue_deferred = issue_result.deferred
+            print(
+                "::notice::Flaky issue lifecycle: "
+                f"created={issue_created}, updated={issue_updated}, "
+                f"reopened={issue_reopened}, closed={issue_closed}, "
+                f"deferred={issue_deferred}."
+            )
+        except (RuntimeError, ValueError) as exc:
+            print(
+                "::warning::Could not manage flaky issue lifecycle: "
+                f"{exc}"
+            )
+
     _write_output("flaky-tests-observed", str(len(result.summaries)))
     _write_output("quarantine-candidates", str(candidates))
     _write_output("junit-artifacts-analyzed", str(result.artifacts_analyzed))
@@ -445,6 +482,11 @@ def main() -> int:
     _write_output("flaky-unowned-items", str(unowned_count))
     _write_output("flaky-ownership-rules", str(ownership_rules_count))
     _write_output("flaky-codeowners-path", codeowners_path)
+    _write_output("flaky-issues-created", str(issue_created))
+    _write_output("flaky-issues-updated", str(issue_updated))
+    _write_output("flaky-issues-reopened", str(issue_reopened))
+    _write_output("flaky-issues-closed", str(issue_closed))
+    _write_output("flaky-issues-deferred", str(issue_deferred))
     _write_output(
         "flaky-triage-comment-posted",
         "true" if triage_comment_posted else "false",
