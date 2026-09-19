@@ -83,6 +83,14 @@ inputs:
     description: 'Opt-in PR comment with deduplicated flaky-test triage. Requires flaky-test-intelligence=true and PR comment write permission.'
     required: false
     default: 'false'
+  flaky-ownership-routing:
+    description: 'Resolve flaky-test owners from JUnit file paths plus CODEOWNERS, with an explicit test-ID ownership map fallback.'
+    required: false
+    default: 'false'
+  flaky-ownership-map:
+    description: 'Repository-relative JSON fallback mapping from test-ID glob patterns to owners/routes.'
+    required: false
+    default: '.github/flaky-ownership.json'
 
   quarantine-lifecycle:
     description: 'Evaluate human-approved temporary flaky-test quarantines, expiry, regression suspension, and healthy auto-release. Requires flaky-test-intelligence=true.'
@@ -509,6 +517,18 @@ outputs:
   flaky-triage-comment-posted:
     description: 'true when the opt-in flaky triage PR comment was created or updated successfully.'
     value: ${{ steps.flaky.outputs.flaky-triage-comment-posted }}
+  flaky-owned-items:
+    description: 'Number of triage items with an owner resolved from CODEOWNERS or the explicit ownership map.'
+    value: ${{ steps.flaky.outputs.flaky-owned-items }}
+  flaky-unowned-items:
+    description: 'Number of triage items whose owner could not be resolved.'
+    value: ${{ steps.flaky.outputs.flaky-unowned-items }}
+  flaky-ownership-rules:
+    description: 'Number of CODEOWNERS plus explicit ownership rules loaded for routing.'
+    value: ${{ steps.flaky.outputs.flaky-ownership-rules }}
+  flaky-codeowners-path:
+    description: 'Repository path of the CODEOWNERS file used for routing, or empty when none was found.'
+    value: ${{ steps.flaky.outputs.flaky-codeowners-path }}
 
 runs:
   using: 'composite'
@@ -578,6 +598,8 @@ runs:
         INPUT_JUNIT_ARTIFACT_PREFIX: ${{ inputs.junit-artifact-prefix }}
         INPUT_FLAKY_HISTORY_RUNS: ${{ inputs.flaky-history-runs }}
         INPUT_FLAKY_TRIAGE_COMMENT: ${{ inputs.flaky-triage-comment }}
+        INPUT_FLAKY_OWNERSHIP_ROUTING: ${{ inputs.flaky-ownership-routing }}
+        INPUT_FLAKY_OWNERSHIP_MAP: ${{ inputs.flaky-ownership-map }}
         INPUT_QUARANTINE_LIFECYCLE: ${{ inputs.quarantine-lifecycle }}
         INPUT_QUARANTINE_MANIFEST: ${{ inputs.quarantine-manifest }}
         INPUT_QUARANTINE_MAX_DAYS: ${{ inputs.quarantine-max-days }}
