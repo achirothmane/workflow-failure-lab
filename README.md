@@ -252,6 +252,16 @@ observe recovery/regression -> auto-release or block quarantine
 
 The adapters never use shell evaluation for `test-command`; it is tokenized and executed directly. Shell operators such as `&&`, pipes, or redirections are intentionally unsupported. Put complex setup in separate workflow steps.
 
+For monorepos or packages that keep their test configuration below the repository root, set `working-directory` on any adapter. The test command runs from that directory while the managed JUnit path remains anchored to the GitHub workspace, so history collection still finds the report consistently.
+
+```yaml
+- uses: othy19904-eng/workflow-failure-lab/adapters/vitest@v1
+  with:
+    active-tests-json: ${{ steps.flaky-policy.outputs.active-quarantine-tests-json }}
+    working-directory: 'packages/web'
+    test-command: 'npx vitest run'
+```
+
 
 ## Causal Evidence Layer
 
