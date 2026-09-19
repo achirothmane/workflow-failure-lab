@@ -30,6 +30,7 @@ Release candidate for `v1.0.0`.
 
 - Product name and public positioning now use **CI Retry Gate**.
 - Release version is prepared as `1.0.0`.
+- Repository licensing is now explicitly MIT.
 
 ## [0.1.0] - 2026-07-19
 
