@@ -554,6 +554,13 @@ runs:
         echo "::error::flaky-triage-comment requires flaky-test-intelligence=true"
         exit 2
 
+    - name: Validate flaky ownership routing mode
+      if: ${{ inputs.flaky-ownership-routing == 'true' && inputs.flaky-test-intelligence != 'true' }}
+      shell: bash
+      run: |
+        echo "::error::flaky-ownership-routing requires flaky-test-intelligence=true"
+        exit 2
+
     - id: gate
       name: Assess retry safety
       shell: bash
