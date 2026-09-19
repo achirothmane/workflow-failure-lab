@@ -104,7 +104,7 @@ jobs:
         with:
           active-tests-json: '[]'
           working-directory: 'tests/adapter-smoke/node'
-          test-command: './node_modules/.bin/jest --runTestsByPath jest/flaky.test.cjs --runInBand --ci'
+          test-command: './node_modules/.bin/jest --runTestsByPath jest/flaky.test.js --runInBand --ci'
           junit-path: '.compat/jest-${{ matrix.major }}-discover.xml'
           artifact-name: 'compat-jest-${{ matrix.major }}-discover'
 
@@ -126,7 +126,7 @@ jobs:
         with:
           active-tests-json: ${{ steps.test-id.outputs.json }}
           working-directory: 'tests/adapter-smoke/node'
-          test-command: './node_modules/.bin/jest --runTestsByPath jest/flaky.test.cjs --runInBand --ci'
+          test-command: './node_modules/.bin/jest --runTestsByPath jest/flaky.test.js --runInBand --ci'
           junit-path: '.compat/jest-${{ matrix.major }}-quarantine.xml'
           artifact-name: 'compat-jest-${{ matrix.major }}-quarantine'
 
