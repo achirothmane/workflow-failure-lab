@@ -317,10 +317,7 @@ def manage_issue_lifecycle(
             counts[key]
             for key in ("created", "updated", "reopened", "closed")
         ) >= max_changes:
-            if item.status in _CREATE_STATES or item.status in {
-                RELEASED_HEALTHY,
-                DO_NOT_QUARANTINE,
-            }:
+            if item.status in _CREATE_STATES or item.status == RELEASED_HEALTHY:
                 deferred += 1
             continue
 
