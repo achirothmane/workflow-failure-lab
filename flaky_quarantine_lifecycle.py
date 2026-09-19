@@ -218,6 +218,16 @@ def evaluate_lifecycle(
     decisions: list[LifecycleDecision] = []
 
     for entry in entries:
+        if now_utc < entry.approved_at:
+            decisions.append(
+                LifecycleDecision(
+                    entry.test_id,
+                    BLOCKED_UNVERIFIED,
+                    "Approval timestamp is in the future; quarantine is not active.",
+                )
+            )
+            continue
+
         if now_utc >= entry.expires_at:
             decisions.append(
                 LifecycleDecision(
@@ -242,10 +252,7 @@ def evaluate_lifecycle(
             )
             continue
 
-        if (
-            summary.persistent_failure_shas > 0
-            or summary.recommendation == DO_NOT_QUARANTINE
-        ):
+        if summary.persistent_failure_shas > 0:
             decisions.append(
                 LifecycleDecision(
                     entry.test_id,
