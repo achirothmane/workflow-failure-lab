@@ -4,6 +4,8 @@
 [![Latest release](https://img.shields.io/github/v/release/othy19904-eng/workflow-failure-lab)](https://github.com/othy19904-eng/workflow-failure-lab/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+![CI Retry Gate product flow](docs/ci-retry-gate-hero.png)
+
 ## Stop wasting CI runs on failures that should not be retried.
 
 **CI Retry Gate tells GitHub Actions when a failed job is safe to retry, detects evidence-backed flaky tests, routes them to the right owner, and tracks the investigation until the test is healthy again.**
@@ -11,6 +13,8 @@
 It is designed to start **read-only**. Automatic reruns, PR comments, managed Issues, and quarantine enforcement stay off until you explicitly enable the permissions and behavior you want.
 
 ### Try it on your repository first — no write permissions
+
+![CI Retry Gate Setup Doctor](docs/setup-doctor-overview.png)
 
 Run the Setup Doctor before changing your CI behavior:
 
