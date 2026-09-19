@@ -1,12 +1,27 @@
 # CI Retry Gate
 
-CI Retry Gate is a GitHub Action that inspects failed GitHub Actions jobs, decides whether a rerun is safe, can selectively rerun only safe transient jobs, fingerprints recurring failures, learns conservative retry-policy recommendations from real rerun history, shadow-tests those policies, benchmarks them across repositories, and surfaces CI waste.
+[![CI](https://github.com/othy19904-eng/workflow-failure-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/othy19904-eng/workflow-failure-lab/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/othy19904-eng/workflow-failure-lab)](https://github.com/othy19904-eng/workflow-failure-lab/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-It is deliberately conservative: code regressions, unknown or low-confidence failures, attempt caps, and deploy/publish/migration/release side-effect signals stay blocked.
+**Stop blindly rerunning failed GitHub Actions.**
 
-## Quick start
+CI Retry Gate inspects failed jobs, decides whether a rerun is safe, and can rerun only failures that pass conservative provenance, side-effect, confidence, and attempt-limit checks.
 
-Add a second workflow that listens for completed workflow runs. Start in report-only mode:
+### Why teams would use it
+
+- **Blocks deterministic failures** instead of wasting another run on the same code error.
+- **Fails closed on uncertainty**: unknown and low-confidence failures are not auto-rerun.
+- **Checks where the transient evidence happened** before granting rerun authority.
+- **Blocks side-effect workflows** such as deploy, publish, migration, and release paths.
+- **Can rerun only the safe failed jobs**, not every failed job in the workflow.
+- **Measures recurring failures and CI waste** from real history instead of guessing.
+
+> Automatic reruns are **off by default**. You can start in read-only/report-only mode and enable write behavior later.
+
+## 60-second start
+
+Create a second workflow that listens for completed CI runs:
 
 ```yaml
 name: CI Retry Gate
@@ -32,15 +47,26 @@ jobs:
           selective-rerun: 'false'
 ```
 
-This configuration analyzes the failed run and reports its decision without rerunning anything. To enable reruns later, grant `actions: write` and opt into **one** rerun mode explicitly. Do not enable `auto-rerun` and `selective-rerun` together.
+That configuration analyzes the failed run and reports the decision without rerunning anything.
+
+To enable reruns later, grant `actions: write` and opt into **one** rerun mode explicitly. Do not enable `auto-rerun` and `selective-rerun` together.
 
 > Use `@v1` for the current stable v1 line, or pin an exact `v1.x.y` tag when you need an immutable dependency.
 
-## Why
+## What makes it different from a retry loop?
 
-Blindly rerunning failed CI can hide flaky infrastructure, waste runner minutes, or repeat destructive steps. CI Retry Gate adds a safety decision before any rerun and shows whether the same underlying failure keeps returning over time.
+| Blind retry | CI Retry Gate |
+|---|---|
+| Retries because something failed | Retries only when the failure passes a safety gate |
+| Can hide deterministic failures | Blocks code regressions and low-confidence cases |
+| Often ignores where the error occurred | Binds transient evidence to the failed execution step |
+| Can repeat risky jobs | Blocks side-effect boundaries |
+| Usually treats all failed jobs the same | Supports selective rerun of individually safe jobs |
+| Gives little historical context | Tracks fingerprints, validated recoveries, and failed runtime |
 
-The action currently classifies failures into:
+## Decision model
+
+The action classifies failed jobs into:
 
 - `RUNNER_INFRA`
 - `DEPENDENCY_NETWORK`
@@ -49,7 +75,27 @@ The action currently classifies failures into:
 - `CODE_REGRESSION`
 - `UNKNOWN`
 
-Automatic rerun is disabled by default.
+A high-confidence transient classification is still **not enough** by itself to authorize a rerun. Production rerun authority also requires confirmed execution provenance, no side-effect boundary, and remaining retry attempts.
+
+Example fail-closed outcome:
+
+```text
+Decision: DO NOT AUTO-RERUN
+
+unit-tests
+  category: CODE_REGRESSION
+  confidence: high
+  rerun: blocked
+  reason: deterministic failure evidence
+```
+
+## Safe rollout path
+
+1. Start with `auto-rerun: 'false'` and `selective-rerun: 'false'`.
+2. Observe reports on real failures.
+3. Review how the gate classifies your CI.
+4. Enable only the rerun mode you want, with `actions: write`.
+5. Keep attempt limits and side-effect protection enabled.
 
 ## Causal Evidence Layer
 
