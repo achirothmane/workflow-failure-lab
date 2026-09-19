@@ -263,6 +263,26 @@ For monorepos or packages that keep their test configuration below the repositor
 ```
 
 
+### 5. Compatibility policy
+
+Adapter compatibility is exercised in GitHub Actions against multiple real framework majors, not inferred from unit tests.
+
+| Adapter | CI-validated framework majors |
+| --- | --- |
+| pytest | 8, 9 |
+| Jest | 29, 30 |
+| Vitest | 4, 5 |
+
+For every listed major, the compatibility workflow runs the real framework twice:
+
+1. an intentional failure with no active quarantine must keep the gate red;
+2. the exact testcase ID emitted by that framework's JUnit is then placed in the ACTIVE set, rerun, and must produce a green quarantine gate while still recording the failure.
+
+The matrix intentionally installs the latest version available inside each tested major range on each CI run. This catches minor/patch drift inside supported majors instead of proving compatibility only with one frozen patch version.
+
+The matrix currently uses Python 3.12 for the enforcement runtime and Node.js 22 for Jest/Vitest integration tests.
+
+
 ## Causal Evidence Layer
 
 Before category scoring, CI Retry Gate classifies each cleaned log line as `CAUSAL`, `AMBIGUOUS`, or `NON_CAUSAL`.
