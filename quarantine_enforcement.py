@@ -364,17 +364,26 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--active-tests-json", required=True)
     parser.add_argument("--junit-path", required=True)
     parser.add_argument(
+        "--command-string",
+        default="",
+        help="Test command parsed with shlex and executed without a shell.",
+    )
+    parser.add_argument(
         "command",
         nargs=argparse.REMAINDER,
-        help="Test command after --",
+        help="Alternative test command after --",
     )
     args = parser.parse_args(argv)
 
     command = list(args.command)
     if command and command[0] == "--":
         command = command[1:]
+    if args.command_string and command:
+        parser.error("use either --command-string or a command after --, not both")
+    if args.command_string:
+        command = shlex.split(args.command_string)
     if not command:
-        parser.error("a test command is required after --")
+        parser.error("a test command is required")
 
     return run_enforced(
         framework=args.framework,
