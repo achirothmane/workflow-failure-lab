@@ -6,7 +6,7 @@ import re
 import zipfile
 from dataclasses import dataclass
 
-from ci_retry_gate import GitHubAPI
+from ci_retry_gate import GitHubAPI, _event_payload
 from flaky_test_intelligence import (
     FlakyTestSummary,
     observations_from_junit,
@@ -221,7 +221,13 @@ def _write_output(name: str, value: str) -> None:
 def main() -> int:
     token = os.environ.get("INPUT_GITHUB_TOKEN") or os.environ.get("GITHUB_TOKEN")
     repo = os.environ.get("INPUT_REPOSITORY") or os.environ.get("GITHUB_REPOSITORY")
-    run_id_raw = os.environ.get("INPUT_RUN_ID") or os.environ.get("GITHUB_RUN_ID")
+    event = _event_payload()
+    workflow_run = event.get("workflow_run") or {}
+    run_id_raw = (
+        os.environ.get("INPUT_RUN_ID")
+        or workflow_run.get("id")
+        or os.environ.get("GITHUB_RUN_ID")
+    )
     history_runs = min(max(int(os.environ.get("INPUT_FLAKY_HISTORY_RUNS", "20")), 1), 50)
     artifact_prefix = os.environ.get("INPUT_JUNIT_ARTIFACT_PREFIX", "junit-results")
 
