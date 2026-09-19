@@ -248,7 +248,7 @@ def _lookup_failed_job(
             attempt for attempt in range(1, total_attempts + 1)
             if attempt != preferred
         )
-    except RuntimeError:
+    except (RuntimeError, AttributeError):
         total_attempts = preferred
 
     seen: list[tuple[int, dict]] = []
