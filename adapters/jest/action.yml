@@ -1,0 +1,56 @@
+name: 'Jest Quarantine Enforcement'
+description: 'Requires jest-junit in the project. The adapter injects the reporter and output path.'
+author: 'othy19904-eng'
+
+inputs:
+  active-tests-json:
+    description: 'JSON array from CI Retry Gate active-quarantine-tests-json.'
+    required: true
+  test-command:
+    description: 'Test command. Parsed without a shell; shell operators are not supported.'
+    required: false
+    default: 'npx jest --ci'
+  junit-path:
+    description: 'JUnit XML path produced by the adapter.'
+    required: false
+    default: '.ci-retry-gate/jest-junit.xml'
+  artifact-name:
+    description: 'Artifact prefix uploaded for Flaky Test Intelligence history.'
+    required: false
+    default: 'junit-results'
+
+outputs:
+  quarantine-gate-passed:
+    description: 'true when no non-quarantined or unattributed failure remains.'
+    value: ${{ steps.enforce.outputs.quarantine-gate-passed }}
+  blocking-failures:
+    description: 'Number of non-quarantined testcase failures, or unknown when evidence is unavailable.'
+    value: ${{ steps.enforce.outputs.blocking-failures }}
+  quarantined-failures:
+    description: 'Number of ACTIVE quarantined failures still observed.'
+    value: ${{ steps.enforce.outputs.quarantined-failures }}
+
+runs:
+  using: 'composite'
+  steps:
+    - id: enforce
+      name: Run jest with quarantine enforcement
+      shell: bash
+      env:
+        INPUT_ACTIVE_TESTS_JSON: ${{ inputs.active-tests-json }}
+        INPUT_TEST_COMMAND: ${{ inputs.test-command }}
+        INPUT_JUNIT_PATH: ${{ inputs.junit-path }}
+      run: |
+        python3 "$GITHUB_ACTION_PATH/../../quarantine_enforcement.py" \
+          --framework jest \
+          --active-tests-json "$INPUT_ACTIVE_TESTS_JSON" \
+          --junit-path "$INPUT_JUNIT_PATH" \
+          --command-string "$INPUT_TEST_COMMAND"
+
+    - name: Upload JUnit evidence
+      if: ${{ always() && hashFiles(inputs.junit-path) != '' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}-attempt-${{ github.run_attempt }}
+        path: ${{ inputs.junit-path }}
+        if-no-files-found: error
