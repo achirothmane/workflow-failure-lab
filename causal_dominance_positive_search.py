@@ -227,6 +227,68 @@ def _qualifies_history(item: HistoricalFailure) -> bool:
     )
 
 
+def _lookup_failed_job(
+    api: GitHubAPI,
+    repository: str,
+    failure: HistoricalFailure,
+) -> tuple[dict | None, int, str]:
+    """Resolve the original failed job robustly across GitHub rerun attempts.
+
+    GitHub's current-run jobs endpoint can point at the latest attempt, while
+    historical evidence belongs to an earlier failed attempt. Prefer the
+    recorded attempt, then scan every run attempt and require one exact
+    failed-job match.
+    """
+    preferred = max(1, int(failure.attempt or 1))
+    attempts: list[int] = [preferred]
+    try:
+        run = api.get_run(repository, failure.run_id)
+        total_attempts = max(1, int(run.get("run_attempt") or 1))
+        attempts.extend(
+            attempt for attempt in range(1, total_attempts + 1)
+            if attempt != preferred
+        )
+    except (RuntimeError, AttributeError):
+        total_attempts = preferred
+
+    seen: list[tuple[int, dict]] = []
+    errors: list[str] = []
+    for attempt in attempts:
+        try:
+            data = api.request(
+                "GET",
+                f"/repos/{repository}/actions/runs/{failure.run_id}"
+                f"/attempts/{attempt}/jobs?per_page=100",
+            )
+        except RuntimeError as exc:
+            errors.append(f"attempt={attempt}:{str(exc)[:120]}")
+            continue
+
+        matches = [
+            job for job in (data.get("jobs") or [])
+            if str(job.get("name") or "") == failure.job_name
+            and str(job.get("conclusion") or "").lower() in FAILURE_CONCLUSIONS
+        ]
+        for job in matches:
+            seen.append((attempt, job))
+        if attempt == preferred and len(matches) == 1:
+            return matches[0], attempt, ""
+
+    unique = {
+        int(job.get("id") or 0): (attempt, job)
+        for attempt, job in seen
+        if int(job.get("id") or 0)
+    }
+    if len(unique) == 1:
+        attempt, job = next(iter(unique.values()))
+        return job, attempt, ""
+
+    detail = f"failed_job_matches={len(unique)} preferred_attempt={preferred} run_attempts={total_attempts}"
+    if errors:
+        detail += " errors=" + " | ".join(errors[:2])
+    return None, preferred, detail
+
+
 def search_positive_controls(
     api: GitHubAPI,
     histories: dict[str, tuple[list[HistoricalFailure], int]],
@@ -243,19 +305,12 @@ def search_positive_controls(
 
             attempt = max(1, int(failure.attempt or 1))
             try:
-                data = api.request(
-                    "GET",
-                    f"/repos/{repository}/actions/runs/{failure.run_id}"
-                    f"/attempts/{attempt}/jobs?per_page=100",
+                job, resolved_attempt, lookup_error = _lookup_failed_job(
+                    api,
+                    repository,
+                    failure,
                 )
-                jobs = list(data.get("jobs") or [])
-                matches = [
-                    job for job in jobs
-                    if str(job.get("name") or "") == failure.job_name
-                    and str(job.get("conclusion") or "").lower()
-                    in FAILURE_CONCLUSIONS
-                ]
-                if len(matches) != 1:
+                if job is None:
                     records.append(
                         PositiveSearchRecord(
                             repository=repository,
@@ -268,12 +323,12 @@ def search_positive_controls(
                             dominance_status="LOOKUP_UNRESOLVED",
                             raw_baseline_category="",
                             proposed_category="",
-                            error=f"job_match_count={len(matches)}",
+                            error=lookup_error,
                         )
                     )
                     continue
 
-                job = matches[0]
+                attempt = resolved_attempt
                 log_text = api.get_job_logs(
                     repository,
                     int(job.get("id") or 0),
@@ -383,6 +438,7 @@ def render_positive_search(summary: PositiveSearchSummary) -> str:
                 f"history={item.baseline_history_category}, raw={item.raw_baseline_category or '—'}, "
                 f"dominance={item.dominance_status}, outcome={item.recovery_status}, "
                 f"side_effect={'yes' if item.raw_side_effect_risk else 'no'}"
+                + (f", error={item.error}" if item.error else "")
             )
     return "\n".join(lines) + "\n"
 

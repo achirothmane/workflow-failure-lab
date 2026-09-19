@@ -1,0 +1,20 @@
+name: Causal Dominance Direct Verifier
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify pipx 503 causal chain directly
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+        run: python3 causal_dominance_direct_verifier.py

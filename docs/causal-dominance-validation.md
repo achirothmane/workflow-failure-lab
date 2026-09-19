@@ -112,3 +112,22 @@ For each such case it re-fetches the original failed job and raw logs, re-runs `
 The workflow `.github/workflows/causal-dominance-positive-search.yml` searches **100 repositories** in two 50-repository shards in parallel. The search is read-only and does not modify classifier or retry behavior.
 
 Promotion is still fail-closed: a discovered case is only eligible to become a new pinned positive control after manual/raw-log verification and confirmation that it is independent of the existing SWC dprint case.
+
+
+## pipx Direct Structural Verification
+
+The first targeted positive search found two ground-truth-evaluable `CODE_REGRESSION` + causal `SERVER_5XX` cases in `pypa/pipx` run `31618954128`, but the search could not resolve their original failed jobs reliably after later rerun attempts. The lookup path now resolves the original failed job across all workflow attempts rather than assuming the latest/current attempt.
+
+Those two jobs also contain `AssertionError` text, so the generic causal-dominance rule must remain conservative. A separate direct verifier now checks the pinned pipx causal chain without weakening the generic deterministic blocker:
+
+- original failed job is from attempt 1
+- the same job re-executed successfully in attempt 2
+- the failure step is the test-suite step
+- the log contains the exact GitHub package URL
+- the same failure contains `too many 503 error responses`
+- the assertion is an expectation on the install output / exit code for that exact package operation
+- no side-effect authority signal is present
+
+If those conditions hold, the direct verifier may contribute **one independent real positive-control run**. The two pipx jobs do not count as two independent runs because they share the same workflow run.
+
+The workflow is `.github/workflows/causal-dominance-direct-verifier.yml`. A passing direct verification is research evidence only; it does not change `root_cause_precedence.py`, the production classifier, or rerun authority.
