@@ -4,6 +4,13 @@ All notable changes to CI Retry Gate are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Setup Doctor composite action at `/doctor@v1` with READY/WARN/BLOCKED onboarding diagnostics.
+- Framework detection for pytest, Jest, and Vitest, including fail-closed Jest `jest-junit` validation.
+- Read-only checks for JUnit artifact wiring, GitHub API read access, ownership routing, quarantine manifests, and recommended feature permissions.
+- Monorepo-safe `working-directory`, GitHub step-summary guidance, and a generated production configuration.
+
 ## [1.0.1] - 2026-09-19
 
 ### Changed
