@@ -20,6 +20,13 @@ from flaky_test_intelligence import (
     observations_from_junit,
     summarize_flaky_tests,
 )
+from flaky_triage import (
+    build_triage_items,
+    emit_triage_annotations,
+    render_triage_report,
+    resolve_pr_number,
+    upsert_pr_comment,
+)
 
 MAX_ARTIFACT_BYTES = 50 * 1024 * 1024
 MAX_XML_FILES_PER_ARTIFACT = 200
@@ -241,6 +248,7 @@ def main() -> int:
     history_runs = min(max(int(os.environ.get("INPUT_FLAKY_HISTORY_RUNS", "20")), 1), 50)
     artifact_prefix = os.environ.get("INPUT_JUNIT_ARTIFACT_PREFIX", "junit-results")
     quarantine_lifecycle = _bool_env("INPUT_QUARANTINE_LIFECYCLE", False)
+    triage_comment = _bool_env("INPUT_FLAKY_TRIAGE_COMMENT", False)
     quarantine_manifest = os.environ.get(
         "INPUT_QUARANTINE_MANIFEST",
         ".github/flaky-quarantine.json",
@@ -292,6 +300,7 @@ def main() -> int:
     released_count = 0
     blocked_count = 0
     active_json = "[]"
+    lifecycle = None
 
     if quarantine_lifecycle:
         try:
@@ -337,6 +346,45 @@ def main() -> int:
                 f"no quarantine is active: {exc}"
             )
 
+    triage_items = build_triage_items(result.summaries, lifecycle)
+    triage_report = render_triage_report(
+        triage_items,
+        repo=repo,
+        run_id=run_id,
+    )
+    if summary_path:
+        with open(summary_path, "a", encoding="utf-8") as handle:
+            handle.write(triage_report)
+    else:
+        print(triage_report)
+
+    annotations_emitted = emit_triage_annotations(triage_items)
+    triage_comment_posted = False
+    if triage_comment and triage_items:
+        pr_number = resolve_pr_number(event, current_run)
+        if pr_number is None:
+            print(
+                "::warning::Flaky triage PR comment requested, but no pull request "
+                "could be associated with the analyzed workflow run."
+            )
+        else:
+            try:
+                action = upsert_pr_comment(
+                    api,
+                    repo,
+                    pr_number,
+                    triage_report,
+                )
+                triage_comment_posted = True
+                print(
+                    f"::notice::Flaky triage PR comment {action} on PR #{pr_number}."
+                )
+            except (RuntimeError, ValueError) as exc:
+                print(
+                    "::warning::Could not publish flaky triage PR comment: "
+                    f"{exc}"
+                )
+
     _write_output("flaky-tests-observed", str(len(result.summaries)))
     _write_output("quarantine-candidates", str(candidates))
     _write_output("junit-artifacts-analyzed", str(result.artifacts_analyzed))
@@ -346,6 +394,12 @@ def main() -> int:
     _write_output("auto-released-quarantines", str(released_count))
     _write_output("blocked-quarantines", str(blocked_count))
     _write_output("active-quarantine-tests-json", active_json)
+    _write_output("flaky-triage-items", str(len(triage_items)))
+    _write_output("flaky-triage-annotations", str(annotations_emitted))
+    _write_output(
+        "flaky-triage-comment-posted",
+        "true" if triage_comment_posted else "false",
+    )
     return 0
 
 
