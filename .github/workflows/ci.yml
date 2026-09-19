@@ -86,7 +86,7 @@ jobs:
           NODE_PATH: ${{ github.workspace }}/tests/adapter-smoke/node/node_modules
         with:
           active-tests-json: '[]'
-          test-command: '${{ github.workspace }}/tests/adapter-smoke/node/node_modules/.bin/jest tests/adapter-smoke/node/jest/flaky.test.cjs --runInBand --ci'
+          test-command: '${{ github.workspace }}/tests/adapter-smoke/node/node_modules/.bin/jest tests/adapter-smoke/node/jest/flaky.test.cjs --config tests/adapter-smoke/node/jest.config.cjs --runInBand --ci'
           junit-path: '.ci-smoke/jest-discover.xml'
           artifact-name: 'smoke-jest-discover'
 
@@ -110,7 +110,7 @@ jobs:
           NODE_PATH: ${{ github.workspace }}/tests/adapter-smoke/node/node_modules
         with:
           active-tests-json: ${{ steps.jest-id.outputs.json }}
-          test-command: '${{ github.workspace }}/tests/adapter-smoke/node/node_modules/.bin/jest tests/adapter-smoke/node/jest/flaky.test.cjs --runInBand --ci'
+          test-command: '${{ github.workspace }}/tests/adapter-smoke/node/node_modules/.bin/jest tests/adapter-smoke/node/jest/flaky.test.cjs --config tests/adapter-smoke/node/jest.config.cjs --runInBand --ci'
           junit-path: '.ci-smoke/jest-quarantine.xml'
           artifact-name: 'smoke-jest-quarantine'
 
