@@ -1,0 +1,199 @@
+name: Remote v1 Consumer E2E
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  remote-action-package:
+    name: Remote action package @v1
+    runs-on: ubuntu-latest
+    steps:
+      - id: gate
+        uses: othy19904-eng/workflow-failure-lab@v1
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ github.run_id }}
+          repository: ${{ github.repository }}
+          comment-on-pr: 'false'
+          history-runs: '1'
+          auto-rerun: 'false'
+          selective-rerun: 'false'
+
+      - name: Verify remote package outputs exist
+        shell: bash
+        run: |
+          test -n "${{ steps.gate.outputs.failed-jobs }}"
+          test -n "${{ steps.gate.outputs.safe-to-rerun }}"
+
+  remote-pytest:
+    name: Remote pytest adapter @v1
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install consumer test dependency
+        run: python -m pip install "pytest>=8,<10"
+
+      - id: block
+        name: Remote adapter keeps non-quarantined failure red
+        continue-on-error: true
+        uses: othy19904-eng/workflow-failure-lab/adapters/pytest@v1
+        with:
+          active-tests-json: '[]'
+          test-command: 'python -m pytest e2e/remote-consumer/pytest/test_flaky.py -q'
+          junit-path: '.remote-e2e/pytest-discover.xml'
+          artifact-name: 'remote-v1-pytest-discover'
+
+      - name: Verify blocking path
+        if: always()
+        shell: bash
+        run: test "${{ steps.block.outcome }}" = "failure"
+
+      - id: failed-id
+        name: Extract consumer testcase ID without product code
+        shell: bash
+        run: |
+          ids="$(python e2e/remote-consumer/extract_junit_id.py .remote-e2e/pytest-discover.xml)"
+          echo "json=$ids" >> "$GITHUB_OUTPUT"
+
+      - id: quarantine
+        name: Remote adapter tolerates only ACTIVE failure
+        uses: othy19904-eng/workflow-failure-lab/adapters/pytest@v1
+        with:
+          active-tests-json: ${{ steps.failed-id.outputs.json }}
+          test-command: 'python -m pytest e2e/remote-consumer/pytest/test_flaky.py -q'
+          junit-path: '.remote-e2e/pytest-quarantine.xml'
+          artifact-name: 'remote-v1-pytest-quarantine'
+
+      - name: Verify quarantine outputs
+        shell: bash
+        run: |
+          test "${{ steps.quarantine.outputs.quarantine-gate-passed }}" = "true"
+          test "${{ steps.quarantine.outputs.blocking-failures }}" = "0"
+          test "${{ steps.quarantine.outputs.quarantined-failures }}" = "1"
+
+  remote-jest:
+    name: Remote Jest adapter @v1
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install isolated consumer dependencies
+        run: npm install --prefix e2e/remote-consumer/node --ignore-scripts --no-audit --no-fund
+
+      - id: block
+        name: Remote adapter keeps non-quarantined failure red
+        continue-on-error: true
+        uses: othy19904-eng/workflow-failure-lab/adapters/jest@v1
+        with:
+          active-tests-json: '[]'
+          working-directory: 'e2e/remote-consumer/node'
+          test-command: './node_modules/.bin/jest --runTestsByPath jest/flaky.test.js --runInBand --ci'
+          junit-path: '.remote-e2e/jest-discover.xml'
+          artifact-name: 'remote-v1-jest-discover'
+
+      - name: Verify blocking path
+        if: always()
+        shell: bash
+        run: test "${{ steps.block.outcome }}" = "failure"
+
+      - id: failed-id
+        name: Extract consumer testcase ID without product code
+        shell: bash
+        run: |
+          ids="$(python e2e/remote-consumer/extract_junit_id.py .remote-e2e/jest-discover.xml)"
+          echo "json=$ids" >> "$GITHUB_OUTPUT"
+
+      - id: quarantine
+        name: Remote adapter tolerates only ACTIVE failure
+        uses: othy19904-eng/workflow-failure-lab/adapters/jest@v1
+        with:
+          active-tests-json: ${{ steps.failed-id.outputs.json }}
+          working-directory: 'e2e/remote-consumer/node'
+          test-command: './node_modules/.bin/jest --runTestsByPath jest/flaky.test.js --runInBand --ci'
+          junit-path: '.remote-e2e/jest-quarantine.xml'
+          artifact-name: 'remote-v1-jest-quarantine'
+
+      - name: Verify quarantine outputs
+        shell: bash
+        run: |
+          test "${{ steps.quarantine.outputs.quarantine-gate-passed }}" = "true"
+          test "${{ steps.quarantine.outputs.blocking-failures }}" = "0"
+          test "${{ steps.quarantine.outputs.quarantined-failures }}" = "1"
+
+  remote-vitest:
+    name: Remote Vitest adapter @v1
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install isolated consumer dependencies
+        run: npm install --prefix e2e/remote-consumer/node --ignore-scripts --no-audit --no-fund
+
+      - id: block
+        name: Remote adapter keeps non-quarantined failure red
+        continue-on-error: true
+        uses: othy19904-eng/workflow-failure-lab/adapters/vitest@v1
+        with:
+          active-tests-json: '[]'
+          working-directory: 'e2e/remote-consumer/node'
+          test-command: './node_modules/.bin/vitest run vitest/flaky.test.js'
+          junit-path: '.remote-e2e/vitest-discover.xml'
+          artifact-name: 'remote-v1-vitest-discover'
+
+      - name: Verify blocking path
+        if: always()
+        shell: bash
+        run: test "${{ steps.block.outcome }}" = "failure"
+
+      - id: failed-id
+        name: Extract consumer testcase ID without product code
+        shell: bash
+        run: |
+          ids="$(python e2e/remote-consumer/extract_junit_id.py .remote-e2e/vitest-discover.xml)"
+          echo "json=$ids" >> "$GITHUB_OUTPUT"
+
+      - id: quarantine
+        name: Remote adapter tolerates only ACTIVE failure
+        uses: othy19904-eng/workflow-failure-lab/adapters/vitest@v1
+        with:
+          active-tests-json: ${{ steps.failed-id.outputs.json }}
+          working-directory: 'e2e/remote-consumer/node'
+          test-command: './node_modules/.bin/vitest run vitest/flaky.test.js'
+          junit-path: '.remote-e2e/vitest-quarantine.xml'
+          artifact-name: 'remote-v1-vitest-quarantine'
+
+      - name: Verify quarantine outputs
+        shell: bash
+        run: |
+          test "${{ steps.quarantine.outputs.quarantine-gate-passed }}" = "true"
+          test "${{ steps.quarantine.outputs.blocking-failures }}" = "0"
+          test "${{ steps.quarantine.outputs.quarantined-failures }}" = "1"
