@@ -393,6 +393,33 @@ The action exposes:
 If multiple different source files are observed for the same test ID, the action refuses to guess a CODEOWNERS route and falls back to the explicit test-ID map or leaves the item `UNOWNED`.
 
 
+### 9. Opt-in Issue lifecycle
+
+CI Retry Gate can maintain one GitHub Issue per actionable flaky/regression test:
+
+```yaml
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+steps:
+  - uses: othy19904-eng/workflow-failure-lab@v1
+    with:
+      github-token: ${{ github.token }}
+      flaky-test-intelligence: 'true'
+      flaky-ownership-routing: 'true'
+      flaky-issue-lifecycle: 'true'
+      flaky-issue-max-changes: '10'
+```
+
+The Issue uses a deterministic test-ID fingerprint, so later runs update the same Issue instead of creating duplicates. Actionable candidate/investigation/quarantine/regression states can create or reopen it. `DO_NOT_QUARANTINE` does not create a new Issue on its own. Only `RELEASED_HEALTHY` closes a managed Issue automatically.
+
+Issue bodies carry the latest state, owners/routes, evidence counts, estimated waste, next action, and a link to the analyzed run. Owners are shown without automatic mentions or assignment.
+
+Writes are bounded: the default maximum is 10 Issue changes per run, configurable from 1 to 50. Deferred changes are exposed through `flaky-issues-deferred`.
+
+
 ## Causal Evidence Layer
 
 Before category scoring, CI Retry Gate classifies each cleaned log line as `CAUSAL`, `AMBIGUOUS`, or `NON_CAUSAL`.
