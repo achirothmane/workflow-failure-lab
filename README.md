@@ -587,3 +587,8 @@ pytest
 ```
 
 CI runs the test suite on Python 3.12 and also performs a clean-install verification gate.
+
+
+## License
+
+CI Retry Gate is released under the MIT License. See [LICENSE](LICENSE).

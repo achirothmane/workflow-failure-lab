@@ -35,6 +35,7 @@ def main() -> int:
     pyproject = text("pyproject.toml")
     text("CHANGELOG.md")
     text("SECURITY.md")
+    license_text = text("LICENSE")
     release_doc = text("docs/release-readiness.md")
 
     require("# CI Retry Gate" in readme, "README product heading is missing")
@@ -42,6 +43,7 @@ def main() -> int:
     require("permissions:" in readme and "actions: read" in readme, "README permission guidance is missing")
 
     require("name: 'CI Retry Gate'" in action, "action.yml product name mismatch")
+    require(license_text.startswith("MIT License"), "LICENSE must be MIT")
     require("using: 'composite'" in action, "action.yml must remain a composite action")
     require("icon: 'shield'" in action, "action branding icon is missing")
     require(input_default(action, "auto-rerun") == "false", "auto-rerun must default to false")
@@ -84,6 +86,7 @@ def main() -> int:
 
     print("release-readiness: PASS")
     print("- v1 metadata present")
+    print("- MIT license present")
     print("- fail-closed rerun defaults preserved")
     print("- README quick start and permissions present")
     print("- Causal Dominance remains research-only")
