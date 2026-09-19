@@ -79,6 +79,10 @@ inputs:
     description: 'Number of completed runs of the same workflow to scan for JUnit artifacts. Capped at 50.'
     required: false
     default: '20'
+  flaky-triage-comment:
+    description: 'Opt-in PR comment with deduplicated flaky-test triage. Requires flaky-test-intelligence=true and PR comment write permission.'
+    required: false
+    default: 'false'
 
   quarantine-lifecycle:
     description: 'Evaluate human-approved temporary flaky-test quarantines, expiry, regression suspension, and healthy auto-release. Requires flaky-test-intelligence=true.'
@@ -496,6 +500,15 @@ outputs:
   active-quarantine-tests-json:
     description: 'Compact JSON array of test IDs in the effective ACTIVE quarantine set.'
     value: ${{ steps.flaky.outputs.active-quarantine-tests-json }}
+  flaky-triage-items:
+    description: 'Number of test-level items rendered into the bounded flaky triage surface.'
+    value: ${{ steps.flaky.outputs.flaky-triage-items }}
+  flaky-triage-annotations:
+    description: 'Number of GitHub workflow annotations emitted for flaky triage.'
+    value: ${{ steps.flaky.outputs.flaky-triage-annotations }}
+  flaky-triage-comment-posted:
+    description: 'true when the opt-in flaky triage PR comment was created or updated successfully.'
+    value: ${{ steps.flaky.outputs.flaky-triage-comment-posted }}
 
 runs:
   using: 'composite'
@@ -512,6 +525,13 @@ runs:
       shell: bash
       run: |
         echo "::error::quarantine-lifecycle requires flaky-test-intelligence=true"
+        exit 2
+
+    - name: Validate flaky triage comment mode
+      if: ${{ inputs.flaky-triage-comment == 'true' && inputs.flaky-test-intelligence != 'true' }}
+      shell: bash
+      run: |
+        echo "::error::flaky-triage-comment requires flaky-test-intelligence=true"
         exit 2
 
     - id: gate
@@ -557,6 +577,7 @@ runs:
         INPUT_REPOSITORY: ${{ inputs.repository }}
         INPUT_JUNIT_ARTIFACT_PREFIX: ${{ inputs.junit-artifact-prefix }}
         INPUT_FLAKY_HISTORY_RUNS: ${{ inputs.flaky-history-runs }}
+        INPUT_FLAKY_TRIAGE_COMMENT: ${{ inputs.flaky-triage-comment }}
         INPUT_QUARANTINE_LIFECYCLE: ${{ inputs.quarantine-lifecycle }}
         INPUT_QUARANTINE_MANIFEST: ${{ inputs.quarantine-manifest }}
         INPUT_QUARANTINE_MAX_DAYS: ${{ inputs.quarantine-max-days }}
