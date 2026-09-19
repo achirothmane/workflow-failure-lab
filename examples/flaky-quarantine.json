@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "test_id": "pkg.TestCart::test_total",
+      "approved_by": "maintainer-login",
+      "approved_at": "2026-09-19T12:00:00Z",
+      "activated_run_id": 123456789,
+      "expires_at": "2026-09-26T12:00:00Z",
+      "reason": "Reviewed QUARANTINE_CANDIDATE; temporary isolation while owner investigates."
+    }
+  ]
+}
