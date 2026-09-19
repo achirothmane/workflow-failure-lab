@@ -1,3 +1,5 @@
+import pytest
+
 from flaky_issue_lifecycle import (
     ISSUE_MARKER_PREFIX,
     issue_fingerprint,
@@ -163,3 +165,15 @@ def test_issue_lifecycle_enforces_write_cap_and_defers_remaining():
 
     assert result.created == 2
     assert result.deferred == 1
+
+
+def test_issue_lifecycle_rejects_out_of_range_write_cap():
+    api = FakeAPI()
+    with pytest.raises(ValueError):
+        manage_issue_lifecycle(
+            api,
+            "o/r",
+            (item("pkg::a"),),
+            run_id=42,
+            max_changes=0,
+        )
