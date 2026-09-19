@@ -49,7 +49,7 @@ def main() -> int:
     require(input_default(action, "auto-rerun") == "false", "auto-rerun must default to false")
     require(input_default(action, "selective-rerun") == "false", "selective-rerun must default to false")
 
-    require('version = "1.0.0"' in pyproject, "pyproject version must be 1.0.0 for v1 release")
+    require('version = "1.0.1"' in pyproject, "pyproject version must be 1.0.1 for Marketplace patch release")
 
     # Research-only Causal Dominance must not silently gain production authority.
     production_entrypoints = {
