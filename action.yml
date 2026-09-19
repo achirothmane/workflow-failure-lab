@@ -67,6 +67,19 @@ inputs:
     required: false
     default: ''
 
+  flaky-test-intelligence:
+    description: 'Analyze JUnit artifacts across GitHub Actions history for test-level same-SHA fail-to-pass evidence, waste ranking, and advisory quarantine candidates.'
+    required: false
+    default: 'false'
+  junit-artifact-prefix:
+    description: 'Artifact name prefix containing JUnit XML. For rerun workflows, include attempt-N in artifact names so attempt provenance is unambiguous.'
+    required: false
+    default: 'junit-results'
+  flaky-history-runs:
+    description: 'Number of completed runs of the same workflow to scan for JUnit artifacts. Capped at 50.'
+    required: false
+    default: '20'
+
 outputs:
   safe-to-rerun:
     description: 'true only when every failed job is a high-confidence transient failure and no side-effect signal is present.'
@@ -438,6 +451,19 @@ outputs:
     description: 'UNKNOWN failures with stable operational error evidence that does not match another diagnostic cause family.'
     value: ${{ steps.benchmark.outputs.benchmark-unknown-cause-ambiguous-operational }}
 
+  flaky-tests-observed:
+    description: 'Number of distinct tests ranked from JUnit history when Flaky Test Intelligence is enabled.'
+    value: ${{ steps.flaky.outputs.flaky-tests-observed }}
+  quarantine-candidates:
+    description: 'Number of tests with at least two same-SHA fail-to-pass recoveries and no persistent-failure SHA. Advisory only.'
+    value: ${{ steps.flaky.outputs.quarantine-candidates }}
+  junit-artifacts-analyzed:
+    description: 'Number of unexpired JUnit artifacts with unambiguous attempt provenance that were analyzed.'
+    value: ${{ steps.flaky.outputs.junit-artifacts-analyzed }}
+  flaky-estimated-waste-minutes:
+    description: 'Estimated test-level failed plus validating-recovery runtime across analyzed observations.'
+    value: ${{ steps.flaky.outputs.flaky-estimated-waste-minutes }}
+
 runs:
   using: 'composite'
   steps:
@@ -480,6 +506,18 @@ runs:
         INPUT_REPOSITORY: ${{ inputs.repository }}
         INPUT_HISTORY_RUNS: ${{ inputs.history-runs }}
       run: python3 "$GITHUB_ACTION_PATH/history_ci_waste.py"
+
+    - id: flaky
+      name: Analyze flaky tests from JUnit history
+      if: ${{ inputs.flaky-test-intelligence == 'true' }}
+      shell: bash
+      env:
+        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
+        INPUT_RUN_ID: ${{ inputs.run-id }}
+        INPUT_REPOSITORY: ${{ inputs.repository }}
+        INPUT_JUNIT_ARTIFACT_PREFIX: ${{ inputs.junit-artifact-prefix }}
+        INPUT_FLAKY_HISTORY_RUNS: ${{ inputs.flaky-history-runs }}
+      run: python3 "$GITHUB_ACTION_PATH/flaky_test_history.py"
 
     - id: shadow
       name: Backtest learned policies in shadow mode
