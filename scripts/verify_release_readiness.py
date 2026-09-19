@@ -32,6 +32,8 @@ def input_default(action_text: str, input_name: str) -> str | None:
 def main() -> int:
     readme = text("README.md")
     action = text("action.yml")
+    doctor_action = text("doctor/action.yml")
+    text("setup_doctor.py")
     pyproject = text("pyproject.toml")
     text("CHANGELOG.md")
     text("SECURITY.md")
@@ -52,6 +54,13 @@ def main() -> int:
     require("icon: 'shield'" in action, "action branding icon is missing")
     require(input_default(action, "auto-rerun") == "false", "auto-rerun must default to false")
     require(input_default(action, "selective-rerun") == "false", "selective-rerun must default to false")
+
+    require("name: 'CI Retry Gate Setup Doctor'" in doctor_action, "doctor/action.yml product name mismatch")
+    require("using: 'composite'" in doctor_action, "Setup Doctor must remain a composite action")
+    require(
+        input_default(doctor_action, "fail-on-blocked") == "true",
+        "Setup Doctor must fail on BLOCKED checks by default",
+    )
 
     require('version = "1.0.1"' in pyproject, "pyproject version must be 1.0.1 for Marketplace patch release")
 
@@ -94,6 +103,7 @@ def main() -> int:
     print("- MIT license present")
     print("- fail-closed rerun defaults preserved")
     print("- README quick start and permissions present")
+    print("- Setup Doctor composite action and fail-closed default present")
     print("- Causal Dominance remains research-only")
     print("- SWC + pipx evidence pinned at 2/3")
     return 0

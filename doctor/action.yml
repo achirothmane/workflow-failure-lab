@@ -1,0 +1,100 @@
+name: 'CI Retry Gate Setup Doctor'
+description: 'Read-only onboarding diagnostics for CI Retry Gate framework, JUnit, ownership, quarantine, permissions, and GitHub API access.'
+author: 'othy19904-eng'
+
+inputs:
+  github-token:
+    description: 'GitHub token used only for read-only repository and Actions API checks.'
+    required: true
+  repository:
+    description: 'Repository in owner/name form. Defaults to github.repository.'
+    required: false
+    default: ''
+  working-directory:
+    description: 'Repository-relative project root to inspect. Monorepo-safe and must remain inside GITHUB_WORKSPACE.'
+    required: false
+    default: '.'
+  frameworks:
+    description: 'auto or a comma-separated subset of pytest,jest,vitest.'
+    required: false
+    default: 'auto'
+  junit-artifact-prefix:
+    description: 'Expected JUnit artifact prefix used by Flaky Test Intelligence.'
+    required: false
+    default: 'junit-results'
+  flaky-ownership-routing:
+    description: 'Validate CODEOWNERS and/or the explicit flaky ownership map.'
+    required: false
+    default: 'false'
+  flaky-ownership-map:
+    description: 'Repository-relative fallback ownership map.'
+    required: false
+    default: '.github/flaky-ownership.json'
+  quarantine-lifecycle:
+    description: 'Validate the human-approved quarantine manifest before enabling lifecycle enforcement.'
+    required: false
+    default: 'false'
+  quarantine-manifest:
+    description: 'Repository-relative quarantine manifest path.'
+    required: false
+    default: '.github/flaky-quarantine.json'
+  quarantine-max-days:
+    description: 'Maximum permitted quarantine lifetime, matching the production action.'
+    required: false
+    default: '14'
+  flaky-triage-comment:
+    description: 'Include pull-requests: write in the recommended permissions. The doctor never posts a comment.'
+    required: false
+    default: 'false'
+  flaky-issue-lifecycle:
+    description: 'Include issues: write in the recommended permissions. The doctor never creates an Issue.'
+    required: false
+    default: 'false'
+  rerun-mode:
+    description: 'none, auto, or selective. Used only to validate/recommend Actions permissions.'
+    required: false
+    default: 'none'
+  fail-on-blocked:
+    description: 'Fail the doctor action when a BLOCKED check exists. WARN checks never fail the job.'
+    required: false
+    default: 'true'
+
+outputs:
+  ready:
+    description: 'true when no BLOCKED setup checks remain.'
+    value: ${{ steps.doctor.outputs.ready }}
+  blocked-checks:
+    description: 'Number of BLOCKED setup checks.'
+    value: ${{ steps.doctor.outputs.blocked-checks }}
+  warnings:
+    description: 'Number of WARN setup checks.'
+    value: ${{ steps.doctor.outputs.warnings }}
+  detected-frameworks:
+    description: 'Comma-separated supported frameworks detected in the inspected working directory.'
+    value: ${{ steps.doctor.outputs.detected-frameworks }}
+  required-permissions:
+    description: 'Comma-separated recommended GitHub workflow permissions for the requested feature set.'
+    value: ${{ steps.doctor.outputs.required-permissions }}
+
+runs:
+  using: 'composite'
+  steps:
+    - id: doctor
+      name: Inspect CI Retry Gate setup
+      shell: bash
+      env:
+        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
+        INPUT_REPOSITORY: ${{ inputs.repository }}
+        INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        INPUT_FRAMEWORKS: ${{ inputs.frameworks }}
+        INPUT_JUNIT_ARTIFACT_PREFIX: ${{ inputs.junit-artifact-prefix }}
+        INPUT_FLAKY_OWNERSHIP_ROUTING: ${{ inputs.flaky-ownership-routing }}
+        INPUT_FLAKY_OWNERSHIP_MAP: ${{ inputs.flaky-ownership-map }}
+        INPUT_QUARANTINE_LIFECYCLE: ${{ inputs.quarantine-lifecycle }}
+        INPUT_QUARANTINE_MANIFEST: ${{ inputs.quarantine-manifest }}
+        INPUT_QUARANTINE_MAX_DAYS: ${{ inputs.quarantine-max-days }}
+        INPUT_FLAKY_TRIAGE_COMMENT: ${{ inputs.flaky-triage-comment }}
+        INPUT_FLAKY_ISSUE_LIFECYCLE: ${{ inputs.flaky-issue-lifecycle }}
+        INPUT_RERUN_MODE: ${{ inputs.rerun-mode }}
+        INPUT_FAIL_ON_BLOCKED: ${{ inputs.fail-on-blocked }}
+      run: python3 "$GITHUB_ACTION_PATH/../setup_doctor.py"
