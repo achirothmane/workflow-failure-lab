@@ -1,0 +1,34 @@
+name: Causal Dominance Final Positive Search
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  search:
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        shard: [1, 2]
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Search final independent dominance-positive controls
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          INPUT_FINAL_SEARCH_RERUN_RUNS: '50'
+          INPUT_FINAL_SEARCH_HISTORY_RUNS: '500'
+          INPUT_FINAL_SEARCH_WORKERS: '5'
+        run: |
+          python3 causal_dominance_final_search.py \
+            --shard ${{ matrix.shard }} \
+            --result-json /tmp/causal-dominance-final-shard-${{ matrix.shard }}.json
+
+      - name: Print machine-readable result
+        run: cat /tmp/causal-dominance-final-shard-${{ matrix.shard }}.json

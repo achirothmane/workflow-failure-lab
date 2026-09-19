@@ -6,7 +6,10 @@ from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
-from causal_dominance_evidence import VALIDATED_SERVER5XX_EVIDENCE
+from causal_dominance_evidence import (
+    INDEPENDENT_CAUSAL_DOMINANCE_POSITIVE_RUNS,
+    VALIDATED_SERVER5XX_EVIDENCE,
+)
 from ci_retry_gate import assess_failure_step_provenance, classify_log, detect_side_effect_risk
 from mechanism_causality_gate import MECHANISM_CAUSAL_CONFIRMED, assess_mechanism_causality
 from pinned_research_corpus import SWC_DPRINT_HTTP_504
@@ -220,7 +223,9 @@ def evaluate_validation(
     ledger_ok, ledger_count, wave_counts = _evidence_ledger_integrity()
     real_positive_controls = len(
         {
-            (SWC_DPRINT_HTTP_504.repository, SWC_DPRINT_HTTP_504.run_id)
+            (repository, run_id)
+            for repository, run_id, _label
+            in INDEPENDENT_CAUSAL_DOMINANCE_POSITIVE_RUNS
         }
     )
     holdout_clean, holdout_reason = _evaluate_holdout(holdout_payload)
@@ -283,7 +288,13 @@ def render_validation(summary: ValidationSummary) -> str:
             "",
             f"- Wave counts: `{dict(summary.evidence_wave_counts)}`",
             "- The 11 validated recoveries establish SERVER_5XX mechanism-family evidence.",
-            "- Only the SWC dprint case is currently pinned as a real causal-dominance positive control.",
+            "- Pinned real causal-dominance positives: "
+            + ", ".join(
+                f"{repository}#{run_id}"
+                for repository, run_id, _label
+                in INDEPENDENT_CAUSAL_DOMINANCE_POSITIVE_RUNS
+            )
+            + ".",
             "",
         ]
     )

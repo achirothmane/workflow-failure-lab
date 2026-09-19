@@ -38,7 +38,7 @@ def test_positive_control_and_negative_controls_pass():
     assert summary.evidence_ledger_ok is True
     assert summary.evidence_ledger_count == 11
     assert summary.evidence_wave_counts == ((1, 4), (2, 1), (3, 6))
-    assert summary.independent_real_positive_controls == 1
+    assert summary.independent_real_positive_controls == 2
 
     real = [item for item in summary.controls if item.real_case]
     assert len(real) == 1
@@ -49,7 +49,7 @@ def test_positive_control_and_negative_controls_pass():
     assert all(item.passed for item in negatives)
 
 
-def test_clean_holdout_still_does_not_promote_with_one_real_positive():
+def test_clean_holdout_still_does_not_promote_with_two_real_positives():
     summary = evaluate_validation(clean_holdout())
 
     assert summary.holdout_present is True
@@ -62,7 +62,7 @@ def test_clean_holdout_still_does_not_promote_with_one_real_positive():
 
     report = render_validation(summary)
     assert "Validation mechanics pass" in report
-    assert "need **2** more independent real causal-dominance positive" in report
+    assert "need **1** more independent real causal-dominance positive" in report
 
 
 def test_failed_again_holdout_fails_clean_gate():

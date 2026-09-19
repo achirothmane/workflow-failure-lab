@@ -131,3 +131,14 @@ Those two jobs also contain `AssertionError` text, so the generic causal-dominan
 If those conditions hold, the direct verifier may contribute **one independent real positive-control run**. The two pipx jobs do not count as two independent runs because they share the same workflow run.
 
 The workflow is `.github/workflows/causal-dominance-direct-verifier.yml`. A passing direct verification is research evidence only; it does not change `root_cause_precedence.py`, the production classifier, or rerun authority.
+
+
+## Final independent positive search
+
+The pipx direct verifier passed on both Python 3.12 and 3.15 jobs from workflow run `31618954128`. Because those jobs share one workflow run, they contribute **one** independent positive-control run. Together with the SWC case, the promotion evidence count is now **2/3**.
+
+The final search therefore looks only for the one remaining independent real positive. It uses **100 repositories not present in the earlier 100-repository targeted search or the 50-repository holdout**, split into two 50-repository shards. The search retains the same fail-closed criteria:
+
+`CODE_REGRESSION/FLAKY_TEST → confirmed causal SERVER_5XX → DOMINANCE_CANDIDATE → ground-truth validated recovery → no side-effect risk`.
+
+Any failed-again candidate, unresolved lookup, or deterministic blocker remains visible and is not promoted. A discovered positive must still be pinned and re-run through the combined promotion gate before any production override is enabled.
