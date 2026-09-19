@@ -131,3 +131,17 @@ def test_invalid_observation_fails_closed():
         summarize_flaky_tests(
             [obs("test_x", "sha", 1, 1, "unknown", 1)]
         )
+
+
+def test_fail_and_pass_in_same_execution_do_not_prove_recovery():
+    items = [
+        obs("test_duplicate", "same-sha", 1, 1, FAIL, 5),
+        obs("test_duplicate", "same-sha", 1, 1, PASS, 4),
+    ]
+
+    summary = summarize_flaky_tests(items)[0]
+
+    assert summary.validated_recoveries == 0
+    assert summary.same_sha_flips == 0
+    assert summary.persistent_failure_shas == 1
+    assert summary.recommendation == DO_NOT_QUARANTINE
