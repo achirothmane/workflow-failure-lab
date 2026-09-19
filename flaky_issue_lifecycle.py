@@ -148,11 +148,37 @@ def _issue_number(item: object) -> int:
         return 0
 
 
+def _matching_managed_issue(
+    candidates: object,
+    marker: str,
+) -> dict | None:
+    if not isinstance(candidates, list):
+        return None
+    for candidate in candidates:
+        if not isinstance(candidate, dict) or candidate.get("pull_request"):
+            continue
+        if marker in str(candidate.get("body") or ""):
+            return candidate
+    return None
+
+
 def find_managed_issue(
     api: GitHubAPI,
     repo: str,
     test_id: str,
 ) -> dict | None:
+    marker = issue_marker(test_id)
+
+    recent = api.request(
+        "GET",
+        f"/repos/{repo}/issues?state=all&sort=updated&direction=desc&per_page=100",
+    )
+    if not isinstance(recent, list):
+        raise RuntimeError("GitHub recent issues response was not a list")
+    match = _matching_managed_issue(recent, marker)
+    if match is not None:
+        return match
+
     fingerprint = issue_fingerprint(test_id)[:16]
     query = quote_plus(
         f'repo:{repo} is:issue in:title "CI Retry Gate" "{fingerprint}"'
@@ -164,10 +190,9 @@ def find_managed_issue(
     if not isinstance(data, dict):
         raise RuntimeError("GitHub issue search response was not an object")
 
-    marker = issue_marker(test_id)
     for candidate in data.get("items") or []:
         number = _issue_number(candidate)
-        if number <= 0:
+        if number <= 0 or candidate.get("pull_request"):
             continue
 
         body = str(candidate.get("body") or "")
