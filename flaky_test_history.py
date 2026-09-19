@@ -8,6 +8,11 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from ci_retry_gate import GitHubAPI, _bool_env, _event_payload
+from flaky_ownership import (
+    load_codeowners_from_github,
+    load_ownership_map_from_github,
+    resolve_ownership,
+)
 from flaky_quarantine_lifecycle import (
     active_test_ids_json,
     evaluate_lifecycle,
@@ -249,6 +254,11 @@ def main() -> int:
     artifact_prefix = os.environ.get("INPUT_JUNIT_ARTIFACT_PREFIX", "junit-results")
     quarantine_lifecycle = _bool_env("INPUT_QUARANTINE_LIFECYCLE", False)
     triage_comment = _bool_env("INPUT_FLAKY_TRIAGE_COMMENT", False)
+    ownership_routing = _bool_env("INPUT_FLAKY_OWNERSHIP_ROUTING", False)
+    ownership_map_path = os.environ.get(
+        "INPUT_FLAKY_OWNERSHIP_MAP",
+        ".github/flaky-ownership.json",
+    )
     quarantine_manifest = os.environ.get(
         "INPUT_QUARANTINE_MANIFEST",
         ".github/flaky-quarantine.json",
@@ -346,7 +356,42 @@ def main() -> int:
                 f"no quarantine is active: {exc}"
             )
 
-    triage_items = build_triage_items(result.summaries, lifecycle)
+    ownership = {}
+    owned_count = 0
+    unowned_count = 0
+    codeowners_path = ""
+    ownership_rules_count = 0
+
+    if ownership_routing:
+        try:
+            target_ref = str(current_run.get("head_sha") or "").strip()
+            codeowners_rules, codeowners_path = load_codeowners_from_github(
+                api,
+                repo,
+                target_ref,
+            )
+            mapping_rules = load_ownership_map_from_github(
+                api,
+                repo,
+                target_ref,
+                ownership_map_path,
+            )
+            ownership_rules_count = len(codeowners_rules) + len(mapping_rules)
+            ownership = resolve_ownership(
+                result.summaries,
+                result.case_observations,
+                codeowners_rules=codeowners_rules,
+                mapping_rules=mapping_rules,
+            )
+            owned_count = sum(item.resolved for item in ownership.values())
+            unowned_count = sum(not item.resolved for item in ownership.values())
+        except (RuntimeError, ValueError) as exc:
+            print(
+                "::warning::Flaky ownership routing could not be resolved; "
+                f"triage remains unowned: {exc}"
+            )
+
+    triage_items = build_triage_items(result.summaries, lifecycle, ownership)
     triage_report = render_triage_report(
         triage_items,
         repo=repo,
@@ -396,6 +441,10 @@ def main() -> int:
     _write_output("active-quarantine-tests-json", active_json)
     _write_output("flaky-triage-items", str(len(triage_items)))
     _write_output("flaky-triage-annotations", str(annotations_emitted))
+    _write_output("flaky-owned-items", str(owned_count))
+    _write_output("flaky-unowned-items", str(unowned_count))
+    _write_output("flaky-ownership-rules", str(ownership_rules_count))
+    _write_output("flaky-codeowners-path", codeowners_path)
     _write_output(
         "flaky-triage-comment-posted",
         "true" if triage_comment_posted else "false",

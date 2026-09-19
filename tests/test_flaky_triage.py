@@ -1,3 +1,4 @@
+from flaky_ownership import OwnershipResolution
 from flaky_quarantine_lifecycle import (
     ACTIVE,
     BLOCKED_REGRESSION,
@@ -177,3 +178,27 @@ def test_annotations_are_bounded_and_escape_workflow_commands(capsys):
     assert "%25" in output
     assert "%0A" in output
     assert "pkg::second" not in output
+
+
+def test_triage_report_surfaces_owner_without_github_mention_side_effect():
+    test_id = "pkg.TestCart::test_total"
+    ownership = {
+        test_id: OwnershipResolution(
+            test_id=test_id,
+            owners=("@payments-team",),
+            source="CODEOWNERS",
+            matched_pattern="/tests/payments/**",
+            source_file="tests/payments/test_cart.py",
+            route="CODEOWNERS",
+        )
+    }
+    items = build_triage_items(
+        (summary(test_id, recommendation=QUARANTINE_CANDIDATE),),
+        ownership=ownership,
+    )
+
+    report = render_triage_report(items, repo="o/r", run_id=42)
+
+    assert "| `@payments-team` | CODEOWNERS |" in report
+    assert "source file tests/payments/test_cart.py" in report
+    assert "owners `@payments-team` via CODEOWNERS" in report

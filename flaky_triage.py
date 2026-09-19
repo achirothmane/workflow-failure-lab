@@ -17,6 +17,7 @@ from flaky_test_intelligence import (
     QUARANTINE_CANDIDATE,
     FlakyTestSummary,
 )
+from flaky_ownership import OwnershipResolution
 
 TRIAGE_COMMENT_MARKER = "<!-- ci-retry-gate-flaky-triage -->"
 MAX_TRIAGE_ROWS = 20
@@ -33,6 +34,10 @@ class TriageItem:
     persistent_failure_shas: int
     waste_minutes: float
     next_action: str
+    owners: tuple[str, ...] = ()
+    ownership_source: str = "UNRESOLVED"
+    ownership_route: str = ""
+    source_file: str = ""
 
 
 _PRIORITY = {
@@ -63,6 +68,7 @@ def _next_action(status: str) -> str:
 def build_triage_items(
     summaries: tuple[FlakyTestSummary, ...],
     lifecycle: LifecycleSummary | None = None,
+    ownership: dict[str, OwnershipResolution] | None = None,
 ) -> tuple[TriageItem, ...]:
     summary_by_id = {item.test_id: item for item in summaries}
     decision_by_id = (
@@ -77,6 +83,7 @@ def build_triage_items(
         if test_id not in summary_by_id
     )
 
+    ownership = ownership or {}
     items: list[TriageItem] = []
     for test_id in ordered_ids:
         summary = summary_by_id.get(test_id)
@@ -87,6 +94,7 @@ def build_triage_items(
         reason = decision.reason if decision is not None else (
             summary.reason if summary is not None else "No matching test history summary."
         )
+        owner = ownership.get(test_id)
         items.append(
             TriageItem(
                 test_id=test_id,
@@ -101,6 +109,10 @@ def build_triage_items(
                     summary.estimated_waste_minutes if summary is not None else 0.0
                 ),
                 next_action=_next_action(status),
+                owners=owner.owners if owner is not None else (),
+                ownership_source=owner.source if owner is not None else "UNRESOLVED",
+                ownership_route=owner.route if owner is not None else "",
+                source_file=owner.source_file if owner is not None else "",
             )
         )
 
@@ -121,6 +133,15 @@ def _md(value: str) -> str:
         .replace("\r", " ")
         .replace("\n", " ")
         .strip()
+    )
+
+
+def _owner_cells(owners: tuple[str, ...]) -> str:
+    if not owners:
+        return "UNOWNED"
+    return ", ".join(
+        f"`{_md(owner)}`"
+        for owner in owners
     )
 
 
@@ -156,8 +177,8 @@ def render_triage_report(
             f"**{len(items)} tests** · candidates **{candidates}** · active quarantines **{active}** · "
             f"blocked **{blocked}** · auto-released **{released}** · estimated waste **{total_waste:.2f} min**",
             "",
-            "| Test | State | Evidence | Waste | Next action |",
-            "|---|---|---|---:|---|",
+            "| Test | State | Owner | Route source | Evidence | Waste | Next action |",
+            "|---|---|---|---|---|---:|---|",
         ]
     )
 
@@ -168,6 +189,7 @@ def render_triage_report(
         )
         lines.append(
             f"| {_md(item.test_id)} | {_md(item.status)} | "
+            f"{_owner_cells(item.owners)} | {_md(item.ownership_source)} | "
             f"{_md(evidence)} | {item.waste_minutes:.2f} min | "
             f"{_md(item.next_action)} |"
         )
@@ -188,8 +210,18 @@ def render_triage_report(
         ]
     )
     for item in items[:MAX_TRIAGE_ROWS]:
+        ownership_detail = (
+            f"owners {_owner_cells(item.owners)} via {_md(item.ownership_source)}"
+            if item.owners
+            else "owner unresolved"
+        )
+        if item.source_file:
+            ownership_detail += f"; source file {_md(item.source_file)}"
+        if item.ownership_route:
+            ownership_detail += f"; route {_md(item.ownership_route)}"
         lines.append(
-            f"- {_md(item.test_id)} — **{_md(item.status)}**: {_md(item.reason)}"
+            f"- {_md(item.test_id)} — **{_md(item.status)}**: {_md(item.reason)} "
+            f"({ownership_detail})"
         )
     lines.extend(
         [
@@ -306,9 +338,11 @@ def emit_triage_annotations(
             level = "warning"
 
         title = _escape_command_property(f"Flaky test: {item.status}")
+        owner_text = ", ".join(item.owners) if item.owners else "UNOWNED"
         message = _escape_command_message(
-            f"{item.test_id} — {item.next_action} "
-            f"Evidence: {item.failures} failures, {item.recoveries} same-SHA recoveries, "
+            f"{item.test_id} — owner: {owner_text} via {item.ownership_source}. "
+            f"{item.next_action} Evidence: {item.failures} failures, "
+            f"{item.recoveries} same-SHA recoveries, "
             f"{item.persistent_failure_shas} persistent SHAs, "
             f"{item.waste_minutes:.2f} min estimated waste."
         )

@@ -23,6 +23,7 @@ class CaseObservation:
     status: str
     duration_seconds: float
     job_name: str = "tests"
+    source_file: str = ""
 
 
 @dataclass(frozen=True)
@@ -88,6 +89,7 @@ def observations_from_junit(
 
         classname = str(case.attrib.get("classname") or "").strip()
         test_id = f"{classname}::{name}" if classname else name
+        source_file = str(case.attrib.get("file") or "").strip().replace("\\", "/")
 
         skipped = False
         failed = False
@@ -117,6 +119,7 @@ def observations_from_junit(
                 status=FAIL if failed else PASS,
                 duration_seconds=duration,
                 job_name=job_name,
+                source_file=source_file,
             )
         )
 

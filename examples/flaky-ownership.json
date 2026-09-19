@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "test_pattern": "payments.*::*",
+      "owners": ["@payments-team"],
+      "route": "payments-ci"
+    },
+    {
+      "test_pattern": "checkout.*::*",
+      "owners": ["@checkout-team", "@qa-team"],
+      "route": "checkout-flaky-tests"
+    }
+  ]
+}

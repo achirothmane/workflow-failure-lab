@@ -145,3 +145,20 @@ def test_fail_and_pass_in_same_execution_do_not_prove_recovery():
     assert summary.same_sha_flips == 0
     assert summary.persistent_failure_shas == 1
     assert summary.recommendation == DO_NOT_QUARANTINE
+
+
+def test_junit_parser_captures_optional_source_file_for_ownership():
+    xml = """
+    <testsuite>
+      <testcase classname="pkg.TestCart" name="test_total" time="1.0" file="tests/test_cart.py">
+        <failure message="boom" />
+      </testcase>
+    </testsuite>
+    """
+    items = observations_from_junit(
+        xml,
+        sha="abc",
+        run_id=10,
+    )
+
+    assert items[0].source_file == "tests/test_cart.py"
