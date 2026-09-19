@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -163,3 +167,28 @@ jobs:
           test "${{ steps.vitest-quarantine.outputs.quarantine-gate-passed }}" = "true"
           test "${{ steps.vitest-quarantine.outputs.blocking-failures }}" = "0"
           test "${{ steps.vitest-quarantine.outputs.quarantined-failures }}" = "1"
+
+
+  doctor-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: doctor
+        name: Validate local onboarding diagnostics
+        uses: ./doctor
+        with:
+          github-token: ${{ github.token }}
+          frameworks: 'pytest,jest,vitest'
+          junit-artifact-prefix: 'smoke-'
+          fail-on-blocked: 'true'
+
+      - name: Verify doctor readiness outputs
+        shell: bash
+        run: |
+          test "${{ steps.doctor.outputs.ready }}" = "true"
+          test "${{ steps.doctor.outputs.blocked-checks }}" = "0"
+          case ",${{ steps.doctor.outputs.detected-frameworks }}," in
+            *,pytest,jest,vitest,*) ;;
+            *) exit 1 ;;
+          esac
