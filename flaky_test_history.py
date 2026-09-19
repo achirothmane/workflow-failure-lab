@@ -305,7 +305,7 @@ def main() -> int:
             if entries is None:
                 lifecycle_report = (
                     "## Flaky Quarantine Lifecycle\n\n"
-                    f"No quarantine manifest was found at \`{quarantine_manifest}\` "
+                    f"No quarantine manifest was found at `{quarantine_manifest}` "
                     "on the target revision. No test is quarantined.\n"
                 )
             else:
