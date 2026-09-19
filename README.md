@@ -283,6 +283,28 @@ The matrix intentionally installs the latest version available inside each teste
 The matrix currently uses Python 3.12 for the enforcement runtime and Node.js 22 for Jest/Vitest integration tests.
 
 
+### 6. Stable `v1` remote-consumer gate
+
+The repository also runs a packaging-level consumer workflow that invokes the stable release line through remote GitHub Action references:
+
+- `othy19904-eng/workflow-failure-lab@v1`
+- `othy19904-eng/workflow-failure-lab/adapters/pytest@v1`
+- `othy19904-eng/workflow-failure-lab/adapters/jest@v1`
+- `othy19904-eng/workflow-failure-lab/adapters/vitest@v1`
+
+This is intentionally different from the local smoke tests that use `./adapters/...`. The remote gate verifies that the movable `v1` branch contains the packaged files consumers actually receive, that the root action can run with read-only Actions/content permissions when reruns are disabled, and that each adapter still preserves the red/green quarantine boundary.
+
+For every adapter, the gate:
+
+1. runs an intentional failing consumer test with an empty ACTIVE set and requires the adapter to fail;
+2. independently extracts the real testcase ID from JUnit without importing CI Retry Gate code;
+3. reruns the same test through the remote `@v1` adapter with that exact ID ACTIVE;
+4. requires zero blocking failures and one quarantined failure;
+5. verifies JUnit evidence is uploaded as an attempt-aware GitHub Actions artifact.
+
+The `v1` branch is advanced only by fast-forward to a commit that has already passed the normal CI, compatibility matrix, and remote-consumer gate. It is never force-moved as part of this process.
+
+
 ## Causal Evidence Layer
 
 Before category scoring, CI Retry Gate classifies each cleaned log line as `CAUSAL`, `AMBIGUOUS`, or `NON_CAUSAL`.
