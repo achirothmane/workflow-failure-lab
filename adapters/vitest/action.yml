@@ -1,5 +1,5 @@
 name: 'Vitest Quarantine Enforcement'
-description: 'Uses Vitest's built-in JUnit reporter and injects the output path.'
+description: "Uses Vitest\'s built-in JUnit reporter and injects the output path."
 author: 'othy19904-eng'
 
 inputs:
