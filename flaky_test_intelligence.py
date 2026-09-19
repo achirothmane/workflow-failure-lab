@@ -152,11 +152,6 @@ def _same_sha_evidence(
 
     for sha_items in by_sha.values():
         ordered = sorted(sha_items, key=lambda item: (item.run_id, item.attempt))
-        statuses = {item.status for item in ordered}
-
-        if FAIL in statuses and PASS in statuses:
-            flips += 1
-
         first_failure_index = next(
             (index for index, item in enumerate(ordered) if item.status == FAIL),
             None,
@@ -164,15 +159,19 @@ def _same_sha_evidence(
         if first_failure_index is None:
             continue
 
+        first_failure = ordered[first_failure_index]
+        failure_execution = (first_failure.run_id, first_failure.attempt)
         later_pass = next(
             (
                 item
                 for item in ordered[first_failure_index + 1 :]
                 if item.status == PASS
+                and (item.run_id, item.attempt) > failure_execution
             ),
             None,
         )
         if later_pass is not None:
+            flips += 1
             validated_recoveries += 1
             recovery_seconds += later_pass.duration_seconds
         else:

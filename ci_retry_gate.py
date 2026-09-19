@@ -615,6 +615,52 @@ class GitHubAPI:
             f"{type(last_transport_error).__name__}: {last_transport_error}"
         ) from last_transport_error
 
+    def request_bytes(
+        self,
+        method: str,
+        path: str,
+        *,
+        accept: str = "application/vnd.github+json",
+    ) -> bytes:
+        attempts = 3 if method.upper() == "GET" else 1
+        last_transport_error: BaseException | None = None
+
+        for attempt in range(1, attempts + 1):
+            req = urllib.request.Request(
+                f"{self.api_url}{path}",
+                method=method,
+                headers={
+                    "Authorization": f"Bearer {self.token}",
+                    "Accept": accept,
+                    "X-GitHub-Api-Version": "2022-11-28",
+                    "User-Agent": "ci-retry-gate-action",
+                },
+            )
+            try:
+                with self.opener.open(req, timeout=30) as response:
+                    return response.read()
+            except urllib.error.HTTPError as exc:
+                body = exc.read().decode("utf-8", errors="replace")
+                raise RuntimeError(
+                    f"GitHub API {method} {path} failed with HTTP {exc.code}: {body[:500]}"
+                ) from exc
+            except (
+                http.client.IncompleteRead,
+                http.client.RemoteDisconnected,
+                ConnectionResetError,
+                TimeoutError,
+                urllib.error.URLError,
+            ) as exc:
+                last_transport_error = exc
+                if attempt >= attempts:
+                    break
+                time.sleep(0.25 * attempt)
+
+        raise RuntimeError(
+            f"GitHub API {method} {path} failed after {attempts} transport attempts: "
+            f"{type(last_transport_error).__name__}: {last_transport_error}"
+        ) from last_transport_error
+
     def get_run(self, repo: str, run_id: int) -> dict:
         return self.request("GET", f"/repos/{repo}/actions/runs/{run_id}")
 

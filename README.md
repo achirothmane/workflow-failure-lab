@@ -97,6 +97,56 @@ unit-tests
 4. Enable only the rerun mode you want, with `actions: write`.
 5. Keep attempt limits and side-effect protection enabled.
 
+## Flaky Test Intelligence (opt-in)
+
+CI Retry Gate can now analyze **JUnit XML artifacts across GitHub Actions history** and rank individual tests by evidence-backed CI waste.
+
+The detector does not label a test flaky merely because it failed once or because it passed after the code changed. Its strongest evidence is:
+
+```text
+same git SHA -> test fails -> later execution -> same test passes
+```
+
+A test becomes a human-reviewed `QUARANTINE_CANDIDATE` only after at least two same-SHA fail-to-pass recoveries and no revision with an unresolved persistent failure. Quarantine is never applied automatically.
+
+### 1. Upload JUnit from the source CI workflow
+
+Upload the report even when tests fail, and include the GitHub run attempt in the artifact name:
+
+```yaml
+- name: Run tests
+  run: pytest --junitxml=junit.xml
+
+- name: Upload JUnit
+  if: always()
+  uses: actions/upload-artifact@v4
+  with:
+    name: junit-results-attempt-${{ github.run_attempt }}
+    path: junit.xml
+```
+
+Other frameworks are supported when they emit standard JUnit XML.
+
+### 2. Enable history analysis in CI Retry Gate
+
+```yaml
+- uses: othy19904-eng/workflow-failure-lab@v1
+  with:
+    github-token: ${{ github.token }}
+    flaky-test-intelligence: 'true'
+    junit-artifact-prefix: 'junit-results'
+    flaky-history-runs: '20'
+```
+
+The GitHub step summary then shows the highest-waste tests, same-SHA recoveries, persistent-failure revisions, and one of:
+
+- `QUARANTINE_CANDIDATE` — repeated recovery evidence, but human review is still required.
+- `INVESTIGATE` — some recovery evidence exists but it is not yet strong enough.
+- `DO_NOT_QUARANTINE` — evidence is absent or a persistent failure could represent a real regression.
+
+For workflow reruns, artifacts without an `attempt-N` suffix are skipped because their execution provenance is ambiguous.
+
+
 ## Causal Evidence Layer
 
 Before category scoring, CI Retry Gate classifies each cleaned log line as `CAUSAL`, `AMBIGUOUS`, or `NON_CAUSAL`.
