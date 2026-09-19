@@ -1,0 +1,16 @@
+name: CI Retry Gate Release Smoke Fixture
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deterministic-failure:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Emit deterministic code failure
+        run: |
+          echo "TypeError: release smoke deterministic failure"
+          exit 1
