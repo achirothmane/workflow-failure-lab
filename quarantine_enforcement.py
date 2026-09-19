@@ -85,8 +85,14 @@ def _leaf_suite_unattributed_failures(root: ET.Element) -> int:
                 for child in list(case)
             ):
                 testcase_failures += 1
-        if declared > testcase_failures:
-            unattributed += declared - testcase_failures
+
+        direct_suite_failures = sum(
+            _local_name(child.tag) in {"failure", "error"}
+            for child in list(suite)
+        )
+        unattributed += direct_suite_failures
+        if declared > testcase_failures + direct_suite_failures:
+            unattributed += declared - testcase_failures - direct_suite_failures
     return unattributed
 
 
@@ -222,7 +228,12 @@ def build_framework_command(
         env["JEST_JUNIT_OUTPUT_FILE"] = junit_path
 
     elif framework == "vitest":
-        if not any(arg in {"--reporter=junit", "--reporter", "--reporters=junit"} for arg in result):
+        has_junit_reporter = any(
+            arg in {"--reporter=junit", "--reporters=junit"}
+            or "junit" in arg and arg.startswith("--reporter")
+            for arg in result
+        )
+        if not has_junit_reporter:
             result.append("--reporter=junit")
         if not any(
             arg == "--outputFile"
