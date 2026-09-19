@@ -43,6 +43,10 @@ def main() -> int:
     require("permissions:" in readme and "actions: read" in readme, "README permission guidance is missing")
 
     require("name: 'CI Retry Gate'" in action, "action.yml product name mismatch")
+    description_match = re.search(r"(?m)^description:\s*['\"](.+?)['\"]\s*$", action)
+    require(description_match is not None, "action.yml description is missing")
+    action_description = description_match.group(1)
+    require(len(action_description) < 125, "action.yml description must be less than 125 characters for Marketplace")
     require(license_text.startswith("MIT License"), "LICENSE must be MIT")
     require("using: 'composite'" in action, "action.yml must remain a composite action")
     require("icon: 'shield'" in action, "action branding icon is missing")
@@ -86,6 +90,7 @@ def main() -> int:
 
     print("release-readiness: PASS")
     print("- v1 metadata present")
+    print(f"- Marketplace description length: {len(action_description)} chars")
     print("- MIT license present")
     print("- fail-closed rerun defaults preserved")
     print("- README quick start and permissions present")
