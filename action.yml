@@ -91,6 +91,14 @@ inputs:
     description: 'Repository-relative JSON fallback mapping from test-ID glob patterns to owners/routes.'
     required: false
     default: '.github/flaky-ownership.json'
+  flaky-issue-lifecycle:
+    description: 'Opt-in deduplicated GitHub Issue lifecycle for actionable flaky/regression triage. Requires flaky-test-intelligence=true and issues: write.'
+    required: false
+    default: 'false'
+  flaky-issue-max-changes:
+    description: 'Maximum Issue create/update/reopen/close operations per run. Range: 1 to 50.'
+    required: false
+    default: '10'
 
   quarantine-lifecycle:
     description: 'Evaluate human-approved temporary flaky-test quarantines, expiry, regression suspension, and healthy auto-release. Requires flaky-test-intelligence=true.'
@@ -529,6 +537,21 @@ outputs:
   flaky-codeowners-path:
     description: 'Repository path of the CODEOWNERS file used for routing, or empty when none was found.'
     value: ${{ steps.flaky.outputs.flaky-codeowners-path }}
+  flaky-issues-created:
+    description: 'Managed flaky/regression Issues created in this run.'
+    value: ${{ steps.flaky.outputs.flaky-issues-created }}
+  flaky-issues-updated:
+    description: 'Existing managed Issues updated in place in this run.'
+    value: ${{ steps.flaky.outputs.flaky-issues-updated }}
+  flaky-issues-reopened:
+    description: 'Previously closed managed Issues reopened because investigation became actionable again.'
+    value: ${{ steps.flaky.outputs.flaky-issues-reopened }}
+  flaky-issues-closed:
+    description: 'Managed Issues closed after RELEASED_HEALTHY.'
+    value: ${{ steps.flaky.outputs.flaky-issues-closed }}
+  flaky-issues-deferred:
+    description: 'Issue lifecycle items deferred because the per-run write cap was reached.'
+    value: ${{ steps.flaky.outputs.flaky-issues-deferred }}
 
 runs:
   using: 'composite'
@@ -559,6 +582,13 @@ runs:
       shell: bash
       run: |
         echo "::error::flaky-ownership-routing requires flaky-test-intelligence=true"
+        exit 2
+
+    - name: Validate flaky issue lifecycle mode
+      if: ${{ inputs.flaky-issue-lifecycle == 'true' && inputs.flaky-test-intelligence != 'true' }}
+      shell: bash
+      run: |
+        echo "::error::flaky-issue-lifecycle requires flaky-test-intelligence=true"
         exit 2
 
     - id: gate
@@ -607,6 +637,8 @@ runs:
         INPUT_FLAKY_TRIAGE_COMMENT: ${{ inputs.flaky-triage-comment }}
         INPUT_FLAKY_OWNERSHIP_ROUTING: ${{ inputs.flaky-ownership-routing }}
         INPUT_FLAKY_OWNERSHIP_MAP: ${{ inputs.flaky-ownership-map }}
+        INPUT_FLAKY_ISSUE_LIFECYCLE: ${{ inputs.flaky-issue-lifecycle }}
+        INPUT_FLAKY_ISSUE_MAX_CHANGES: ${{ inputs.flaky-issue-max-changes }}
         INPUT_QUARANTINE_LIFECYCLE: ${{ inputs.quarantine-lifecycle }}
         INPUT_QUARANTINE_MANIFEST: ${{ inputs.quarantine-manifest }}
         INPUT_QUARANTINE_MAX_DAYS: ${{ inputs.quarantine-max-days }}
