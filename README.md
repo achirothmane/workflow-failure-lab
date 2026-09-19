@@ -4,6 +4,38 @@ CI Retry Gate is a GitHub Action that inspects failed GitHub Actions jobs, decid
 
 It is deliberately conservative: code regressions, unknown or low-confidence failures, attempt caps, and deploy/publish/migration/release side-effect signals stay blocked.
 
+## Quick start
+
+Add a second workflow that listens for completed workflow runs. Start in report-only mode:
+
+```yaml
+name: CI Retry Gate
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  actions: read
+  pull-requests: write
+
+jobs:
+  retry-gate:
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: othy19904-eng/workflow-failure-lab@v1
+        with:
+          github-token: ${{ github.token }}
+          auto-rerun: 'false'
+          selective-rerun: 'false'
+```
+
+This configuration analyzes the failed run and reports its decision without rerunning anything. To enable reruns later, grant `actions: write` and opt into **one** rerun mode explicitly. Do not enable `auto-rerun` and `selective-rerun` together.
+
+> Until the `v1.0.0` release and moving `v1` tag are published, use the latest release tag or `main` only for evaluation.
+
 ## Why
 
 Blindly rerunning failed CI can hide flaky infrastructure, waste runner minutes, or repeat destructive steps. CI Retry Gate adds a safety decision before any rerun and shows whether the same underlying failure keeps returning over time.

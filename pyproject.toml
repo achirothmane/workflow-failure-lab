@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "workflow-failure-lab"
-version = "0.1.0"
-description = "Analyze one failed workflow execution and print a Markdown incident report."
+version = "1.0.0"
+description = "Conservative GitHub Actions retry safety gate with provenance, history, selective reruns, and benchmark diagnostics."
 requires-python = ">=3.12"
 dependencies = [
     "jsonschema>=4.18",
