@@ -132,3 +132,13 @@ UNEVALUATED_CLASSIFICATION_CONTRADICTIONS = (
         "NOT_OBSERVED",
     ),
 )
+
+
+# Independent real causal-dominance positive-control runs that have completed
+# raw-log / structural verification. Multiple jobs from one workflow run count
+# once. This registry is evidence accounting only; it does not grant runtime
+# retry authority.
+INDEPENDENT_CAUSAL_DOMINANCE_POSITIVE_RUNS = (
+    ("swc-project/swc", 34857087636, "SWC dprint HTTP 504"),
+    ("pypa/pipx", 31618954128, "pipx GitHub download 503"),
+)
