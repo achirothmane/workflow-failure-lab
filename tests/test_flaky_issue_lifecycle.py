@@ -41,6 +41,8 @@ class FakeAPI:
 
     def request(self, method, path, payload=None, accept="application/vnd.github+json"):
         self.calls.append((method, path, payload))
+        if path.startswith("/repos/o/r/issues?"):
+            return self.search_items
         if path.startswith("/search/issues"):
             return {"items": self.search_items}
         if method == "GET" and "/issues/" in path:
@@ -177,3 +179,20 @@ def test_issue_lifecycle_rejects_out_of_range_write_cap():
             run_id=42,
             max_changes=0,
         )
+
+
+def test_recent_issue_listing_wins_before_search_fallback():
+    test_id = "pkg::recent"
+    existing = managed_issue(test_id)
+    api = FakeAPI([existing])
+
+    action = manage_issue_for_item(
+        api,
+        "o/r",
+        item(test_id),
+        run_id=42,
+    )
+
+    assert action == "updated"
+    assert api.calls[0][1].startswith("/repos/o/r/issues?state=all")
+    assert not any(call[1].startswith("/search/issues") for call in api.calls)
