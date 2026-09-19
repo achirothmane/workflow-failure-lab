@@ -45,7 +45,7 @@ jobs:
         uses: ./adapters/pytest
         with:
           active-tests-json: '[]'
-          test-command: 'python -m pytest tests/adapter-smoke/pytest/test_flaky.py -q'
+          test-command: 'python -m pytest smoke/adapter-fixtures/pytest/test_flaky.py -q'
           junit-path: '.ci-smoke/pytest-discover.xml'
           artifact-name: 'smoke-pytest-discover'
 
@@ -67,7 +67,7 @@ jobs:
         uses: ./adapters/pytest
         with:
           active-tests-json: ${{ steps.pytest-id.outputs.json }}
-          test-command: 'python -m pytest tests/adapter-smoke/pytest/test_flaky.py -q'
+          test-command: 'python -m pytest smoke/adapter-fixtures/pytest/test_flaky.py -q'
           junit-path: '.ci-smoke/pytest-quarantine.xml'
           artifact-name: 'smoke-pytest-quarantine'
 
