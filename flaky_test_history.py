@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from ci_retry_gate import GitHubAPI, _bool_env, _event_payload
-from flaky_issue_lifecycle import manage_issue_lifecycle
+from flaky_issue_lifecycle import MAX_ISSUE_CHANGES, manage_issue_lifecycle
 from flaky_ownership import (
     load_codeowners_from_github,
     load_ownership_map_from_github,
@@ -257,9 +257,7 @@ def main() -> int:
     triage_comment = _bool_env("INPUT_FLAKY_TRIAGE_COMMENT", False)
     ownership_routing = _bool_env("INPUT_FLAKY_OWNERSHIP_ROUTING", False)
     issue_lifecycle = _bool_env("INPUT_FLAKY_ISSUE_LIFECYCLE", False)
-    issue_max_changes = int(
-        os.environ.get("INPUT_FLAKY_ISSUE_MAX_CHANGES", "10")
-    )
+    issue_max_changes_raw = os.environ.get("INPUT_FLAKY_ISSUE_MAX_CHANGES", "10")
     ownership_map_path = os.environ.get(
         "INPUT_FLAKY_OWNERSHIP_MAP",
         ".github/flaky-ownership.json",
@@ -282,6 +280,17 @@ def main() -> int:
         run_id = int(run_id_raw)
     except (TypeError, ValueError):
         print("::error::run-id could not be determined")
+        return 2
+
+    try:
+        issue_max_changes = int(issue_max_changes_raw)
+    except (TypeError, ValueError):
+        print("::error::flaky-issue-max-changes must be an integer")
+        return 2
+    if issue_max_changes < 1 or issue_max_changes > MAX_ISSUE_CHANGES:
+        print(
+            f"::error::flaky-issue-max-changes must be between 1 and {MAX_ISSUE_CHANGES}"
+        )
         return 2
 
     api = GitHubAPI(token, os.environ.get("GITHUB_API_URL", "https://api.github.com"))
