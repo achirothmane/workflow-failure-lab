@@ -18,3 +18,148 @@ jobs:
       - run: pytest
       - run: python3 scripts/verify_clean_install.py
       - run: python3 scripts/verify_release_readiness.py
+
+
+  adapter-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Python test dependencies
+        run: python -m pip install -e ".[test]"
+
+      - name: Install pinned Node smoke dependencies
+        run: npm install --prefix tests/adapter-smoke/node --ignore-scripts --no-audit --no-fund
+
+      - id: pytest-block
+        name: Pytest blocks a non-quarantined real failure
+        continue-on-error: true
+        uses: ./adapters/pytest
+        with:
+          active-tests-json: '[]'
+          test-command: 'python -m pytest smoke/adapter-fixtures/pytest/test_flaky.py -q'
+          junit-path: '.ci-smoke/pytest-discover.xml'
+          artifact-name: 'smoke-pytest-discover'
+
+      - name: Verify pytest blocking path
+        if: always()
+        shell: bash
+        run: |
+          test "${{ steps.pytest-block.outcome }}" = "failure"
+
+      - id: pytest-id
+        name: Read real pytest failing test ID
+        shell: bash
+        run: |
+          ids="$(python scripts/extract_junit_failures.py .ci-smoke/pytest-discover.xml --expect-count 1)"
+          echo "json=$ids" >> "$GITHUB_OUTPUT"
+
+      - id: pytest-quarantine
+        name: Pytest permits only the ACTIVE quarantined failure
+        uses: ./adapters/pytest
+        with:
+          active-tests-json: ${{ steps.pytest-id.outputs.json }}
+          test-command: 'python -m pytest smoke/adapter-fixtures/pytest/test_flaky.py -q'
+          junit-path: '.ci-smoke/pytest-quarantine.xml'
+          artifact-name: 'smoke-pytest-quarantine'
+
+      - name: Verify pytest quarantine outputs
+        shell: bash
+        run: |
+          test "${{ steps.pytest-quarantine.outputs.quarantine-gate-passed }}" = "true"
+          test "${{ steps.pytest-quarantine.outputs.blocking-failures }}" = "0"
+          test "${{ steps.pytest-quarantine.outputs.quarantined-failures }}" = "1"
+
+      - id: jest-block
+        name: Jest blocks a non-quarantined real failure
+        continue-on-error: true
+        uses: ./adapters/jest
+        env:
+          NODE_PATH: ${{ github.workspace }}/tests/adapter-smoke/node/node_modules
+        with:
+          active-tests-json: '[]'
+          working-directory: 'tests/adapter-smoke/node'
+          test-command: './node_modules/.bin/jest jest/flaky.test.cjs --runInBand --ci'
+          junit-path: '.ci-smoke/jest-discover.xml'
+          artifact-name: 'smoke-jest-discover'
+
+      - name: Verify Jest blocking path
+        if: always()
+        shell: bash
+        run: |
+          test "${{ steps.jest-block.outcome }}" = "failure"
+
+      - id: jest-id
+        name: Read real Jest failing test ID
+        shell: bash
+        run: |
+          ids="$(python scripts/extract_junit_failures.py .ci-smoke/jest-discover.xml --expect-count 1)"
+          echo "json=$ids" >> "$GITHUB_OUTPUT"
+
+      - id: jest-quarantine
+        name: Jest permits only the ACTIVE quarantined failure
+        uses: ./adapters/jest
+        env:
+          NODE_PATH: ${{ github.workspace }}/tests/adapter-smoke/node/node_modules
+        with:
+          active-tests-json: ${{ steps.jest-id.outputs.json }}
+          working-directory: 'tests/adapter-smoke/node'
+          test-command: './node_modules/.bin/jest jest/flaky.test.cjs --runInBand --ci'
+          junit-path: '.ci-smoke/jest-quarantine.xml'
+          artifact-name: 'smoke-jest-quarantine'
+
+      - name: Verify Jest quarantine outputs
+        shell: bash
+        run: |
+          test "${{ steps.jest-quarantine.outputs.quarantine-gate-passed }}" = "true"
+          test "${{ steps.jest-quarantine.outputs.blocking-failures }}" = "0"
+          test "${{ steps.jest-quarantine.outputs.quarantined-failures }}" = "1"
+
+      - id: vitest-block
+        name: Vitest blocks a non-quarantined real failure
+        continue-on-error: true
+        uses: ./adapters/vitest
+        with:
+          active-tests-json: '[]'
+          working-directory: 'tests/adapter-smoke/node'
+          test-command: './node_modules/.bin/vitest run vitest/flaky.test.js'
+          junit-path: '.ci-smoke/vitest-discover.xml'
+          artifact-name: 'smoke-vitest-discover'
+
+      - name: Verify Vitest blocking path
+        if: always()
+        shell: bash
+        run: |
+          test "${{ steps.vitest-block.outcome }}" = "failure"
+
+      - id: vitest-id
+        name: Read real Vitest failing test ID
+        shell: bash
+        run: |
+          ids="$(python scripts/extract_junit_failures.py .ci-smoke/vitest-discover.xml --expect-count 1)"
+          echo "json=$ids" >> "$GITHUB_OUTPUT"
+
+      - id: vitest-quarantine
+        name: Vitest permits only the ACTIVE quarantined failure
+        uses: ./adapters/vitest
+        with:
+          active-tests-json: ${{ steps.vitest-id.outputs.json }}
+          working-directory: 'tests/adapter-smoke/node'
+          test-command: './node_modules/.bin/vitest run vitest/flaky.test.js'
+          junit-path: '.ci-smoke/vitest-quarantine.xml'
+          artifact-name: 'smoke-vitest-quarantine'
+
+      - name: Verify Vitest quarantine outputs
+        shell: bash
+        run: |
+          test "${{ steps.vitest-quarantine.outputs.quarantine-gate-passed }}" = "true"
+          test "${{ steps.vitest-quarantine.outputs.blocking-failures }}" = "0"
+          test "${{ steps.vitest-quarantine.outputs.quarantined-failures }}" = "1"

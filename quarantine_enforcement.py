@@ -298,15 +298,38 @@ def _append_summary(text: str) -> None:
         print(text)
 
 
+def _resolve_working_directory(value: str) -> Path:
+    base = Path.cwd().resolve()
+    candidate = Path(value or ".")
+    if not candidate.is_absolute():
+        candidate = base / candidate
+    candidate = candidate.resolve()
+
+    workspace_raw = os.environ.get("GITHUB_WORKSPACE")
+    if workspace_raw:
+        workspace = Path(workspace_raw).resolve()
+        if not candidate.is_relative_to(workspace):
+            raise ValueError("working-directory must stay inside GITHUB_WORKSPACE")
+
+    if not candidate.is_dir():
+        raise ValueError(f"working-directory does not exist or is not a directory: {candidate}")
+    return candidate
+
+
 def run_enforced(
     *,
     framework: str,
     active_tests_json: str,
     junit_path: str,
     command: list[str],
+    working_directory: str = ".",
 ) -> int:
     active_tests = parse_active_tests(active_tests_json)
+    workdir = _resolve_working_directory(working_directory)
+
     path = Path(junit_path)
+    if not path.is_absolute():
+        path = (Path.cwd() / path).resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
         path.unlink()
@@ -316,7 +339,12 @@ def run_enforced(
         command,
         str(path),
     )
-    completed = subprocess.run(final_command, env=env, check=False)
+    completed = subprocess.run(
+        final_command,
+        env=env,
+        cwd=workdir,
+        check=False,
+    )
 
     if not path.is_file():
         report = (
@@ -375,6 +403,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--active-tests-json", required=True)
     parser.add_argument("--junit-path", required=True)
     parser.add_argument(
+        "--working-directory",
+        default=".",
+        help="Repository-relative directory in which to run the test command.",
+    )
+    parser.add_argument(
         "--command-string",
         default="",
         help="Test command parsed with shlex and executed without a shell.",
@@ -401,6 +434,7 @@ def main(argv: list[str] | None = None) -> int:
         active_tests_json=args.active_tests_json,
         junit_path=args.junit_path,
         command=command,
+        working_directory=args.working_directory,
     )
 
 
