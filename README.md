@@ -4,24 +4,96 @@
 [![Latest release](https://img.shields.io/github/v/release/othy19904-eng/workflow-failure-lab)](https://github.com/othy19904-eng/workflow-failure-lab/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Stop blindly rerunning failed GitHub Actions.**
+## Stop wasting CI runs on failures that should not be retried.
 
-CI Retry Gate inspects failed jobs, decides whether a rerun is safe, and can rerun only failures that pass conservative provenance, side-effect, confidence, and attempt-limit checks.
+**CI Retry Gate tells GitHub Actions when a failed job is safe to retry, detects evidence-backed flaky tests, routes them to the right owner, and tracks the investigation until the test is healthy again.**
 
-### Why teams would use it
+It is designed to start **read-only**. Automatic reruns, PR comments, managed Issues, and quarantine enforcement stay off until you explicitly enable the permissions and behavior you want.
 
-- **Blocks deterministic failures** instead of wasting another run on the same code error.
-- **Fails closed on uncertainty**: unknown and low-confidence failures are not auto-rerun.
-- **Checks where the transient evidence happened** before granting rerun authority.
-- **Blocks side-effect workflows** such as deploy, publish, migration, and release paths.
-- **Can rerun only the safe failed jobs**, not every failed job in the workflow.
-- **Measures recurring failures and CI waste** from real history instead of guessing.
+### Try it on your repository first — no write permissions
 
-> Automatic reruns are **off by default**. You can start in read-only/report-only mode and enable write behavior later.
+Run the Setup Doctor before changing your CI behavior:
 
-## 60-second start
+```yaml
+name: CI Retry Gate Doctor
 
-Create a second workflow that listens for completed CI runs:
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  doctor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: doctor
+        uses: othy19904-eng/workflow-failure-lab/doctor@v1
+        with:
+          github-token: ${{ github.token }}
+          frameworks: 'auto'
+```
+
+The Doctor inspects the checked-out repository and returns **READY**, **WARN**, or **BLOCKED** with concrete fixes. It can detect pytest, Jest, and Vitest, catch missing `jest-junit`, inspect JUnit artifact wiring, validate CODEOWNERS/ownership maps and quarantine manifests, check GitHub read access, and show the permissions needed for the features you plan to enable.
+
+It **does not** create comments, Issues, reruns, or quarantines to prove write access.
+
+Example Doctor result:
+
+```text
+CI Retry Gate Setup Doctor
+
+Verdict: READY
+Detected frameworks: pytest, jest, vitest
+
+PASS  Framework detection
+PASS  Jest JUnit reporter
+PASS  JUnit artifact wiring
+PASS  GitHub API read access
+WARN  Future write features require explicit permissions
+```
+
+### What you get after rollout
+
+| CI problem | CI Retry Gate |
+|---|---|
+| A failure appears transient | Checks provenance, confidence, side effects, and retry limits before granting rerun authority |
+| A deterministic regression fails | Keeps CI red instead of blindly retrying it |
+| A test fails, then passes on the same SHA | Records same-SHA recovery evidence before calling it flaky |
+| A flaky test needs temporary quarantine | Requires human approval, keeps executing the test, and automatically releases it when healthy |
+| Nobody knows who owns the flaky test | Resolves CODEOWNERS or an explicit test-ID ownership map |
+| The same flaky test keeps returning | Updates one managed Issue instead of creating duplicates |
+| The test becomes healthy | Closes the managed Issue after `RELEASED_HEALTHY` |
+
+### Verified from a separate consumer repository
+
+The stable `@v1` line is continuously exercised from a repository that does **not** contain the product source:
+
+- root GitHub Action resolution through `@v1`;
+- pytest, Jest, and Vitest adapters;
+- real JUnit artifact upload and parsing;
+- blocking vs. ACTIVE quarantine behavior;
+- flaky-test triage and annotations;
+- CODEOWNERS + explicit ownership routing;
+- managed Issue create → update without duplication → healthy auto-close;
+- read-only `doctor@v1` onboarding.
+
+External consumer: [ci-retry-gate-consumer-e2e](https://github.com/othy19904-eng/ci-retry-gate-consumer-e2e)
+
+### Safe rollout path
+
+1. **Run the Doctor** with only `contents: read` and `actions: read`.
+2. Fix any **BLOCKED** prerequisite and review WARN findings.
+3. Add CI Retry Gate in report-only mode with automatic reruns still off.
+4. Observe real decisions and flaky-test evidence.
+5. Enable only the write feature you actually want: reruns, PR triage, managed Issues, or quarantine lifecycle.
+
+### 60-second report-only gate
+
+Create a second workflow that listens for failed CI runs:
 
 ```yaml
 name: CI Retry Gate
@@ -33,7 +105,6 @@ on:
 
 permissions:
   actions: read
-  pull-requests: write
 
 jobs:
   retry-gate:
@@ -47,66 +118,9 @@ jobs:
           selective-rerun: 'false'
 ```
 
-That configuration analyzes the failed run and reports the decision without rerunning anything.
-
-To enable reruns later, grant `actions: write` and opt into **one** rerun mode explicitly. Do not enable `auto-rerun` and `selective-rerun` together.
+That analyzes the failed run without rerunning anything. When you later choose to enable reruns, grant `actions: write` and opt into exactly one rerun mode.
 
 > Use `@v1` for the current stable v1 line, or pin an exact `v1.x.y` tag when you need an immutable dependency.
-
-
-## Setup Doctor: validate before rollout
-
-Before enabling retries, quarantine, ownership routing, or write behavior, run the read-only Setup Doctor against the checked-out repository:
-
-```yaml
-permissions:
-  contents: read
-  actions: read
-
-steps:
-  - uses: actions/checkout@v4
-
-  - id: doctor
-    uses: othy19904-eng/workflow-failure-lab/doctor@v1
-    with:
-      github-token: ${{ github.token }}
-      frameworks: 'auto'
-      junit-artifact-prefix: 'junit-results'
-```
-
-The doctor produces a GitHub step summary with one of:
-
-- **READY** — no blocking setup problem was found.
-- **WARN** — rollout can continue, but something deserves attention, such as missing visible JUnit artifact wiring or requested write permissions that the doctor deliberately refuses to probe by creating content.
-- **BLOCKED** — a concrete prerequisite is missing or malformed, such as an undetected requested framework, Jest without `jest-junit`, unreadable Actions history, an invalid ownership map, or a missing/invalid quarantine manifest.
-
-It detects pytest, Jest, and Vitest, validates the Jest JUnit reporter requirement, checks repository/Actions read access, inspects JUnit artifact wiring, and can validate optional ownership and quarantine configuration. For monorepos, point `working-directory` at the package root.
-
-To preflight optional features without granting them write authority yet:
-
-```yaml
-- id: doctor
-  uses: othy19904-eng/workflow-failure-lab/doctor@v1
-  with:
-    github-token: ${{ github.token }}
-    frameworks: 'pytest,jest,vitest'
-    flaky-ownership-routing: 'true'
-    flaky-ownership-map: '.github/flaky-ownership.json'
-    flaky-triage-comment: 'true'
-    flaky-issue-lifecycle: 'true'
-    rerun-mode: 'selective'
-```
-
-The summary prints the exact permission set and a recommended production configuration. The doctor remains **read-only**: it never proves write permission by creating a PR comment, Issue, rerun, or quarantine. `fail-on-blocked` defaults to `true`, while WARN checks never fail the job.
-
-Outputs:
-
-- `ready`
-- `blocked-checks`
-- `warnings`
-- `detected-frameworks`
-- `required-permissions`
-
 
 ## What makes it different from a retry loop?
 
