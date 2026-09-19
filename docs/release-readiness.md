@@ -31,3 +31,19 @@ The causal-dominance override is explicitly excluded from production scope. It r
    `othy19904-eng/workflow-failure-lab@v1`.
 5. Publish release notes from `CHANGELOG.md`.
 6. Keep `auto-rerun: 'false'` in the first-run example; users opt into write behavior explicitly.
+
+
+## Post-release smoke test
+
+The repository contains a permanent consumer smoke test for the published moving major ref `@v1`.
+
+1. Run **CI Retry Gate Release Smoke Fixture** manually.
+2. The fixture intentionally ends in failure with a deterministic `TypeError`.
+3. **CI Retry Gate v1 Release Smoke** starts automatically through `workflow_run`.
+4. It consumes `othy19904-eng/workflow-failure-lab@v1` in report-only mode.
+5. The smoke passes only when the released action reports:
+   - `safe-to-rerun=false`
+   - `rerun-triggered=false`
+   - at least one failed job observed
+
+The red fixture run is intentional; the verification workflow must be green. This tests the published `@v1` ref rather than the current `main` implementation.
