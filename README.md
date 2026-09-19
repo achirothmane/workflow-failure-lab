@@ -195,6 +195,64 @@ The action exposes `active-quarantine-tests-json` plus lifecycle counts so frame
 The manifest is read from the exact target workflow revision, so approval state is version-controlled and auditable. Repository branch protection/review rules can be used to control who is allowed to approve manifest changes.
 
 
+### 4. Enforce quarantine without skipping the test
+
+Wave 4 provides framework adapters that still execute every test, produce JUnit evidence, and change the CI result only when **all** attributable testcase failures are already in the effective `ACTIVE` quarantine set.
+
+A non-quarantined failure always keeps CI red. A missing or malformed JUnit report, a collection/configuration failure with no attributable failing testcase, or suite-level failures that cannot be mapped to a testcase also fail closed.
+
+#### pytest
+
+```yaml
+- id: flaky-policy
+  uses: othy19904-eng/workflow-failure-lab@v1
+  with:
+    github-token: ${{ github.token }}
+    flaky-test-intelligence: 'true'
+    quarantine-lifecycle: 'true'
+
+- uses: othy19904-eng/workflow-failure-lab/adapters/pytest@v1
+  with:
+    active-tests-json: ${{ steps.flaky-policy.outputs.active-quarantine-tests-json }}
+    test-command: 'python -m pytest -q'
+```
+
+The pytest adapter injects `--junitxml` unless the command already specifies a JUnit path.
+
+#### Jest
+
+Install `jest-junit` in the project, then:
+
+```yaml
+- uses: othy19904-eng/workflow-failure-lab/adapters/jest@v1
+  with:
+    active-tests-json: ${{ steps.flaky-policy.outputs.active-quarantine-tests-json }}
+    test-command: 'npx jest --ci'
+```
+
+The adapter adds the `jest-junit` reporter and points it at the managed JUnit path.
+
+#### Vitest
+
+```yaml
+- uses: othy19904-eng/workflow-failure-lab/adapters/vitest@v1
+  with:
+    active-tests-json: ${{ steps.flaky-policy.outputs.active-quarantine-tests-json }}
+    test-command: 'npx vitest run'
+```
+
+The Vitest adapter enables the built-in JUnit reporter and manages its output path.
+
+Each adapter uploads the resulting report as `junit-results-attempt-${{ github.run_attempt }}`, feeding the same evidence back into Flaky Test Intelligence on later runs. This closes the loop:
+
+```text
+detect -> approve -> enforce -> keep executing -> collect JUnit ->
+observe recovery/regression -> auto-release or block quarantine
+```
+
+The adapters never use shell evaluation for `test-command`; it is tokenized and executed directly. Shell operators such as `&&`, pipes, or redirections are intentionally unsupported. Put complex setup in separate workflow steps.
+
+
 ## Causal Evidence Layer
 
 Before category scoring, CI Retry Gate classifies each cleaned log line as `CAUSAL`, `AMBIGUOUS`, or `NON_CAUSAL`.
