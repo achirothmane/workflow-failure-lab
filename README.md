@@ -346,6 +346,53 @@ If no pull request can be associated with the analyzed workflow run, or if the t
 The triage UI does not grant authority. A `QUARANTINE_CANDIDATE` still requires human approval in the manifest, `BLOCKED_REGRESSION` remains fail-closed, and ACTIVE tests continue to execute so later recovery or regression evidence stays observable.
 
 
+### 8. Ownership + triage routing
+
+Ownership routing is opt-in and remains read-only:
+
+```yaml
+- uses: othy19904-eng/workflow-failure-lab@v1
+  with:
+    github-token: ${{ github.token }}
+    flaky-test-intelligence: 'true'
+    flaky-ownership-routing: 'true'
+```
+
+For each triage item, CI Retry Gate first looks for a stable JUnit `file` attribute and resolves that path through CODEOWNERS from the **exact analyzed revision**. GitHub's standard CODEOWNERS locations are checked in order:
+
+- `.github/CODEOWNERS`
+- `CODEOWNERS`
+- `docs/CODEOWNERS`
+
+When JUnit does not expose a file path, the file path is ambiguous, or CODEOWNERS has no matching owner, you can provide a framework-neutral fallback map at `.github/flaky-ownership.json`:
+
+```json
+{
+  "version": 1,
+  "rules": [
+    {
+      "test_pattern": "payments.*::*",
+      "owners": ["@payments-team"],
+      "route": "payments-ci"
+    }
+  ]
+}
+```
+
+Use a custom map path with `flaky-ownership-map` when needed.
+
+The triage table then adds **Owner** and **Route source**. Ownership is deliberately informational: it cannot authorize reruns or quarantines, it does not open or assign issues, and owners are rendered as Markdown code spans so PR comments do not automatically mention or notify them.
+
+The action exposes:
+
+- `flaky-owned-items`
+- `flaky-unowned-items`
+- `flaky-ownership-rules`
+- `flaky-codeowners-path`
+
+If multiple different source files are observed for the same test ID, the action refuses to guess a CODEOWNERS route and falls back to the explicit test-ID map or leaves the item `UNOWNED`.
+
+
 ## Causal Evidence Layer
 
 Before category scoring, CI Retry Gate classifies each cleaned log line as `CAUSAL`, `AMBIGUOUS`, or `NON_CAUSAL`.
