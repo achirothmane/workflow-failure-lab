@@ -179,3 +179,21 @@ def test_skipped_quarantined_test_does_not_count_as_failure():
 
     assert result.allowed_to_pass is True
     assert result.failed_test_ids == ()
+
+
+def test_direct_suite_error_is_unattributed_and_fails_closed():
+    xml = (
+        '<testsuite tests="0" failures="0" errors="1">'
+        '<error message="collection failed" />'
+        '</testsuite>'
+    )
+
+    result = evaluate_junit_enforcement(
+        xml,
+        framework="pytest",
+        active_tests=(),
+        command_exit_code=2,
+    )
+
+    assert result.allowed_to_pass is False
+    assert result.unattributed_failures == 1
