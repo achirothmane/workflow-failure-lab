@@ -5,9 +5,17 @@ import os
 import re
 import zipfile
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
-from ci_retry_gate import GitHubAPI, _event_payload
+from ci_retry_gate import GitHubAPI, _bool_env, _event_payload
+from flaky_quarantine_lifecycle import (
+    active_test_ids_json,
+    evaluate_lifecycle,
+    load_manifest_from_github,
+    render_lifecycle_report,
+)
 from flaky_test_intelligence import (
+    CaseObservation,
     FlakyTestSummary,
     observations_from_junit,
     summarize_flaky_tests,
@@ -27,6 +35,7 @@ class FlakyHistoryResult:
     xml_files_analyzed: int
     observations: int
     summaries: tuple[FlakyTestSummary, ...]
+    case_observations: tuple[CaseObservation, ...] = ()
 
 
 def _artifact_attempt(name: str, run_attempt: int) -> int | None:
@@ -159,6 +168,7 @@ def collect_flaky_history(
         xml_files_analyzed=xml_files_analyzed,
         observations=len(observations),
         summaries=summaries,
+        case_observations=tuple(observations),
     )
 
 
@@ -230,6 +240,17 @@ def main() -> int:
     )
     history_runs = min(max(int(os.environ.get("INPUT_FLAKY_HISTORY_RUNS", "20")), 1), 50)
     artifact_prefix = os.environ.get("INPUT_JUNIT_ARTIFACT_PREFIX", "junit-results")
+    quarantine_lifecycle = _bool_env("INPUT_QUARANTINE_LIFECYCLE", False)
+    quarantine_manifest = os.environ.get(
+        "INPUT_QUARANTINE_MANIFEST",
+        ".github/flaky-quarantine.json",
+    )
+    quarantine_max_days = int(
+        os.environ.get("INPUT_QUARANTINE_MAX_DAYS", "14")
+    )
+    release_clean_shas = int(
+        os.environ.get("INPUT_QUARANTINE_RELEASE_CLEAN_SHAS", "3")
+    )
 
     if not token or not repo:
         print("::error::github-token and repository are required")
@@ -266,10 +287,65 @@ def main() -> int:
     candidates = sum(item.recommendation == "QUARANTINE_CANDIDATE" for item in result.summaries)
     waste_minutes = sum(item.estimated_waste_seconds for item in result.summaries) / 60.0
 
+    active_count = 0
+    expired_count = 0
+    released_count = 0
+    blocked_count = 0
+    active_json = "[]"
+
+    if quarantine_lifecycle:
+        try:
+            entries = load_manifest_from_github(
+                api,
+                repo,
+                str(current_run.get("head_sha") or ""),
+                quarantine_manifest,
+                max_days=quarantine_max_days,
+            )
+            if entries is None:
+                lifecycle_report = (
+                    "## Flaky Quarantine Lifecycle\n\n"
+                    f"No quarantine manifest was found at `{quarantine_manifest}` "
+                    "on the target revision. No test is quarantined.\n"
+                )
+            else:
+                lifecycle = evaluate_lifecycle(
+                    entries,
+                    result.summaries,
+                    result.case_observations,
+                    now=datetime.now(timezone.utc),
+                    release_clean_shas=release_clean_shas,
+                )
+                lifecycle_report = render_lifecycle_report(
+                    lifecycle,
+                    manifest_path=quarantine_manifest,
+                )
+                active_count = len(lifecycle.active)
+                expired_count = len(lifecycle.expired)
+                released_count = len(lifecycle.released)
+                blocked_count = len(lifecycle.blocked)
+                active_json = active_test_ids_json(lifecycle)
+
+            if summary_path:
+                with open(summary_path, "a", encoding="utf-8") as handle:
+                    handle.write(lifecycle_report)
+            else:
+                print(lifecycle_report)
+        except (RuntimeError, ValueError) as exc:
+            print(
+                "::warning::Quarantine Lifecycle failed closed; "
+                f"no quarantine is active: {exc}"
+            )
+
     _write_output("flaky-tests-observed", str(len(result.summaries)))
     _write_output("quarantine-candidates", str(candidates))
     _write_output("junit-artifacts-analyzed", str(result.artifacts_analyzed))
     _write_output("flaky-estimated-waste-minutes", f"{waste_minutes:.2f}")
+    _write_output("active-quarantines", str(active_count))
+    _write_output("expired-quarantines", str(expired_count))
+    _write_output("auto-released-quarantines", str(released_count))
+    _write_output("blocked-quarantines", str(blocked_count))
+    _write_output("active-quarantine-tests-json", active_json)
     return 0
 
 
