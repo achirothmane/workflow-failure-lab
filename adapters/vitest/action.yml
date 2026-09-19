@@ -10,6 +10,10 @@ inputs:
     description: 'Test command. Parsed without a shell; shell operators are not supported.'
     required: false
     default: 'npx vitest run'
+  working-directory:
+    description: 'Repository-relative directory in which to run the test command. Useful for monorepos.'
+    required: false
+    default: '.'
   junit-path:
     description: 'JUnit XML path produced by the adapter.'
     required: false
@@ -40,11 +44,13 @@ runs:
         INPUT_ACTIVE_TESTS_JSON: ${{ inputs.active-tests-json }}
         INPUT_TEST_COMMAND: ${{ inputs.test-command }}
         INPUT_JUNIT_PATH: ${{ inputs.junit-path }}
+        INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
       run: |
         python3 "$GITHUB_ACTION_PATH/../../quarantine_enforcement.py" \
           --framework vitest \
           --active-tests-json "$INPUT_ACTIVE_TESTS_JSON" \
           --junit-path "$INPUT_JUNIT_PATH" \
+          --working-directory "$INPUT_WORKING_DIRECTORY" \
           --command-string "$INPUT_TEST_COMMAND"
 
     - name: Upload JUnit evidence
