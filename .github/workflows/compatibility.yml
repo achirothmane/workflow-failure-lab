@@ -1,0 +1,202 @@
+name: Compatibility Matrix
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  pytest-compat:
+    name: pytest ${{ matrix.major }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - major: "8"
+            spec: ">=8,<9"
+          - major: "9"
+            spec: ">=9,<10"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install product and pytest major
+        run: |
+          python -m pip install -e .
+          python -m pip install "pytest${{ matrix.spec }}"
+          python -m pytest --version
+
+      - id: block
+        name: Non-quarantined failure stays red
+        continue-on-error: true
+        uses: ./adapters/pytest
+        with:
+          active-tests-json: '[]'
+          test-command: 'python -m pytest smoke/adapter-fixtures/pytest/test_flaky.py -q'
+          junit-path: '.compat/pytest-${{ matrix.major }}-discover.xml'
+          artifact-name: 'compat-pytest-${{ matrix.major }}-discover'
+
+      - name: Verify blocking path
+        if: always()
+        shell: bash
+        run: test "${{ steps.block.outcome }}" = "failure"
+
+      - id: test-id
+        name: Extract actual failing testcase ID
+        shell: bash
+        run: |
+          ids="$(python scripts/extract_junit_failures.py .compat/pytest-${{ matrix.major }}-discover.xml --expect-count 1)"
+          echo "json=$ids" >> "$GITHUB_OUTPUT"
+
+      - id: quarantine
+        name: ACTIVE failure is tolerated but still executed
+        uses: ./adapters/pytest
+        with:
+          active-tests-json: ${{ steps.test-id.outputs.json }}
+          test-command: 'python -m pytest smoke/adapter-fixtures/pytest/test_flaky.py -q'
+          junit-path: '.compat/pytest-${{ matrix.major }}-quarantine.xml'
+          artifact-name: 'compat-pytest-${{ matrix.major }}-quarantine'
+
+      - name: Verify quarantine path
+        shell: bash
+        run: |
+          test "${{ steps.quarantine.outputs.quarantine-gate-passed }}" = "true"
+          test "${{ steps.quarantine.outputs.blocking-failures }}" = "0"
+          test "${{ steps.quarantine.outputs.quarantined-failures }}" = "1"
+
+  jest-compat:
+    name: Jest ${{ matrix.major }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        major: ["29", "30"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Jest major and JUnit reporter
+        run: |
+          npm install --prefix tests/adapter-smoke/node --no-save --ignore-scripts --no-audit --no-fund "jest@${{ matrix.major }}" "jest-junit@17"
+          tests/adapter-smoke/node/node_modules/.bin/jest --version
+
+      - id: block
+        name: Non-quarantined failure stays red
+        continue-on-error: true
+        uses: ./adapters/jest
+        with:
+          active-tests-json: '[]'
+          working-directory: 'tests/adapter-smoke/node'
+          test-command: './node_modules/.bin/jest jest/flaky.test.cjs --runInBand --ci'
+          junit-path: '.compat/jest-${{ matrix.major }}-discover.xml'
+          artifact-name: 'compat-jest-${{ matrix.major }}-discover'
+
+      - name: Verify blocking path
+        if: always()
+        shell: bash
+        run: test "${{ steps.block.outcome }}" = "failure"
+
+      - id: test-id
+        name: Extract actual failing testcase ID
+        shell: bash
+        run: |
+          ids="$(python scripts/extract_junit_failures.py .compat/jest-${{ matrix.major }}-discover.xml --expect-count 1)"
+          echo "json=$ids" >> "$GITHUB_OUTPUT"
+
+      - id: quarantine
+        name: ACTIVE failure is tolerated but still executed
+        uses: ./adapters/jest
+        with:
+          active-tests-json: ${{ steps.test-id.outputs.json }}
+          working-directory: 'tests/adapter-smoke/node'
+          test-command: './node_modules/.bin/jest jest/flaky.test.cjs --runInBand --ci'
+          junit-path: '.compat/jest-${{ matrix.major }}-quarantine.xml'
+          artifact-name: 'compat-jest-${{ matrix.major }}-quarantine'
+
+      - name: Verify quarantine path
+        shell: bash
+        run: |
+          test "${{ steps.quarantine.outputs.quarantine-gate-passed }}" = "true"
+          test "${{ steps.quarantine.outputs.blocking-failures }}" = "0"
+          test "${{ steps.quarantine.outputs.quarantined-failures }}" = "1"
+
+  vitest-compat:
+    name: Vitest ${{ matrix.major }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        major: ["4", "5"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Vitest major
+        run: |
+          npm install --prefix tests/adapter-smoke/node --no-save --ignore-scripts --no-audit --no-fund "vitest@${{ matrix.major }}"
+          tests/adapter-smoke/node/node_modules/.bin/vitest --version
+
+      - id: block
+        name: Non-quarantined failure stays red
+        continue-on-error: true
+        uses: ./adapters/vitest
+        with:
+          active-tests-json: '[]'
+          working-directory: 'tests/adapter-smoke/node'
+          test-command: './node_modules/.bin/vitest run vitest/flaky.test.js'
+          junit-path: '.compat/vitest-${{ matrix.major }}-discover.xml'
+          artifact-name: 'compat-vitest-${{ matrix.major }}-discover'
+
+      - name: Verify blocking path
+        if: always()
+        shell: bash
+        run: test "${{ steps.block.outcome }}" = "failure"
+
+      - id: test-id
+        name: Extract actual failing testcase ID
+        shell: bash
+        run: |
+          ids="$(python scripts/extract_junit_failures.py .compat/vitest-${{ matrix.major }}-discover.xml --expect-count 1)"
+          echo "json=$ids" >> "$GITHUB_OUTPUT"
+
+      - id: quarantine
+        name: ACTIVE failure is tolerated but still executed
+        uses: ./adapters/vitest
+        with:
+          active-tests-json: ${{ steps.test-id.outputs.json }}
+          working-directory: 'tests/adapter-smoke/node'
+          test-command: './node_modules/.bin/vitest run vitest/flaky.test.js'
+          junit-path: '.compat/vitest-${{ matrix.major }}-quarantine.xml'
+          artifact-name: 'compat-vitest-${{ matrix.major }}-quarantine'
+
+      - name: Verify quarantine path
+        shell: bash
+        run: |
+          test "${{ steps.quarantine.outputs.quarantine-gate-passed }}" = "true"
+          test "${{ steps.quarantine.outputs.blocking-failures }}" = "0"
+          test "${{ steps.quarantine.outputs.quarantined-failures }}" = "1"
