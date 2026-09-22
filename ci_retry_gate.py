@@ -548,6 +548,107 @@ def rerun_decision(assessments: Iterable[JobAssessment], run_attempt: int, max_a
     return True, "All failed jobs are high-confidence transient failures with confirmed execution provenance and no side-effect signal was found."
 
 
+EVIDENCE_DECISION_SCHEMA = "ci-retry-gate.evidence-decision.v1"
+
+
+def _evidence_contradictions(
+    assessments: Iterable[JobAssessment],
+    run_attempt: int,
+    max_attempts: int,
+) -> list[str]:
+    contradictions: list[str] = []
+    if run_attempt >= max_attempts:
+        contradictions.append(
+            f"retry_limit_reached: run_attempt={run_attempt} max_attempts={max_attempts}"
+        )
+
+    for item in assessments:
+        if item.side_effect_risk:
+            contradictions.append(f"{item.name}: side_effect_risk")
+        if item.category not in TRANSIENT_CATEGORIES and item.category != "UNKNOWN":
+            contradictions.append(f"{item.name}: category={item.category}")
+        if item.provenance_status == PROVENANCE_MISMATCH:
+            contradictions.append(f"{item.name}: provenance_mismatch")
+
+    return contradictions
+
+
+def build_evidence_decision(
+    *,
+    repo: str,
+    run: dict,
+    run_id: int,
+    run_attempt: int,
+    max_attempts: int,
+    assessments: Iterable[JobAssessment],
+    safe: bool,
+    reason: str,
+    rerun_triggered: bool,
+) -> dict:
+    """Return a stable machine-readable authorization result for downstream agents.
+
+    The payload is deliberately scoped to the exact workflow execution state.
+    It does not create a time-based lease: consumers must recompute the decision
+    whenever the run attempt, head SHA, or workflow state changes.
+    """
+    items = list(assessments)
+    contradictions = _evidence_contradictions(items, run_attempt, max_attempts)
+
+    if safe:
+        evidence_status = "SUFFICIENT"
+        confidence = "high"
+    elif contradictions:
+        evidence_status = "CONTRADICTED"
+        confidence = "high"
+    else:
+        evidence_status = "UNKNOWN"
+        confidence = "unknown"
+
+    observed_at = (
+        run.get("updated_at")
+        or run.get("run_started_at")
+        or run.get("created_at")
+        or None
+    )
+
+    return {
+        "schema_version": EVIDENCE_DECISION_SCHEMA,
+        "action": "rerun_ci",
+        "decision": "ALLOW" if safe else "BLOCK",
+        "evidence_status": evidence_status,
+        "confidence": confidence,
+        "observed_at": observed_at,
+        "fresh_until": None,
+        "freshness_basis": (
+            "Scoped to repository/run_id/run_attempt/head_sha; recompute after any "
+            "workflow state, attempt, or head SHA change."
+        ),
+        "scope": {
+            "repository": repo,
+            "run_id": run_id,
+            "run_attempt": run_attempt,
+            "head_sha": str(run.get("head_sha") or ""),
+            "workflow_id": run.get("workflow_id"),
+        },
+        "policy": {"max_attempts": max_attempts},
+        "reasons": [reason],
+        "contradictions": contradictions,
+        "failed_jobs": [
+            {
+                "job_id": item.job_id,
+                "name": item.name,
+                "category": item.category,
+                "confidence": item.confidence,
+                "provenance_status": item.provenance_status,
+                "failure_step_status": item.failure_step_status,
+                "side_effect_risk": item.side_effect_risk,
+            }
+            for item in items
+        ],
+        "rerun_triggered": rerun_triggered,
+    }
+
+
 class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
     """Follow GitHub log redirects without forwarding the bearer token cross-host."""
 
@@ -793,6 +894,18 @@ def main() -> int:
         api.rerun_failed_jobs(repo, run_id)
         rerun_triggered = True
 
+    evidence_decision = build_evidence_decision(
+        repo=repo,
+        run=run,
+        run_id=run_id,
+        run_attempt=run_attempt,
+        max_attempts=max_attempts,
+        assessments=assessments,
+        safe=safe,
+        reason=reason,
+        rerun_triggered=rerun_triggered,
+    )
+
     report = render_report(repo, run_id, run_attempt, assessments, safe, reason, rerun_triggered)
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
@@ -810,6 +923,12 @@ def main() -> int:
             except RuntimeError as exc:
                 print(f"::warning::Could not post PR comment: {exc}")
 
+    _write_output("decision", str(evidence_decision["decision"]))
+    _write_output("evidence-status", str(evidence_decision["evidence_status"]))
+    _write_output(
+        "evidence-json",
+        json.dumps(evidence_decision, separators=(",", ":"), sort_keys=True),
+    )
     _write_output("safe-to-rerun", "true" if safe else "false")
     _write_output("rerun-triggered", "true" if rerun_triggered else "false")
     _write_output("failed-jobs", str(len(assessments)))

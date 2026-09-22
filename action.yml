@@ -118,6 +118,15 @@ inputs:
     default: '3'
 
 outputs:
+  decision:
+    description: 'Machine-readable authorization decision: ALLOW only when rerun evidence is sufficient; otherwise BLOCK.'
+    value: ${{ steps.gate.outputs.decision }}
+  evidence-status:
+    description: 'SUFFICIENT, CONTRADICTED, or UNKNOWN. UNKNOWN remains fail-closed.'
+    value: ${{ steps.gate.outputs.evidence-status }}
+  evidence-json:
+    description: 'Compact JSON evidence contract for downstream agents, policy engines, or audit logs.'
+    value: ${{ steps.gate.outputs.evidence-json }}
   safe-to-rerun:
     description: 'true only when every failed job is a high-confidence transient failure and no side-effect signal is present.'
     value: ${{ steps.gate.outputs.safe-to-rerun }}
