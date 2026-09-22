@@ -122,6 +122,36 @@ That analyzes the failed run without rerunning anything. When you later choose t
 
 > Use `@v1` for the current stable v1 line, or pin an exact `v1.x.y` tag when you need an immutable dependency.
 
+### Machine-readable authorization output
+
+The gate also exposes an evidence contract for agents and policy engines. The existing rerun rules remain unchanged; this output makes the decision explicit and auditable:
+
+```json
+{
+  "action": "rerun_ci",
+  "decision": "ALLOW",
+  "evidence_status": "SUFFICIENT",
+  "confidence": "high",
+  "observed_at": "2026-09-22T20:10:00Z",
+  "fresh_until": null,
+  "scope": {
+    "repository": "owner/repo",
+    "run_id": 123456789,
+    "run_attempt": 1,
+    "head_sha": "abc123"
+  },
+  "contradictions": []
+}
+```
+
+Available outputs:
+
+- `decision`: `ALLOW` or `BLOCK`.
+- `evidence-status`: `SUFFICIENT`, `CONTRADICTED`, or `UNKNOWN`.
+- `evidence-json`: the complete compact JSON contract, scoped to the exact run attempt and head SHA.
+
+`UNKNOWN` never grants rerun authority. Consumers must recompute the decision after the workflow state, run attempt, or head SHA changes.
+
 ## What makes it different from a retry loop?
 
 | Blind retry | CI Retry Gate |
