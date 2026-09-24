@@ -871,7 +871,7 @@ def main() -> int:
 
     max_attempts = int(os.environ.get("INPUT_MAX_ATTEMPTS", "2"))
     auto_rerun = _bool_env("INPUT_AUTO_RERUN", False)
-    comment_on_pr = _bool_env("INPUT_COMMENT_ON_PR", True)
+    comment_on_pr = _bool_env("INPUT_COMMENT_ON_PR", False)
 
     api = GitHubAPI(token, os.environ.get("GITHUB_API_URL", "https://api.github.com"))
     run = api.get_run(repo, run_id)
