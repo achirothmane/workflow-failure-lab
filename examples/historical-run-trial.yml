@@ -7,6 +7,11 @@ on:
         description: 'Failed GitHub Actions workflow run ID from this repository'
         required: true
         type: string
+      run-attempt:
+        description: 'Optional attempt number when the run was rerun (for example: 5)'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   actions: read
@@ -22,6 +27,7 @@ jobs:
         with:
           github-token: ${{ github.token }}
           run-id: ${{ inputs.run-id }}
+          run-attempt: ${{ inputs.run-attempt }}
           auto-rerun: 'false'
           selective-rerun: 'false'
           comment-on-pr: 'false'
