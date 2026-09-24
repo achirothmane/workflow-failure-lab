@@ -1,6 +1,6 @@
 name: 'CI Retry Gate'
 description: 'Classify failed GitHub Actions jobs and safely gate reruns with provenance, side-effect checks, and retry limits.'
-author: 'othy19904-eng'
+author: 'achirothmane'
 
 inputs:
   github-token:
@@ -29,7 +29,7 @@ inputs:
   comment-on-pr:
     description: 'Post the gate report to the pull request when one is associated with the failed run.'
     required: false
-    default: 'true'
+    default: 'false'
   history-runs:
     description: 'Number of previous completed runs of the same workflow to inspect for recurring failures, fingerprints, rerun recovery, policy learning, shadow testing, and CI waste. Capped at 50.'
     required: false

@@ -1,7 +1,7 @@
 # CI Retry Gate
 
-[![CI](https://github.com/othy19904-eng/workflow-failure-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/othy19904-eng/workflow-failure-lab/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/github/v/release/othy19904-eng/workflow-failure-lab)](https://github.com/othy19904-eng/workflow-failure-lab/releases/latest)
+[![CI](https://github.com/achirothmane/workflow-failure-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/achirothmane/workflow-failure-lab/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/achirothmane/workflow-failure-lab)](https://github.com/achirothmane/workflow-failure-lab/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ## Stop wasting CI runs on failures that should not be retried.
@@ -31,7 +31,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - id: doctor
-        uses: othy19904-eng/workflow-failure-lab/doctor@v1
+        uses: achirothmane/workflow-failure-lab/doctor@v1
         with:
           github-token: ${{ github.token }}
           frameworks: 'auto'
@@ -81,7 +81,7 @@ The stable `@v1` line is continuously exercised from a repository that does **no
 - managed Issue create → update without duplication → healthy auto-close;
 - read-only `doctor@v1` onboarding.
 
-External consumer: [ci-retry-gate-consumer-e2e](https://github.com/othy19904-eng/ci-retry-gate-consumer-e2e)
+External consumer: [ci-retry-gate-consumer-e2e](https://github.com/achirothmane/ci-retry-gate-consumer-e2e)
 
 ### Safe rollout path
 
@@ -111,7 +111,7 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'failure' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: othy19904-eng/workflow-failure-lab@v1
+      - uses: achirothmane/workflow-failure-lab@v1
         with:
           github-token: ${{ github.token }}
           auto-rerun: 'false'
@@ -229,7 +229,7 @@ Other frameworks are supported when they emit standard JUnit XML.
 ### 2. Enable history analysis in CI Retry Gate
 
 ```yaml
-- uses: othy19904-eng/workflow-failure-lab@v1
+- uses: achirothmane/workflow-failure-lab@v1
   with:
     github-token: ${{ github.token }}
     flaky-test-intelligence: 'true'
@@ -253,7 +253,7 @@ Detection and quarantine are deliberately separate. A test is never quarantined 
 Enable lifecycle evaluation:
 
 ```yaml
-- uses: othy19904-eng/workflow-failure-lab@v1
+- uses: achirothmane/workflow-failure-lab@v1
   with:
     github-token: ${{ github.token }}
     flaky-test-intelligence: 'true'
@@ -304,13 +304,13 @@ A non-quarantined failure always keeps CI red. A missing or malformed JUnit repo
 
 ```yaml
 - id: flaky-policy
-  uses: othy19904-eng/workflow-failure-lab@v1
+  uses: achirothmane/workflow-failure-lab@v1
   with:
     github-token: ${{ github.token }}
     flaky-test-intelligence: 'true'
     quarantine-lifecycle: 'true'
 
-- uses: othy19904-eng/workflow-failure-lab/adapters/pytest@v1
+- uses: achirothmane/workflow-failure-lab/adapters/pytest@v1
   with:
     active-tests-json: ${{ steps.flaky-policy.outputs.active-quarantine-tests-json }}
     test-command: 'python -m pytest -q'
@@ -323,7 +323,7 @@ The pytest adapter injects `--junitxml` unless the command already specifies a J
 Install `jest-junit` in the project, then:
 
 ```yaml
-- uses: othy19904-eng/workflow-failure-lab/adapters/jest@v1
+- uses: achirothmane/workflow-failure-lab/adapters/jest@v1
   with:
     active-tests-json: ${{ steps.flaky-policy.outputs.active-quarantine-tests-json }}
     test-command: 'npx jest --ci'
@@ -334,7 +334,7 @@ The adapter adds the `jest-junit` reporter and points it at the managed JUnit pa
 #### Vitest
 
 ```yaml
-- uses: othy19904-eng/workflow-failure-lab/adapters/vitest@v1
+- uses: achirothmane/workflow-failure-lab/adapters/vitest@v1
   with:
     active-tests-json: ${{ steps.flaky-policy.outputs.active-quarantine-tests-json }}
     test-command: 'npx vitest run'
@@ -354,7 +354,7 @@ The adapters never use shell evaluation for `test-command`; it is tokenized and 
 For monorepos or packages that keep their test configuration below the repository root, set `working-directory` on any adapter. The test command runs from that directory while the managed JUnit path remains anchored to the GitHub workspace, so history collection still finds the report consistently.
 
 ```yaml
-- uses: othy19904-eng/workflow-failure-lab/adapters/vitest@v1
+- uses: achirothmane/workflow-failure-lab/adapters/vitest@v1
   with:
     active-tests-json: ${{ steps.flaky-policy.outputs.active-quarantine-tests-json }}
     working-directory: 'packages/web'
@@ -386,10 +386,10 @@ The matrix currently uses Python 3.12 for the enforcement runtime and Node.js 22
 
 The repository also runs a packaging-level consumer workflow that invokes the stable release line through remote GitHub Action references:
 
-- `othy19904-eng/workflow-failure-lab@v1`
-- `othy19904-eng/workflow-failure-lab/adapters/pytest@v1`
-- `othy19904-eng/workflow-failure-lab/adapters/jest@v1`
-- `othy19904-eng/workflow-failure-lab/adapters/vitest@v1`
+- `achirothmane/workflow-failure-lab@v1`
+- `achirothmane/workflow-failure-lab/adapters/pytest@v1`
+- `achirothmane/workflow-failure-lab/adapters/jest@v1`
+- `achirothmane/workflow-failure-lab/adapters/vitest@v1`
 
 This is intentionally different from the local smoke tests that use `./adapters/...`. The remote gate verifies that the movable `v1` branch contains the packaged files consumers actually receive, that the root action can run with read-only Actions/content permissions when reruns are disabled, and that each adapter still preserves the red/green quarantine boundary.
 
@@ -433,7 +433,7 @@ permissions:
   pull-requests: write
 
 steps:
-  - uses: othy19904-eng/workflow-failure-lab@v1
+  - uses: achirothmane/workflow-failure-lab@v1
     with:
       github-token: ${{ github.token }}
       flaky-test-intelligence: 'true'
@@ -450,7 +450,7 @@ The triage UI does not grant authority. A `QUARANTINE_CANDIDATE` still requires 
 Ownership routing is opt-in and remains read-only:
 
 ```yaml
-- uses: othy19904-eng/workflow-failure-lab@v1
+- uses: achirothmane/workflow-failure-lab@v1
   with:
     github-token: ${{ github.token }}
     flaky-test-intelligence: 'true'
@@ -503,7 +503,7 @@ permissions:
   issues: write
 
 steps:
-  - uses: othy19904-eng/workflow-failure-lab@v1
+  - uses: achirothmane/workflow-failure-lab@v1
     with:
       github-token: ${{ github.token }}
       flaky-test-intelligence: 'true'
@@ -667,7 +667,7 @@ Benchmark Mode samples completed workflow runs, reads first-attempt failed jobs,
 Example:
 
 ```yaml
-- uses: othy19904-eng/workflow-failure-lab@v1
+- uses: achirothmane/workflow-failure-lab@v1
   with:
     github-token: ${{ github.token }}
     benchmark-mode: 'true'
@@ -887,7 +887,7 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'failure' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: othy19904-eng/workflow-failure-lab@v1
+      - uses: achirothmane/workflow-failure-lab@v1
         with:
           github-token: ${{ github.token }}
           auto-rerun: 'false'
@@ -908,7 +908,7 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'failure' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: othy19904-eng/workflow-failure-lab@v1
+      - uses: achirothmane/workflow-failure-lab@v1
         with:
           github-token: ${{ github.token }}
           auto-rerun: 'false'
@@ -930,7 +930,7 @@ jobs:
 | `auto-rerun` | `false` | Legacy all-or-nothing rerun mode. |
 | `selective-rerun` | `false` | Reruns only individually safe high-confidence transient failed jobs. |
 | `max-attempts` | `2` | Prevents rerun loops. |
-| `comment-on-pr` | `true` | Posts the current-run Markdown report to the associated PR when permitted. |
+| `comment-on-pr` | `false` | Posts the current-run Markdown report to the associated PR only when explicitly enabled and permitted. |
 | `history-runs` | `10` | Previous completed runs of the same workflow to inspect; capped at 50. |
 | `policy-shadow-mode` | `false` | Runs the read-only same-workflow retrospective backtest. |
 | `benchmark-mode` | `false` | Runs the read-only cross-repository backtest. |
