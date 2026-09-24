@@ -120,6 +120,19 @@ jobs:
 
 That analyzes the failed run without rerunning anything. When you later choose to enable reruns, grant `actions: write` and opt into exactly one rerun mode.
 
+### Try it on a failure that already happened
+
+If you want proof before wiring CI Retry Gate into every failed run, start with one historical failure.
+
+1. Copy [`examples/historical-run-trial.yml`](examples/historical-run-trial.yml) into your repository as `.github/workflows/historical-run-trial.yml`.
+2. Open **Actions → Historical CI Failure Trial → Run workflow**.
+3. Paste the numeric run ID from any failed GitHub Actions run in the same repository.
+4. Open the completed trial and read the job summary.
+
+The trial is intentionally read-only: it grants only `actions: read` and `contents: read`, disables both rerun modes, and keeps PR comments off. The summary shows the authorization decision, evidence status, whether the failure qualified for rerun, failed jobs assessed, observed failed-job runtime, and a next action.
+
+A useful first activation is simple: **within 15 minutes, the user can point the gate at a real past failure and decide whether the evidence changed or shortened the investigation.**
+
 > Use `@v1` for the current stable v1 line, or pin an exact `v1.x.y` tag when you need an immutable dependency.
 
 ### Machine-readable authorization output
