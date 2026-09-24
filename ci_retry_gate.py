@@ -152,7 +152,7 @@ _HIGH_SPECIFICITY_TRANSIENT_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
             r"\bnpm (?:err!|error) code (?:econnreset|etimedout|eai_again)\b",
             r"\bread tcp\b.*\bread:\s*connection reset by peer\b",
             r"\bdial tcp\b.*(?:i/o timeout|connect:\s*(?:connection timed out|network is unreachable|connection refused))",
-            r"\bcurl:\s*\((?:6|7|28|35|56)\)\b",
+            r"^curl:\s*\((?:6|7|28|35|56)\)(?:\s|$)",
             r"\bfatal: unable to access\b.*(?:could not resolve host|recv failure: connection reset by peer|failed to connect|operation timed out)",
             r"\b(?:error|fatal):\s*connection reset by peer\b",
             r"\bconnect etimedout\b",
