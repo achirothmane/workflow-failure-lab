@@ -1,0 +1,53 @@
+name: Historical CI Failure Trial
+
+on:
+  workflow_dispatch:
+    inputs:
+      run-id:
+        description: 'Failed GitHub Actions workflow run ID from this repository'
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - id: gate
+        name: Analyze historical failed run
+        uses: achirothmane/workflow-failure-lab@v1
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.run-id }}
+          auto-rerun: 'false'
+          selective-rerun: 'false'
+          comment-on-pr: 'false'
+          history-runs: '10'
+
+      - name: Activation result
+        shell: bash
+        env:
+          DECISION: ${{ steps.gate.outputs.decision }}
+          EVIDENCE_STATUS: ${{ steps.gate.outputs.evidence-status }}
+          SAFE_TO_RERUN: ${{ steps.gate.outputs.safe-to-rerun }}
+          FAILED_JOBS: ${{ steps.gate.outputs.failed-jobs }}
+          FAILED_MINUTES: ${{ steps.gate.outputs.wasted-minutes }}
+        run: |
+          {
+            echo "## Historical CI Failure Trial"
+            echo
+            echo "- Decision: **${DECISION}**"
+            echo "- Evidence status: **${EVIDENCE_STATUS}**"
+            echo "- Safe to rerun: **${SAFE_TO_RERUN}**"
+            echo "- Failed jobs assessed: **${FAILED_JOBS}**"
+            echo "- Failed-job runtime observed: **${FAILED_MINUTES} min**"
+            echo
+            if [[ "${DECISION}" == "ALLOW" ]]; then
+              echo "**Next action:** review the evidence above. If it matches your intent, you may enable a rerun mode later; this trial does not rerun anything."
+            else
+              echo "**Next action:** keep automatic reruns off and inspect the blocking evidence above."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
