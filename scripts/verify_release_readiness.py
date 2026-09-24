@@ -41,7 +41,7 @@ def main() -> int:
     release_doc = text("docs/release-readiness.md")
 
     require("# CI Retry Gate" in readme, "README product heading is missing")
-    require("othy19904-eng/workflow-failure-lab@v1" in readme, "README v1 usage example is missing")
+    require("achirothmane/workflow-failure-lab@v1" in readme, "README v1 usage example is missing")
     require("permissions:" in readme and "actions: read" in readme, "README permission guidance is missing")
 
     require("name: 'CI Retry Gate'" in action, "action.yml product name mismatch")
@@ -54,6 +54,7 @@ def main() -> int:
     require("icon: 'shield'" in action, "action branding icon is missing")
     require(input_default(action, "auto-rerun") == "false", "auto-rerun must default to false")
     require(input_default(action, "selective-rerun") == "false", "selective-rerun must default to false")
+    require(input_default(action, "comment-on-pr") == "false", "comment-on-pr must default to false")
 
     require("name: 'CI Retry Gate Setup Doctor'" in doctor_action, "doctor/action.yml product name mismatch")
     require("using: 'composite'" in doctor_action, "Setup Doctor must remain a composite action")
@@ -102,6 +103,7 @@ def main() -> int:
     print(f"- Marketplace description length: {len(action_description)} chars")
     print("- MIT license present")
     print("- fail-closed rerun defaults preserved")
+    print("- PR comments remain explicit opt-in")
     print("- README quick start and permissions present")
     print("- Setup Doctor composite action and fail-closed default present")
     print("- Causal Dominance remains research-only")
