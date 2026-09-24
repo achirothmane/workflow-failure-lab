@@ -4,12 +4,20 @@ All notable changes to CI Retry Gate are documented here.
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-09-24
+
 ### Added
 
 - Setup Doctor composite action at `/doctor@v1` with READY/WARN/BLOCKED onboarding diagnostics.
 - Framework detection for pytest, Jest, and Vitest, including fail-closed Jest `jest-junit` validation.
 - Read-only checks for JUnit artifact wiring, GitHub API read access, ownership routing, quarantine manifests, and recommended feature permissions.
 - Monorepo-safe `working-directory`, GitHub step-summary guidance, and a generated production configuration.
+
+### Changed
+
+- PR comments are now explicit opt-in: `comment-on-pr` defaults to `false` in both the Action contract and runtime fallback.
+- README installation examples and badges now use the current `achirothmane` repository owner.
+- Release-readiness checks now enforce the read-only comment default and current repository identity.
 
 ## [1.0.1] - 2026-09-19
 
