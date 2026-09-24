@@ -72,6 +72,15 @@ def test_single_npm_econnreset_is_high_confidence():
     assert result.confidence == "high"
 
 
+def test_single_curl_dns_error_is_high_confidence():
+    result = classify_log(
+        "curl: (6) Could not resolve host: dependency.example.invalid\n"
+        "Process completed with exit code 6"
+    )
+    assert result.category == "DEPENDENCY_NETWORK"
+    assert result.confidence == "high"
+
+
 def test_documentation_connect_timeout_fails_closed_as_unknown():
     result = classify_log(
         "2026-08-24T16:58:07.7655465Z             data before giving up, as a float, or a :ref:\`(connect timeout,\n"
