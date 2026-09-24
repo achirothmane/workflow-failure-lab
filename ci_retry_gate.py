@@ -765,8 +765,18 @@ class GitHubAPI:
     def get_run(self, repo: str, run_id: int) -> dict:
         return self.request("GET", f"/repos/{repo}/actions/runs/{run_id}")
 
+    def get_run_attempt(self, repo: str, run_id: int, run_attempt: int) -> dict:
+        return self.request("GET", f"/repos/{repo}/actions/runs/{run_id}/attempts/{run_attempt}")
+
     def get_jobs(self, repo: str, run_id: int) -> list[dict]:
         data = self.request("GET", f"/repos/{repo}/actions/runs/{run_id}/jobs?per_page=100")
+        return list(data.get("jobs") or [])
+
+    def get_jobs_attempt(self, repo: str, run_id: int, run_attempt: int) -> list[dict]:
+        data = self.request(
+            "GET",
+            f"/repos/{repo}/actions/runs/{run_id}/attempts/{run_attempt}/jobs?per_page=100",
+        )
         return list(data.get("jobs") or [])
 
     def get_job_logs(self, repo: str, job_id: int) -> str:
@@ -872,11 +882,30 @@ def main() -> int:
     max_attempts = int(os.environ.get("INPUT_MAX_ATTEMPTS", "2"))
     auto_rerun = _bool_env("INPUT_AUTO_RERUN", False)
     comment_on_pr = _bool_env("INPUT_COMMENT_ON_PR", False)
+    run_attempt_raw = (os.environ.get("INPUT_RUN_ATTEMPT") or "").strip()
+    selected_run_attempt: int | None = None
+    if run_attempt_raw:
+        try:
+            selected_run_attempt = int(run_attempt_raw)
+        except ValueError:
+            print("::error::run-attempt must be a positive integer")
+            return 2
+        if selected_run_attempt < 1:
+            print("::error::run-attempt must be a positive integer")
+            return 2
+        if auto_rerun:
+            print("::error::run-attempt is read-only and cannot be combined with auto-rerun")
+            return 2
 
     api = GitHubAPI(token, os.environ.get("GITHUB_API_URL", "https://api.github.com"))
-    run = api.get_run(repo, run_id)
-    run_attempt = int(run.get("run_attempt") or 1)
-    jobs = api.get_jobs(repo, run_id)
+    if selected_run_attempt is None:
+        run = api.get_run(repo, run_id)
+        run_attempt = int(run.get("run_attempt") or 1)
+        jobs = api.get_jobs(repo, run_id)
+    else:
+        run = api.get_run_attempt(repo, run_id, selected_run_attempt)
+        run_attempt = selected_run_attempt
+        jobs = api.get_jobs_attempt(repo, run_id, selected_run_attempt)
     failed_jobs = [job for job in jobs if str(job.get("conclusion") or "").lower() in FAILURE_CONCLUSIONS]
 
     assessments: list[JobAssessment] = []

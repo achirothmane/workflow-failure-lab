@@ -10,6 +10,10 @@ inputs:
     description: 'Workflow run ID to inspect. Defaults to github.event.workflow_run.id.'
     required: false
     default: ''
+  run-attempt:
+    description: 'Optional specific historical attempt number to inspect read-only. Cannot be combined with rerun modes.'
+    required: false
+    default: ''
   repository:
     description: 'Repository in owner/name form. Defaults to github.repository.'
     required: false
@@ -572,6 +576,13 @@ runs:
         echo "::error::auto-rerun and selective-rerun cannot both be true"
         exit 2
 
+    - name: Validate historical attempt mode
+      if: ${{ inputs.run-attempt != '' && (inputs.auto-rerun == 'true' || inputs.selective-rerun == 'true') }}
+      shell: bash
+      run: |
+        echo "::error::run-attempt is read-only and cannot be combined with rerun modes"
+        exit 2
+
     - name: Validate quarantine mode
       if: ${{ inputs.quarantine-lifecycle == 'true' && inputs.flaky-test-intelligence != 'true' }}
       shell: bash
@@ -606,6 +617,7 @@ runs:
       env:
         INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
         INPUT_RUN_ID: ${{ inputs.run-id }}
+        INPUT_RUN_ATTEMPT: ${{ inputs.run-attempt }}
         INPUT_REPOSITORY: ${{ inputs.repository }}
         INPUT_AUTO_RERUN: ${{ inputs.auto-rerun }}
         INPUT_MAX_ATTEMPTS: ${{ inputs.max-attempts }}
@@ -625,6 +637,7 @@ runs:
 
     - id: history
       name: Analyze CI history, fingerprints, policies, and waste
+      if: ${{ inputs.run-attempt == '' }}
       shell: bash
       env:
         INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}

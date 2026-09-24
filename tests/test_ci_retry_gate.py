@@ -243,6 +243,29 @@ def test_github_api_does_not_retry_post_on_incomplete_response(monkeypatch):
     assert api.opener.calls == 1
 
 
+def test_github_api_specific_attempt_endpoints(monkeypatch):
+    api = GitHubAPI("token")
+    seen = []
+
+    def fake_request(method, path, payload=None, accept="application/vnd.github+json"):
+        seen.append((method, path))
+        if path.endswith("/jobs?per_page=100"):
+            return {"jobs": [{"id": 42}]}
+        return {"run_attempt": 5}
+
+    monkeypatch.setattr(api, "request", fake_request)
+
+    run = api.get_run_attempt("acme/repo", 123, 5)
+    jobs = api.get_jobs_attempt("acme/repo", 123, 5)
+
+    assert run["run_attempt"] == 5
+    assert jobs == [{"id": 42}]
+    assert seen == [
+        ("GET", "/repos/acme/repo/actions/runs/123/attempts/5"),
+        ("GET", "/repos/acme/repo/actions/runs/123/attempts/5/jobs?per_page=100"),
+    ]
+
+
 def test_requests_httpbin_handshake_timeout_is_not_auto_rerun_transient():
     result = classify_log(
         "2026-08-24T16:58:07.7655465Z data before giving up, as a float, or a :ref:\`(connect timeout,\n"
