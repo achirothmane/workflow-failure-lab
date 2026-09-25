@@ -48,7 +48,9 @@ jobs:
           INPUT_MAX_ATTEMPTS: '2'
           CI_RETRY_GATE_REPORT_FILE: public-run-report.md
           CI_RETRY_GATE_LOG_DIAGNOSTICS: 'true'
-        run: python3 ci_retry_gate.py
+        run: |
+          set -o pipefail
+          python3 ci_retry_gate.py 2>&1 | tee public-run-error.log
 
       - name: Build response
         if: always()
@@ -69,8 +71,15 @@ jobs:
             {
               echo "## CI Retry Gate — zero-install proof"
               echo
-              echo "I could not analyze this run. Verify that the repository and Actions run are public and that the run/attempt IDs are correct."
+              echo "The analysis failed before a report could be produced."
               echo
+              if [[ -s public-run-error.log ]]; then
+                echo "Diagnostic:"
+                echo '~~~text'
+                tail -n 12 public-run-error.log
+                echo '~~~'
+                echo
+              fi
               echo "No target repository was changed, no target token was requested, and no rerun was triggered."
             } > public-run-comment.md
           else
