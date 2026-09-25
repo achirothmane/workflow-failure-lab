@@ -642,65 +642,83 @@ def collect_historical_reliability(
     current_run: dict,
     current_failed_jobs: Iterable[dict],
     *,
-    max_pages: int = 10,
+    max_pages: int = 4,
     per_page: int = 100,
+    max_candidate_runs: int = 12,
 ) -> dict:
-    """Collect verified recoveries strictly before the current failure cutoff.
+    """Collect pre-failure recovery history with a bounded API evidence budget.
 
-    Pagination is cutoff-aware: pages are scanned newest-to-oldest until the
-    evidence budget is exhausted or GitHub returns a short page. History remains
-    supporting evidence and never authorizes a rerun by itself.
+    Stage 1 is cheap workflow-list discovery. Stage 2 spends attempt/job calls
+    only on list records that already report multiple attempts. Rate limiting is
+    evidence unavailability, never a reason to authorize execution.
     """
     cutoff = str(current_run.get("created_at") or "")
     workflow_id = int(current_run.get("workflow_id") or 0)
     if not cutoff or not workflow_id:
         return historical_reliability_record(current_failed_jobs, [], cutoff)
 
-    prior_runs: list[dict] = []
+    candidates: list[dict] = []
     pages_examined = 0
-    for page in range(1, max_pages + 1):
-        batch = api.get_workflow_runs(repo, workflow_id, per_page=per_page, page=page)
-        pages_examined += 1
-        if not batch:
-            break
-        prior_runs.extend(
-            run for run in batch
-            if str(run.get("created_at") or "") < cutoff
-            and int(run.get("id") or 0) != int(current_run.get("id") or 0)
-        )
-        if len(batch) < per_page:
-            break
+    rate_limited = False
+    try:
+        for page in range(1, max_pages + 1):
+            batch = api.get_workflow_runs(repo, workflow_id, per_page=per_page, page=page)
+            pages_examined += 1
+            if not batch:
+                break
+            for run in batch:
+                if (
+                    str(run.get("created_at") or "") < cutoff
+                    and int(run.get("id") or 0) != int(current_run.get("id") or 0)
+                    and int(run.get("run_attempt") or 1) > 1
+                ):
+                    candidates.append(run)
+                    if len(candidates) >= max_candidate_runs:
+                        break
+            if len(candidates) >= max_candidate_runs or len(batch) < per_page:
+                break
+    except RuntimeError as exc:
+        if "rate limit exceeded" in str(exc).lower():
+            rate_limited = True
+        else:
+            raise
 
     incidents: list[dict] = []
-    rerun_runs_examined = 0
-    for prior in prior_runs:
+    inspected = 0
+    for prior in candidates[:max_candidate_runs]:
         prior_id = int(prior.get("id") or 0)
-        canonical = api.get_run(repo, prior_id)
-        final_attempt = int(canonical.get("run_attempt") or 1)
-        if final_attempt <= 1:
-            continue
-        rerun_runs_examined += 1
-        first_jobs = api.get_jobs_attempt(repo, prior_id, 1)
+        final_attempt = int(prior.get("run_attempt") or 1)
+        try:
+            first_jobs = api.get_jobs_attempt(repo, prior_id, 1)
+            later_jobs = api.get_jobs_attempt(repo, prior_id, final_attempt)
+        except RuntimeError as exc:
+            if "rate limit exceeded" in str(exc).lower():
+                rate_limited = True
+                break
+            raise
+        inspected += 1
         failed = [
             job for job in first_jobs
             if str(job.get("conclusion") or "").lower() in FAILURE_CONCLUSIONS
         ]
-        if not failed:
-            continue
-        later_jobs = api.get_jobs_attempt(repo, prior_id, final_attempt)
-        incidents.append({
-            "run_id": prior_id,
-            "observed_at": str(prior.get("created_at") or ""),
-            "failed_jobs": failed,
-            "later_jobs": later_jobs,
-        })
+        if failed:
+            incidents.append({
+                "run_id": prior_id,
+                "observed_at": str(prior.get("created_at") or ""),
+                "failed_jobs": failed,
+                "later_jobs": later_jobs,
+            })
 
     record = historical_reliability_record(current_failed_jobs, incidents, cutoff)
+    if rate_limited and not record["verified_prior_recoveries"]:
+        record["status"] = "EVIDENCE_RATE_LIMITED"
     record["workflow_id"] = workflow_id
     record["pages_examined"] = pages_examined
-    record["prior_runs_examined"] = len(prior_runs)
-    record["rerun_runs_examined"] = rerun_runs_examined
-    record["evidence_budget_exhausted"] = pages_examined >= max_pages
+    record["candidate_runs"] = len(candidates)
+    record["candidate_runs_inspected"] = inspected
+    record["evidence_budget_exhausted"] = (
+        rate_limited or pages_examined >= max_pages or len(candidates) >= max_candidate_runs
+    )
     return record
 
 
