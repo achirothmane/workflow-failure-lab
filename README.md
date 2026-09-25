@@ -8,9 +8,21 @@
 
 **CI Retry Gate tells GitHub Actions when a failed job is safe to retry, detects evidence-backed flaky tests, routes them to the right owner, and tracks the investigation until the test is healthy again.**
 
-It is designed to start **read-only**. Automatic reruns, PR comments, managed Issues, and quarantine enforcement stay off until you explicitly enable the permissions and behavior you want.
+It is designed to prove value **before installation**. For a public repository, the first trial can analyze an existing failed GitHub Actions run without adding a workflow, changing the target repository, or granting CI Retry Gate any target-repository permission.
 
-### Try it on your repository first — no write permissions
+### Try a public failure first — zero install
+
+Open the [Public CI run analysis](https://github.com/achirothmane/workflow-failure-lab/issues/new?template=public-run-analysis.yml) form and provide:
+
+- the public repository in `owner/repo` form;
+- the failed GitHub Actions run ID;
+- optionally, the exact historical run attempt.
+
+The analysis runs from the CI Retry Gate repository against GitHub's public Actions read endpoints. It posts the decision and evidence back to the request issue. **Nothing is installed in the target repository, and no target-repository token is requested.**
+
+Use this proof surface first to answer one question: **does the evidence improve the rerun/investigate decision?** Only after that should installation be considered.
+
+### After proof: run the Setup Doctor — no write permissions
 
 Run the Setup Doctor before changing your CI behavior:
 
@@ -85,11 +97,12 @@ External consumer: [ci-retry-gate-consumer-e2e](https://github.com/achirothmane/
 
 ### Safe rollout path
 
-1. **Run the Doctor** with only `contents: read` and `actions: read`.
-2. Fix any **BLOCKED** prerequisite and review WARN findings.
-3. Add CI Retry Gate in report-only mode with automatic reruns still off.
-4. Observe real decisions and flaky-test evidence.
-5. Enable only the write feature you actually want: reruns, PR triage, managed Issues, or quarantine lifecycle.
+1. **Zero-install proof:** analyze one public historical failure without changing the target repository.
+2. Decide whether the evidence changed or shortened the rerun/investigate decision.
+3. **Only if useful**, run the Doctor with `contents: read` and `actions: read`.
+4. Add CI Retry Gate in report-only mode with automatic reruns still off.
+5. Observe repeated real decisions and flaky-test evidence.
+6. Enable only the write feature you actually want: reruns, PR triage, managed Issues, or quarantine lifecycle.
 
 ### 60-second report-only gate
 
@@ -120,9 +133,9 @@ jobs:
 
 That analyzes the failed run without rerunning anything. When you later choose to enable reruns, grant `actions: write` and opt into exactly one rerun mode.
 
-### Try it on a failure that already happened
+### Installed historical trial
 
-If you want proof before wiring CI Retry Gate into every failed run, start with one historical failure.
+If the zero-install proof was useful and you want to reproduce the analysis from inside your own repository, start with one historical failure.
 
 1. Copy [`examples/historical-run-trial.yml`](examples/historical-run-trial.yml) into your repository as `.github/workflows/historical-run-trial.yml`.
 2. Open **Actions → Historical CI Failure Trial → Run workflow**.
