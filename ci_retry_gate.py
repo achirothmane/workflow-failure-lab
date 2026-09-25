@@ -642,32 +642,39 @@ def collect_historical_reliability(
     current_run: dict,
     current_failed_jobs: Iterable[dict],
     *,
-    max_prior_runs: int = 30,
+    max_pages: int = 10,
+    per_page: int = 100,
 ) -> dict:
-    """Collect verified pre-failure recoveries from the same workflow.
+    """Collect verified recoveries strictly before the current failure cutoff.
 
-    The collector uses only runs created before the current run. A prior incident
-    counts only when attempt 1 contains a matching failed job and a later attempt
-    of that same run contains the same job identity succeeding.
+    Pagination is cutoff-aware: pages are scanned newest-to-oldest until the
+    evidence budget is exhausted or GitHub returns a short page. History remains
+    supporting evidence and never authorizes a rerun by itself.
     """
     cutoff = str(current_run.get("created_at") or "")
     workflow_id = int(current_run.get("workflow_id") or 0)
     if not cutoff or not workflow_id:
         return historical_reliability_record(current_failed_jobs, [], cutoff)
 
-    incidents: list[dict] = []
-    prior_runs = api.get_workflow_runs(repo, workflow_id)
-    eligible = [
-        run for run in prior_runs
-        if str(run.get("created_at") or "") < cutoff
-        and int(run.get("id") or 0) != int(current_run.get("id") or 0)
-    ][:max_prior_runs]
+    prior_runs: list[dict] = []
+    pages_examined = 0
+    for page in range(1, max_pages + 1):
+        batch = api.get_workflow_runs(repo, workflow_id, per_page=per_page, page=page)
+        pages_examined += 1
+        if not batch:
+            break
+        prior_runs.extend(
+            run for run in batch
+            if str(run.get("created_at") or "") < cutoff
+            and int(run.get("id") or 0) != int(current_run.get("id") or 0)
+        )
+        if len(batch) < per_page:
+            break
 
+    incidents: list[dict] = []
     rerun_runs_examined = 0
-    for prior in eligible:
+    for prior in prior_runs:
         prior_id = int(prior.get("id") or 0)
-        # List endpoints may expose stale/default attempt metadata. Fetch the
-        # canonical run before deciding whether historical attempts exist.
         canonical = api.get_run(repo, prior_id)
         final_attempt = int(canonical.get("run_attempt") or 1)
         if final_attempt <= 1:
@@ -690,9 +697,12 @@ def collect_historical_reliability(
 
     record = historical_reliability_record(current_failed_jobs, incidents, cutoff)
     record["workflow_id"] = workflow_id
-    record["prior_runs_examined"] = len(eligible)
+    record["pages_examined"] = pages_examined
+    record["prior_runs_examined"] = len(prior_runs)
     record["rerun_runs_examined"] = rerun_runs_examined
+    record["evidence_budget_exhausted"] = pages_examined >= max_pages
     return record
+
 
 def evidence_assessment(assessments: Iterable[JobAssessment]) -> tuple[bool, str]:
     """Assess whether the observed failure evidence supports a safe retry.
@@ -968,10 +978,10 @@ class GitHubAPI:
         data = self.request("GET", f"/repos/{repo}/actions/runs/{run_id}/jobs?per_page=100")
         return list(data.get("jobs") or [])
 
-    def get_workflow_runs(self, repo: str, workflow_id: int, per_page: int = 100) -> list[dict]:
+    def get_workflow_runs(self, repo: str, workflow_id: int, per_page: int = 100, page: int = 1) -> list[dict]:
         data = self.request(
             "GET",
-            f"/repos/{repo}/actions/workflows/{workflow_id}/runs?per_page={per_page}",
+            f"/repos/{repo}/actions/workflows/{workflow_id}/runs?per_page={per_page}&page={page}",
         )
         return list(data.get("workflow_runs") or [])
 
