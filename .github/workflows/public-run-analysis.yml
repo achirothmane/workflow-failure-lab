@@ -3,6 +3,8 @@ name: Public Run Analysis
 on:
   issues:
     types: [opened, edited, reopened]
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
@@ -10,7 +12,12 @@ permissions:
 
 jobs:
   analyze:
-    if: startsWith(github.event.issue.title, '[Public Run Analysis]')
+    if: >-
+      startsWith(github.event.issue.title, '[Public Run Analysis]') &&
+      (github.event_name == 'issues' ||
+       (github.event_name == 'issue_comment' &&
+        github.event.comment.user.login == github.repository_owner &&
+        github.event.comment.body == 'rerun'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
