@@ -122,6 +122,11 @@ class RecoveryAwareEvidenceTests(unittest.TestCase):
                     {"id": 200, "workflow_id": workflow_id, "created_at": "2026-09-24T18:00:00Z", "run_attempt": 2},
                 ]
 
+            def get_run(self, repo, run_id):
+                if run_id == 100:
+                    return {"id": 100, "run_attempt": 2}
+                raise AssertionError("future run must not be inspected")
+
             def get_jobs_attempt(self, repo, run_id, attempt):
                 if run_id == 100 and attempt == 1:
                     return [{"id": 10, "name": "E2E Tests", "conclusion": "failure"}]
