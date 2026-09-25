@@ -909,7 +909,7 @@ def _write_output(name: str, value: str) -> None:
             handle.write(f"{name}={value}\n")
 
 
-def render_report(repo: str, run_id: int, run_attempt: int, assessments: list[JobAssessment], safe: bool, reason: str, rerun_triggered: bool) -> str:
+def render_report(repo: str, run_id: int, run_attempt: int, assessments: list[JobAssessment], safe: bool, reason: str, rerun_triggered: bool, recovered: dict[int, str] | None = None) -> str:
     wasted = round(sum(item.duration_minutes for item in assessments), 2)
     lines = [
         "<!-- ci-retry-gate-report -->",
@@ -921,11 +921,26 @@ def render_report(repo: str, run_id: int, run_attempt: int, assessments: list[Jo
         "",
         f"{reason}",
         "",
+    ]
+    recovered = recovered or {}
+    if recovered:
+        lines.extend([
+            "### Recovery evidence",
+            "",
+            "The rerun decision below is based on explicit recovery metadata; failure-cause logs are a separate evidence channel.",
+            "",
+        ])
+        for item in assessments:
+            retry_name = recovered.get(item.job_id)
+            if retry_name:
+                lines.append(f"- `{item.name}` failed → explicit retry `{retry_name}` succeeded.")
+        lines.append("")
+    lines.extend([
         f"Failed-job runtime observed: **{wasted:.2f} min**",
         "",
         "| Job | Classification | Confidence | Retry provenance | Outcome step | Side-effect risk | Runtime |",
         "|---|---|---|---|---|---|---:|",
-    ]
+    ])
     for item in assessments:
         lines.append(
             f"| {item.name.replace('|', '/')} | `{item.category}` | {item.confidence} | "
@@ -1087,7 +1102,7 @@ def main() -> int:
         rerun_triggered=rerun_triggered,
     )
 
-    report = render_report(repo, run_id, run_attempt, assessments, safe, reason, rerun_triggered)
+    report = render_report(repo, run_id, run_attempt, assessments, safe, reason, rerun_triggered, recovered)
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
         with open(summary_path, "a", encoding="utf-8") as handle:
