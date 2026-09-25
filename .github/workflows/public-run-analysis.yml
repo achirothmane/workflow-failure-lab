@@ -39,6 +39,7 @@ jobs:
           INPUT_COMMENT_ON_PR: 'false'
           INPUT_MAX_ATTEMPTS: '2'
           CI_RETRY_GATE_REPORT_FILE: public-run-report.md
+          CI_RETRY_GATE_LOG_DIAGNOSTICS: 'true'
         run: python3 ci_retry_gate.py
 
       - name: Build response
