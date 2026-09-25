@@ -978,6 +978,11 @@ def main() -> int:
 
     _write_output("decision", str(evidence_decision["decision"]))
     _write_output("evidence-status", str(evidence_decision["evidence_status"]))
+    _write_output("reason", reason)
+    _write_output(
+        "failed-jobs-json",
+        json.dumps(evidence_decision["failed_jobs"], separators=(",", ":"), sort_keys=True),
+    )
     _write_output(
         "evidence-json",
         json.dumps(evidence_decision, separators=(",", ":"), sort_keys=True),
