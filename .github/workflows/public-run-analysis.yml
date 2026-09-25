@@ -1,0 +1,75 @@
+name: Public Run Analysis
+
+on:
+  issues:
+    types: [opened, edited, reopened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  analyze:
+    if: startsWith(github.event.issue.title, '[Public Run Analysis]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: request
+        name: Parse and validate request
+        run: python3 scripts/parse_public_run_request.py "$GITHUB_EVENT_PATH"
+
+      - id: analyze
+        name: Analyze public workflow run
+        if: steps.request.outputs.valid == 'true'
+        continue-on-error: true
+        env:
+          INPUT_PUBLIC_READ_ONLY: 'true'
+          INPUT_REPOSITORY: ${{ steps.request.outputs.repository }}
+          INPUT_RUN_ID: ${{ steps.request.outputs.run-id }}
+          INPUT_RUN_ATTEMPT: ${{ steps.request.outputs.run-attempt }}
+          INPUT_AUTO_RERUN: 'false'
+          INPUT_COMMENT_ON_PR: 'false'
+          INPUT_MAX_ATTEMPTS: '2'
+          CI_RETRY_GATE_REPORT_FILE: public-run-report.md
+        run: python3 ci_retry_gate.py
+
+      - name: Build response
+        if: always()
+        env:
+          REQUEST_VALID: ${{ steps.request.outputs.valid }}
+          REQUEST_ERROR: ${{ steps.request.outputs.error }}
+          ANALYZE_OUTCOME: ${{ steps.analyze.outcome }}
+        run: |
+          if [[ "$REQUEST_VALID" != "true" ]]; then
+            {
+              echo "## CI Retry Gate — zero-install proof"
+              echo
+              echo "Request rejected: $REQUEST_ERROR"
+              echo
+              echo "No target repository was changed."
+            } > public-run-comment.md
+          elif [[ "$ANALYZE_OUTCOME" != "success" || ! -f public-run-report.md ]]; then
+            {
+              echo "## CI Retry Gate — zero-install proof"
+              echo
+              echo "I could not analyze this run. Verify that the repository and Actions run are public and that the run/attempt IDs are correct."
+              echo
+              echo "No target repository was changed, no target token was requested, and no rerun was triggered."
+            } > public-run-comment.md
+          else
+            {
+              echo "## CI Retry Gate — zero-install proof"
+              echo
+              echo "This analysis used public GitHub Actions data only. Nothing was installed in the target repository."
+              echo
+              cat public-run-report.md
+            } > public-run-comment.md
+          fi
+
+      - name: Post analysis to request
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file public-run-comment.md
