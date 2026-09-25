@@ -526,10 +526,10 @@ def _normalized_job_stem(name: str) -> str:
     """Normalize an explicit primary/retry job identity conservatively."""
     def normalize_component(value: str) -> str:
         value = value.lower()
-        value = re.sub(r"\\bre-?try\\b", "", value)
-        value = re.sub(r"[_\\-]+", " ", value)
-        value = re.sub(r"[()\\[\\]]+", " ", value)
-        value = re.sub(r"\\s+", " ", value)
+        value = re.sub(r"\bre-?try\b", "", value)
+        value = re.sub(r"[_\-]+", " ", value)
+        value = re.sub(r"[()\[\]]+", " ", value)
+        value = re.sub(r"\s+", " ", value)
         return value.strip()
 
     parts = [normalize_component(part) for part in name.split("/")]
