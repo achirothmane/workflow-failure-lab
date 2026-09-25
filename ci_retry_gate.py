@@ -522,7 +522,17 @@ def assess_job(job: dict, log_text: str) -> JobAssessment:
     )
 
 
-def _normalized_job_stem(name: str) -> str:\n    """Normalize an explicit primary/retry job identity conservatively."""\n    def normalize_component(value: str) -> str:\n        value = value.lower()\n        value = re.sub(r"\\bre-?try\\b", "", value)\n        value = re.sub(r"[_\\-]+", " ", value)\n        value = re.sub(r"[()\\[\\]]+", " ", value)\n        value = re.sub(r"\\s+", " ", value)\n        return value.strip()\n\n    parts = [normalize_component(part) for part in name.split("/")]\n    parts = [part for part in parts if part]\n    return " / ".join(parts)\n\n\ndef _job_identity_matches(primary_name: str, retry_name: str) -> bool:\n    primary_parts = [part.strip() for part in _normalized_job_stem(primary_name).split(" / ")]\n    retry_parts = [part.strip() for part in _normalized_job_stem(retry_name).split(" / ")]\n    if not primary_parts or not retry_parts:\n        return False\n    if len(primary_parts) > 1 and len(retry_parts) > 1:\n        return primary_parts[-1] == retry_parts[-1]\n    return primary_parts == retry_parts\n\n\ndef detect_recovered_failures(failed_jobs: Iterable[dict], jobs: Iterable[dict]) -> dict[int, str]:
+def _normalized_job_stem(name: str) -> str:\n    """Normalize an explicit primary/retry job identity conservatively."""\n    def normalize_component(value: str) -> str:\n        value = value.lower()\n        value = re.sub(r"\\bre-?try\\b", "", value)\n        value = re.sub(r"[_\\-]+", " ", value)\n        value = re.sub(r"[()\\[\\]]+", " ", value)\n        value = re.sub(r"\\s+", " ", value)\n        return value.strip()\n\n    parts = [normalize_component(part) for part in name.split("/")]\n    parts = [part for part in parts if part]\n    return " / ".join(parts)\n\n\ndef _job_identity_matches(primary_name: str, retry_name: str) -> bool:
+    primary_parts = [part.strip() for part in _normalized_job_stem(primary_name).split(" / ")]
+    retry_parts = [part.strip() for part in _normalized_job_stem(retry_name).split(" / ")]
+    if not primary_parts or not retry_parts:
+        return False
+    if len(primary_parts) > 1 and len(retry_parts) > 1:
+        return primary_parts[-1] == retry_parts[-1]
+    return primary_parts == retry_parts
+
+
+def detect_recovered_failures(failed_jobs: Iterable[dict], jobs: Iterable[dict]) -> dict[int, str]:
     """Return failed job ids that have an explicit successful retry counterpart.
 
     Metadata-only recovery is accepted only when the successful job explicitly
