@@ -635,6 +635,58 @@ def historical_reliability_record(
         "recoveries": verified,
     }
 
+
+def collect_historical_reliability(
+    api: "GitHubAPI",
+    repo: str,
+    current_run: dict,
+    current_failed_jobs: Iterable[dict],
+    *,
+    max_prior_runs: int = 30,
+) -> dict:
+    """Collect verified pre-failure recoveries from the same workflow.
+
+    The collector uses only runs created before the current run. A prior incident
+    counts only when attempt 1 contains a matching failed job and a later attempt
+    of that same run contains the same job identity succeeding.
+    """
+    cutoff = str(current_run.get("created_at") or "")
+    workflow_id = int(current_run.get("workflow_id") or 0)
+    if not cutoff or not workflow_id:
+        return historical_reliability_record(current_failed_jobs, [], cutoff)
+
+    incidents: list[dict] = []
+    prior_runs = api.get_workflow_runs(repo, workflow_id)
+    eligible = [
+        run for run in prior_runs
+        if str(run.get("created_at") or "") < cutoff
+        and int(run.get("id") or 0) != int(current_run.get("id") or 0)
+        and int(run.get("run_attempt") or 1) > 1
+    ][:max_prior_runs]
+
+    for prior in eligible:
+        prior_id = int(prior.get("id") or 0)
+        first_jobs = api.get_jobs_attempt(repo, prior_id, 1)
+        failed = [
+            job for job in first_jobs
+            if str(job.get("conclusion") or "").lower() in FAILURE_CONCLUSIONS
+        ]
+        if not failed:
+            continue
+        final_attempt = int(prior.get("run_attempt") or 1)
+        later_jobs = api.get_jobs_attempt(repo, prior_id, final_attempt)
+        incidents.append({
+            "run_id": prior_id,
+            "observed_at": str(prior.get("created_at") or ""),
+            "failed_jobs": failed,
+            "later_jobs": later_jobs,
+        })
+
+    record = historical_reliability_record(current_failed_jobs, incidents, cutoff)
+    record["workflow_id"] = workflow_id
+    record["prior_runs_examined"] = len(eligible)
+    return record
+
 def evidence_assessment(assessments: Iterable[JobAssessment]) -> tuple[bool, str]:
     """Assess whether the observed failure evidence supports a safe retry.
 
@@ -908,6 +960,13 @@ class GitHubAPI:
     def get_jobs(self, repo: str, run_id: int) -> list[dict]:
         data = self.request("GET", f"/repos/{repo}/actions/runs/{run_id}/jobs?per_page=100")
         return list(data.get("jobs") or [])
+
+    def get_workflow_runs(self, repo: str, workflow_id: int, per_page: int = 100) -> list[dict]:
+        data = self.request(
+            "GET",
+            f"/repos/{repo}/actions/workflows/{workflow_id}/runs?per_page={per_page}",
+        )
+        return list(data.get("workflow_runs") or [])
 
     def get_jobs_attempt(self, repo: str, run_id: int, run_attempt: int) -> list[dict]:
         data = self.request(
