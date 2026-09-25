@@ -1,6 +1,6 @@
 import unittest
 
-from ci_retry_gate import detect_cross_attempt_recovery, detect_recovered_failures, historical_reliability_record
+from ci_retry_gate import detect_cross_attempt_recovery, detect_recovered_failures, historical_reliability_record, collect_historical_reliability
 
 
 class RecoveryAwareEvidenceTests(unittest.TestCase):
@@ -112,6 +112,36 @@ class RecoveryAwareEvidenceTests(unittest.TestCase):
         )
         self.assertEqual(record["status"], "INSUFFICIENT_HISTORY")
         self.assertEqual(record["verified_prior_recoveries"], 0)
+        self.assertEqual(record["authorization"], "NOT_AUTHORIZING")
+
+    def test_collector_uses_only_prior_rerun_runs(self):
+        class FakeAPI:
+            def get_workflow_runs(self, repo, workflow_id):
+                return [
+                    {"id": 100, "workflow_id": workflow_id, "created_at": "2026-09-24T11:16:28Z", "run_attempt": 2},
+                    {"id": 200, "workflow_id": workflow_id, "created_at": "2026-09-24T18:00:00Z", "run_attempt": 2},
+                ]
+
+            def get_jobs_attempt(self, repo, run_id, attempt):
+                if run_id == 100 and attempt == 1:
+                    return [{"id": 10, "name": "E2E Tests", "conclusion": "failure"}]
+                if run_id == 100 and attempt == 2:
+                    return [{"id": 20, "name": "E2E Tests", "conclusion": "success"}]
+                raise AssertionError("future run must not be inspected")
+
+        record = collect_historical_reliability(
+            FakeAPI(),
+            "Midtown-Technology-Group/bifrost",
+            {
+                "id": 300,
+                "workflow_id": 250387439,
+                "created_at": "2026-09-24T17:49:01Z",
+            },
+            [{"id": 30, "name": "E2E Tests", "conclusion": "failure"}],
+        )
+
+        self.assertEqual(record["verified_prior_recoveries"], 1)
+        self.assertEqual(record["prior_runs_examined"], 1)
         self.assertEqual(record["authorization"], "NOT_AUTHORIZING")
 
 
