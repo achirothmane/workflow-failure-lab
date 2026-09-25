@@ -243,6 +243,41 @@ def test_github_api_does_not_retry_post_on_incomplete_response(monkeypatch):
     assert api.opener.calls == 1
 
 
+def test_github_api_omits_authorization_without_token():
+    api = GitHubAPI("")
+    opener = _SequenceOpener([_FakeHTTPResponse(body=b'{"ok": true}')])
+    api.opener = opener
+
+    captured = {}
+    original_open = opener.open
+
+    def capture(req, timeout=30):
+        captured["authorization"] = req.get_header("Authorization")
+        return original_open(req, timeout=timeout)
+
+    opener.open = capture
+    result = api.request("GET", "/repos/acme/public")
+
+    assert result == {"ok": True}
+    assert captured["authorization"] is None
+
+
+def test_github_api_repository_metadata_endpoint(monkeypatch):
+    api = GitHubAPI("")
+    seen = []
+
+    def fake_request(method, path, payload=None, accept="application/vnd.github+json"):
+        seen.append((method, path))
+        return {"private": False}
+
+    monkeypatch.setattr(api, "request", fake_request)
+
+    result = api.get_repository("acme/public")
+
+    assert result == {"private": False}
+    assert seen == [("GET", "/repos/acme/public")]
+
+
 def test_github_api_specific_attempt_endpoints(monkeypatch):
     api = GitHubAPI("token")
     seen = []

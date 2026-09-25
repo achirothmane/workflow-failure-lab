@@ -1,0 +1,48 @@
+name: Public CI run analysis
+description: Analyze one public GitHub Actions failure without installing CI Retry Gate in the target repository.
+title: "[Public Run Analysis] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is the zero-install proof surface. CI Retry Gate reads only public GitHub Actions metadata/logs for the run you provide. It does not modify the target repository, request a target-repository token, rerun jobs, or post into the target repository.
+
+  - type: input
+    id: repository
+    attributes:
+      label: Public repository
+      description: Repository that owns the workflow run, in owner/repo form.
+      placeholder: owner/repository
+    validations:
+      required: true
+
+  - type: input
+    id: run_id
+    attributes:
+      label: Workflow run ID
+      description: Numeric GitHub Actions run ID from the public repository.
+      placeholder: "123456789"
+    validations:
+      required: true
+
+  - type: input
+    id: run_attempt
+    attributes:
+      label: Run attempt (optional)
+      description: Leave blank for the current attempt, or enter a historical attempt number such as 1 or 2.
+      placeholder: "1"
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context (optional)
+      description: What decision are you trying to make? For example, rerun vs investigate.
+      placeholder: The failure looked transient, but we do not want to rerun blindly.
+
+  - type: checkboxes
+    id: public_confirmation
+    attributes:
+      label: Public-data confirmation
+      options:
+        - label: I understand this proof surface only analyzes public GitHub Actions data and does not install anything in the target repository.
+          required: true
