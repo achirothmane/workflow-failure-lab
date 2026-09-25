@@ -804,7 +804,18 @@ class GitHubAPI:
         return list(data.get("jobs") or [])
 
     def get_job_logs(self, repo: str, job_id: int) -> str:
-        return str(self.request("GET", f"/repos/{repo}/actions/jobs/{job_id}/logs", accept="application/vnd.github+json"))
+        # Job logs are a text/archive response (and may redirect to GitHub's blob
+        # storage), not a JSON resource. Reading them through request() can
+        # stringify/transform the response path and hide the exact runner
+        # evidence the classifier needs. Preserve the response bytes verbatim
+        # and decode only after the safe redirect handler has removed auth on
+        # cross-host redirects.
+        raw = self.request_bytes(
+            "GET",
+            f"/repos/{repo}/actions/jobs/{job_id}/logs",
+            accept="application/vnd.github+json",
+        )
+        return raw.decode("utf-8", errors="replace")
 
     def rerun_failed_jobs(self, repo: str, run_id: int) -> None:
         self.request("POST", f"/repos/{repo}/actions/runs/{run_id}/rerun-failed-jobs", payload={})
