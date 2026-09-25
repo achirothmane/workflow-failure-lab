@@ -522,6 +522,47 @@ def assess_job(job: dict, log_text: str) -> JobAssessment:
     )
 
 
+def _normalized_job_stem(name: str) -> str:
+    """Normalize a job display name enough to compare a primary job with its retry.
+
+    This is deliberately conservative: it removes only explicit retry markers.
+    It does not infer recovery merely from execution order.
+    """
+    value = name.lower()
+    value = re.sub(r"\bretry\b", "", value)
+    value = re.sub(r"\bre-?try\b", "", value)
+    value = re.sub(r"[_\-]+", " ", value)
+    value = re.sub(r"\s+", " ", value)
+    return value.strip(" /()[]")
+
+
+def detect_recovered_failures(failed_jobs: Iterable[dict], jobs: Iterable[dict]) -> dict[int, str]:
+    """Return failed job ids that have an explicit successful retry counterpart.
+
+    Metadata-only recovery is accepted only when the successful job explicitly
+    identifies itself as a retry and its normalized display name matches the
+    failed primary. This prevents 'some later job succeeded' from becoming
+    recovery evidence.
+    """
+    successful = [
+        job for job in jobs
+        if str(job.get("conclusion") or "").lower() == "success"
+        and re.search(r"\bretry\b|re-?try", str(job.get("name") or ""), re.IGNORECASE)
+    ]
+    recovered: dict[int, str] = {}
+    for failed in failed_jobs:
+        failed_name = str(failed.get("name") or "")
+        failed_stem = _normalized_job_stem(failed_name)
+        if not failed_stem:
+            continue
+        for retry in successful:
+            retry_name = str(retry.get("name") or "")
+            if _normalized_job_stem(retry_name) == failed_stem:
+                recovered[int(failed.get("id") or 0)] = retry_name
+                break
+    return recovered
+
+
 def evidence_assessment(assessments: Iterable[JobAssessment]) -> tuple[bool, str]:
     """Assess whether the observed failure evidence supports a safe retry.
 
@@ -1006,7 +1047,19 @@ def main() -> int:
             continue
         assessments.append(assess_job(job, logs))
 
-    safe, reason = rerun_decision(assessments, run_attempt, max_attempts)
+    recovered = detect_recovered_failures(failed_jobs, jobs)
+    if failed_jobs and len(recovered) == len(failed_jobs):
+        pairs = "; ".join(
+            f"{str(job.get('name') or job.get('id'))} -> {recovered[int(job.get('id') or 0)]}"
+            for job in failed_jobs
+        )
+        safe = False
+        reason = (
+            "FAILURE_RECOVERED: every failed job has an explicit successful retry "
+            f"counterpart in this attempt ({pairs}). Another automatic rerun is not justified."
+        )
+    else:
+        safe, reason = rerun_decision(assessments, run_attempt, max_attempts)
     rerun_triggered = False
     if safe and auto_rerun:
         api.rerun_failed_jobs(repo, run_id)
