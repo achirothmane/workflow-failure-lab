@@ -592,6 +592,49 @@ def detect_cross_attempt_recovery(failed_jobs: Iterable[dict], later_jobs: Itera
     return recovered
 
 
+
+def historical_reliability_record(
+    current_failed_jobs: Iterable[dict],
+    prior_incidents: Iterable[dict],
+    cutoff: str,
+) -> dict:
+    """Summarize only machine-verified recoveries observed before the current failure.
+
+    History is supporting evidence. It never authorizes a rerun by itself.
+    Each incident must carry observed_at, failed_jobs, and later_jobs metadata.
+    """
+    identities = {
+        _normalized_job_stem(str(job.get("name") or ""))
+        for job in current_failed_jobs
+        if str(job.get("name") or "")
+    }
+    verified: list[dict] = []
+    for incident in prior_incidents:
+        observed_at = str(incident.get("observed_at") or "")
+        if not observed_at or observed_at >= cutoff:
+            continue
+        failed = list(incident.get("failed_jobs") or [])
+        later = list(incident.get("later_jobs") or [])
+        recovered = detect_cross_attempt_recovery(failed, later)
+        for job in failed:
+            job_id = int(job.get("id") or 0)
+            identity = _normalized_job_stem(str(job.get("name") or ""))
+            if identity in identities and job_id in recovered:
+                verified.append({
+                    "identity": identity,
+                    "observed_at": observed_at,
+                    "recovered_as": recovered[job_id],
+                })
+    latest = max((item["observed_at"] for item in verified), default=None)
+    return {
+        "status": "SUPPORTING_EVIDENCE" if verified else "INSUFFICIENT_HISTORY",
+        "verified_prior_recoveries": len(verified),
+        "latest_verified_recovery_at": latest,
+        "cutoff": cutoff,
+        "authorization": "NOT_AUTHORIZING",
+        "recoveries": verified,
+    }
+
 def evidence_assessment(assessments: Iterable[JobAssessment]) -> tuple[bool, str]:
     """Assess whether the observed failure evidence supports a safe retry.
 
