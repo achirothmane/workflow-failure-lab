@@ -128,6 +128,12 @@ outputs:
   evidence-status:
     description: 'SUFFICIENT, CONTRADICTED, or UNKNOWN. UNKNOWN remains fail-closed.'
     value: ${{ steps.gate.outputs.evidence-status }}
+  reason:
+    description: 'Human-readable explanation for the ALLOW/BLOCK decision.'
+    value: ${{ steps.gate.outputs.reason }}
+  failed-jobs-json:
+    description: 'Compact JSON summary of failed-job classification, confidence, provenance, and side-effect risk.'
+    value: ${{ steps.gate.outputs.failed-jobs-json }}
   evidence-json:
     description: 'Compact JSON evidence contract for downstream agents, policy engines, or audit logs.'
     value: ${{ steps.gate.outputs.evidence-json }}
