@@ -573,6 +573,25 @@ def detect_recovered_failures(failed_jobs: Iterable[dict], jobs: Iterable[dict])
     return recovered
 
 
+def detect_cross_attempt_recovery(failed_jobs: Iterable[dict], later_jobs: Iterable[dict]) -> dict[int, str]:
+    """Match failed jobs to successful jobs with the same identity in a later attempt."""
+    successful = [
+        job for job in later_jobs
+        if str(job.get("conclusion") or "").lower() == "success"
+    ]
+    recovered: dict[int, str] = {}
+    for failed in failed_jobs:
+        failed_name = str(failed.get("name") or "")
+        if not failed_name:
+            continue
+        for later in successful:
+            later_name = str(later.get("name") or "")
+            if _normalized_job_stem(failed_name) == _normalized_job_stem(later_name):
+                recovered[int(failed.get("id") or 0)] = later_name
+                break
+    return recovered
+
+
 def evidence_assessment(assessments: Iterable[JobAssessment]) -> tuple[bool, str]:
     """Assess whether the observed failure evidence supports a safe retry.
 
@@ -1073,6 +1092,14 @@ def main() -> int:
         assessments.append(assess_job(job, logs))
 
     recovered = detect_recovered_failures(failed_jobs, jobs)
+    recovery_scope = "same attempt"
+    if failed_jobs and len(recovered) != len(failed_jobs) and selected_run_attempt is not None:
+        latest_run = api.get_run(repo, run_id)
+        latest_attempt = int(latest_run.get("run_attempt") or selected_run_attempt)
+        if latest_attempt > selected_run_attempt:
+            later_jobs = api.get_jobs_attempt(repo, run_id, selected_run_attempt + 1)
+            recovered = detect_cross_attempt_recovery(failed_jobs, later_jobs)
+            recovery_scope = f"attempt {selected_run_attempt + 1}"
     if failed_jobs and len(recovered) == len(failed_jobs):
         pairs = "; ".join(
             f"{str(job.get('name') or job.get('id'))} -> {recovered[int(job.get('id') or 0)]}"
@@ -1081,7 +1108,7 @@ def main() -> int:
         safe = False
         reason = (
             "FAILURE_RECOVERED: every failed job has an explicit successful retry "
-            f"counterpart in this attempt ({pairs}). Another automatic rerun is not justified."
+            f"counterpart in {recovery_scope} ({pairs}). Another automatic rerun is not justified."
         )
     else:
         safe, reason = rerun_decision(assessments, run_attempt, max_attempts)
