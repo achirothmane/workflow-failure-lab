@@ -675,17 +675,19 @@ class GitHubAPI:
         last_transport_error: BaseException | None = None
 
         for attempt in range(1, attempts + 1):
+            headers = {
+                "Accept": accept,
+                "X-GitHub-Api-Version": "2022-11-28",
+                "User-Agent": "ci-retry-gate-action",
+                "Content-Type": "application/json",
+            }
+            if self.token:
+                headers["Authorization"] = f"Bearer {self.token}"
             req = urllib.request.Request(
                 f"{self.api_url}{path}",
                 data=data,
                 method=method,
-                headers={
-                    "Authorization": f"Bearer {self.token}",
-                    "Accept": accept,
-                    "X-GitHub-Api-Version": "2022-11-28",
-                    "User-Agent": "ci-retry-gate-action",
-                    "Content-Type": "application/json",
-                },
+                headers=headers,
             )
             try:
                 with self.opener.open(req, timeout=30) as response:
@@ -727,15 +729,17 @@ class GitHubAPI:
         last_transport_error: BaseException | None = None
 
         for attempt in range(1, attempts + 1):
+            headers = {
+                "Accept": accept,
+                "X-GitHub-Api-Version": "2022-11-28",
+                "User-Agent": "ci-retry-gate-action",
+            }
+            if self.token:
+                headers["Authorization"] = f"Bearer {self.token}"
             req = urllib.request.Request(
                 f"{self.api_url}{path}",
                 method=method,
-                headers={
-                    "Authorization": f"Bearer {self.token}",
-                    "Accept": accept,
-                    "X-GitHub-Api-Version": "2022-11-28",
-                    "User-Agent": "ci-retry-gate-action",
-                },
+                headers=headers,
             )
             try:
                 with self.opener.open(req, timeout=30) as response:
@@ -761,6 +765,9 @@ class GitHubAPI:
             f"GitHub API {method} {path} failed after {attempts} transport attempts: "
             f"{type(last_transport_error).__name__}: {last_transport_error}"
         ) from last_transport_error
+
+    def get_repository(self, repo: str) -> dict:
+        return self.request("GET", f"/repos/{repo}")
 
     def get_run(self, repo: str, run_id: int) -> dict:
         return self.request("GET", f"/repos/{repo}/actions/runs/{run_id}")
@@ -867,8 +874,9 @@ def main() -> int:
     workflow_run = event.get("workflow_run") or {}
     run_id_raw = os.environ.get("INPUT_RUN_ID") or workflow_run.get("id") or os.environ.get("GITHUB_RUN_ID")
 
-    if not token:
-        print("::error::github-token is required")
+    public_read_only = _bool_env("INPUT_PUBLIC_READ_ONLY", False)
+    if not token and not public_read_only:
+        print("::error::github-token is required unless public-read-only mode is enabled")
         return 2
     if not repo:
         print("::error::repository could not be determined")
@@ -882,6 +890,9 @@ def main() -> int:
     max_attempts = int(os.environ.get("INPUT_MAX_ATTEMPTS", "2"))
     auto_rerun = _bool_env("INPUT_AUTO_RERUN", False)
     comment_on_pr = _bool_env("INPUT_COMMENT_ON_PR", False)
+    if public_read_only and (auto_rerun or comment_on_pr):
+        print("::error::public-read-only mode cannot rerun jobs or post into the target repository")
+        return 2
     run_attempt_raw = (os.environ.get("INPUT_RUN_ATTEMPT") or "").strip()
     selected_run_attempt: int | None = None
     if run_attempt_raw:
@@ -897,7 +908,16 @@ def main() -> int:
             print("::error::run-attempt is read-only and cannot be combined with auto-rerun")
             return 2
 
-    api = GitHubAPI(token, os.environ.get("GITHUB_API_URL", "https://api.github.com"))
+    # Public proof deliberately avoids forwarding the workflow's installation token to
+    # another repository. GitHub's public Actions read endpoints support unauthenticated
+    # access, so the proof surface needs no target-repository installation or permission.
+    api = GitHubAPI("" if public_read_only else str(token), os.environ.get("GITHUB_API_URL", "https://api.github.com"))
+    if public_read_only:
+        repository = api.get_repository(repo)
+        if bool(repository.get("private", True)):
+            print("::error::public-read-only mode only supports public repositories")
+            return 2
+
     if selected_run_attempt is None:
         run = api.get_run(repo, run_id)
         run_attempt = int(run.get("run_attempt") or 1)
@@ -942,6 +962,10 @@ def main() -> int:
             handle.write(report)
     else:
         print(report)
+
+    report_file = (os.environ.get("CI_RETRY_GATE_REPORT_FILE") or "").strip()
+    if report_file:
+        Path(report_file).write_text(report, encoding="utf-8")
 
     prs = workflow_run.get("pull_requests") or []
     if comment_on_pr and prs:
