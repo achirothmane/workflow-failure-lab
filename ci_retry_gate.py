@@ -815,7 +815,17 @@ class GitHubAPI:
             f"/repos/{repo}/actions/jobs/{job_id}/logs",
             accept="application/vnd.github+json",
         )
-        return raw.decode("utf-8", errors="replace")
+        text = raw.decode("utf-8", errors="replace")
+        if _bool_env("CI_RETRY_GATE_LOG_DIAGNOSTICS", False):
+            lowered = text.lower()
+            print(
+                "::notice::job-log diagnostics "
+                f"job_id={job_id} bytes={len(raw)} chars={len(text)} "
+                f"has_shutdown_signal={'the runner has received a shutdown signal' in lowered} "
+                f"has_operation_canceled={'the operation was canceled' in lowered} "
+                f"starts_with={text[:80].replace(chr(10), ' ').replace(chr(13), ' ')!r}"
+            )
+        return text
 
     def rerun_failed_jobs(self, repo: str, run_id: int) -> None:
         self.request("POST", f"/repos/{repo}/actions/runs/{run_id}/rerun-failed-jobs", payload={})
