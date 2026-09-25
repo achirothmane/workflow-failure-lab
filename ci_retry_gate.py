@@ -522,12 +522,16 @@ def assess_job(job: dict, log_text: str) -> JobAssessment:
     )
 
 
-def rerun_decision(assessments: Iterable[JobAssessment], run_attempt: int, max_attempts: int) -> tuple[bool, str]:
+def evidence_assessment(assessments: Iterable[JobAssessment]) -> tuple[bool, str]:
+    """Assess whether the observed failure evidence supports a safe retry.
+
+    This deliberately excludes execution-policy limits such as max_attempts so
+    historical analysis can report what the evidence said at that attempt
+    independently from whether policy would authorize another execution.
+    """
     items = list(assessments)
     if not items:
         return False, "No failed jobs were available to assess."
-    if run_attempt >= max_attempts:
-        return False, f"Run attempt {run_attempt} reached max_attempts={max_attempts}."
     if any(item.side_effect_risk for item in items):
         return False, "At least one failed job contains a side-effect signal; blind rerun is blocked."
     unsafe = [
@@ -547,6 +551,18 @@ def rerun_decision(assessments: Iterable[JobAssessment], run_attempt: int, max_a
         )
         return False, f"Execution provenance was not confirmed for: {names}."
     return True, "All failed jobs are high-confidence transient failures with confirmed execution provenance and no side-effect signal was found."
+
+
+def rerun_decision(assessments: Iterable[JobAssessment], run_attempt: int, max_attempts: int) -> tuple[bool, str]:
+    evidence_safe, evidence_reason = evidence_assessment(assessments)
+    if not evidence_safe:
+        return False, evidence_reason
+    if run_attempt >= max_attempts:
+        return False, (
+            f"Evidence supports a safe retry, but execution policy blocks it: "
+            f"run_attempt={run_attempt} reached max_attempts={max_attempts}."
+        )
+    return True, evidence_reason
 
 
 EVIDENCE_DECISION_SCHEMA = "ci-retry-gate.evidence-decision.v1"
