@@ -30,6 +30,10 @@ jobs:
         if: steps.request.outputs.valid == 'true'
         run: python3 -m py_compile ci_retry_gate.py
 
+      - name: Run recovery regression tests
+        if: steps.request.outputs.valid == 'true'
+        run: python3 -m unittest tests/test_recovery_aware.py
+
       - id: analyze
         name: Analyze public workflow run
         if: steps.request.outputs.valid == 'true'
