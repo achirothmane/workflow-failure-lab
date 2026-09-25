@@ -1,6 +1,6 @@
 import unittest
 
-from ci_retry_gate import detect_cross_attempt_recovery, detect_recovered_failures
+from ci_retry_gate import detect_cross_attempt_recovery, detect_recovered_failures, historical_reliability_record
 
 
 class RecoveryAwareEvidenceTests(unittest.TestCase):
@@ -77,6 +77,42 @@ class RecoveryAwareEvidenceTests(unittest.TestCase):
             detect_cross_attempt_recovery(failed, later),
             {10: "E2E Tests (shard 4/4)"},
         )
+
+    def test_history_respects_cutoff_and_is_non_authorizing(self):
+        current = [{"id": 30, "name": "E2E Tests", "conclusion": "failure"}]
+        incidents = [
+            {
+                "observed_at": "2026-09-24T11:16:28Z",
+                "failed_jobs": [{"id": 10, "name": "E2E Tests", "conclusion": "failure"}],
+                "later_jobs": [{"id": 20, "name": "E2E Tests", "conclusion": "success"}],
+            },
+            {
+                "observed_at": "2026-09-24T18:00:00Z",
+                "failed_jobs": [{"id": 11, "name": "E2E Tests", "conclusion": "failure"}],
+                "later_jobs": [{"id": 21, "name": "E2E Tests", "conclusion": "success"}],
+            },
+        ]
+
+        record = historical_reliability_record(
+            current, incidents, "2026-09-24T17:49:01Z"
+        )
+
+        self.assertEqual(record["status"], "SUPPORTING_EVIDENCE")
+        self.assertEqual(record["verified_prior_recoveries"], 1)
+        self.assertEqual(record["authorization"], "NOT_AUTHORIZING")
+        self.assertEqual(
+            record["latest_verified_recovery_at"], "2026-09-24T11:16:28Z"
+        )
+
+    def test_history_without_verified_recovery_is_insufficient(self):
+        record = historical_reliability_record(
+            [{"id": 30, "name": "E2E Tests", "conclusion": "failure"}],
+            [],
+            "2026-09-24T17:49:01Z",
+        )
+        self.assertEqual(record["status"], "INSUFFICIENT_HISTORY")
+        self.assertEqual(record["verified_prior_recoveries"], 0)
+        self.assertEqual(record["authorization"], "NOT_AUTHORIZING")
 
 
 if __name__ == "__main__":
