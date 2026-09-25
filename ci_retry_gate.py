@@ -661,11 +661,18 @@ def collect_historical_reliability(
         run for run in prior_runs
         if str(run.get("created_at") or "") < cutoff
         and int(run.get("id") or 0) != int(current_run.get("id") or 0)
-        and int(run.get("run_attempt") or 1) > 1
     ][:max_prior_runs]
 
+    rerun_runs_examined = 0
     for prior in eligible:
         prior_id = int(prior.get("id") or 0)
+        # List endpoints may expose stale/default attempt metadata. Fetch the
+        # canonical run before deciding whether historical attempts exist.
+        canonical = api.get_run(repo, prior_id)
+        final_attempt = int(canonical.get("run_attempt") or 1)
+        if final_attempt <= 1:
+            continue
+        rerun_runs_examined += 1
         first_jobs = api.get_jobs_attempt(repo, prior_id, 1)
         failed = [
             job for job in first_jobs
@@ -673,7 +680,6 @@ def collect_historical_reliability(
         ]
         if not failed:
             continue
-        final_attempt = int(prior.get("run_attempt") or 1)
         later_jobs = api.get_jobs_attempt(repo, prior_id, final_attempt)
         incidents.append({
             "run_id": prior_id,
@@ -685,6 +691,7 @@ def collect_historical_reliability(
     record = historical_reliability_record(current_failed_jobs, incidents, cutoff)
     record["workflow_id"] = workflow_id
     record["prior_runs_examined"] = len(eligible)
+    record["rerun_runs_examined"] = rerun_runs_examined
     return record
 
 def evidence_assessment(assessments: Iterable[JobAssessment]) -> tuple[bool, str]:
