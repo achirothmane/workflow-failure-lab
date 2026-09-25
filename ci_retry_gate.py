@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Iterable
 
 TRANSIENT_CATEGORIES = {"RUNNER_INFRA", "DEPENDENCY_NETWORK"}
-FAILURE_CONCLUSIONS = {"failure", "timed_out", "cancelled"}
+FAILURE_CONCLUSIONS = {"failure", "timed_out"}\nCANCELLED_CONCLUSIONS = {"cancelled"}
 
 _SECRET_PATTERNS = [
     re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{20,}\b"),
