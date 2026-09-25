@@ -26,6 +26,10 @@ jobs:
         name: Parse and validate request
         run: python3 scripts/parse_public_run_request.py "$GITHUB_EVENT_PATH"
 
+      - name: Validate CI Retry Gate syntax
+        if: steps.request.outputs.valid == 'true'
+        run: python3 -m py_compile ci_retry_gate.py
+
       - id: analyze
         name: Analyze public workflow run
         if: steps.request.outputs.valid == 'true'
