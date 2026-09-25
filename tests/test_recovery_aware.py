@@ -116,7 +116,9 @@ class RecoveryAwareEvidenceTests(unittest.TestCase):
 
     def test_collector_uses_only_prior_rerun_runs(self):
         class FakeAPI:
-            def get_workflow_runs(self, repo, workflow_id):
+            def get_workflow_runs(self, repo, workflow_id, per_page=100, page=1):
+                if page > 1:
+                    return []
                 return [
                     {"id": 100, "workflow_id": workflow_id, "created_at": "2026-09-24T11:16:28Z", "run_attempt": 2},
                     {"id": 200, "workflow_id": workflow_id, "created_at": "2026-09-24T18:00:00Z", "run_attempt": 2},
@@ -147,6 +149,7 @@ class RecoveryAwareEvidenceTests(unittest.TestCase):
 
         self.assertEqual(record["verified_prior_recoveries"], 1)
         self.assertEqual(record["prior_runs_examined"], 1)
+        self.assertEqual(record["pages_examined"], 1)
         self.assertEqual(record["authorization"], "NOT_AUTHORIZING")
 
 
