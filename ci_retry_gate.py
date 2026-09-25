@@ -522,7 +522,22 @@ def assess_job(job: dict, log_text: str) -> JobAssessment:
     )
 
 
-def _normalized_job_stem(name: str) -> str:\n    """Normalize an explicit primary/retry job identity conservatively."""\n    def normalize_component(value: str) -> str:\n        value = value.lower()\n        value = re.sub(r"\\bre-?try\\b", "", value)\n        value = re.sub(r"[_\\-]+", " ", value)\n        value = re.sub(r"[()\\[\\]]+", " ", value)\n        value = re.sub(r"\\s+", " ", value)\n        return value.strip()\n\n    parts = [normalize_component(part) for part in name.split("/")]\n    parts = [part for part in parts if part]\n    return " / ".join(parts)\n\n\ndef _job_identity_matches(primary_name: str, retry_name: str) -> bool:
+def _normalized_job_stem(name: str) -> str:
+    """Normalize an explicit primary/retry job identity conservatively."""
+    def normalize_component(value: str) -> str:
+        value = value.lower()
+        value = re.sub(r"\\bre-?try\\b", "", value)
+        value = re.sub(r"[_\\-]+", " ", value)
+        value = re.sub(r"[()\\[\\]]+", " ", value)
+        value = re.sub(r"\\s+", " ", value)
+        return value.strip()
+
+    parts = [normalize_component(part) for part in name.split("/")]
+    parts = [part for part in parts if part]
+    return " / ".join(parts)
+
+
+def _job_identity_matches(primary_name: str, retry_name: str) -> bool:
     primary_parts = [part.strip() for part in _normalized_job_stem(primary_name).split(" / ")]
     retry_parts = [part.strip() for part in _normalized_job_stem(retry_name).split(" / ")]
     if not primary_parts or not retry_parts:
@@ -530,7 +545,6 @@ def _normalized_job_stem(name: str) -> str:\n    """Normalize an explicit primar
     if len(primary_parts) > 1 and len(retry_parts) > 1:
         return primary_parts[-1] == retry_parts[-1]
     return primary_parts == retry_parts
-
 
 def detect_recovered_failures(failed_jobs: Iterable[dict], jobs: Iterable[dict]) -> dict[int, str]:
     """Return failed job ids that have an explicit successful retry counterpart.
