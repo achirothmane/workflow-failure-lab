@@ -1030,7 +1030,7 @@ def _write_output(name: str, value: str) -> None:
             handle.write(f"{name}={value}\n")
 
 
-def render_report(repo: str, run_id: int, run_attempt: int, assessments: list[JobAssessment], safe: bool, reason: str, rerun_triggered: bool, recovered: dict[int, str] | None = None) -> str:
+def render_report(repo: str, run_id: int, run_attempt: int, assessments: list[JobAssessment], safe: bool, reason: str, rerun_triggered: bool, recovered: dict[int, str] | None = None, historical: dict | None = None) -> str:
     wasted = round(sum(item.duration_minutes for item in assessments), 2)
     lines = [
         "<!-- ci-retry-gate-report -->",
@@ -1056,6 +1056,18 @@ def render_report(repo: str, run_id: int, run_attempt: int, assessments: list[Jo
             if retry_name:
                 lines.append(f"- `{item.name}` failed → explicit retry `{retry_name}` succeeded.")
         lines.append("")
+    historical = historical or {}
+    if historical:
+        lines.extend([
+            "### Historical reliability",
+            "",
+            f"- Status: `{historical.get('status', 'INSUFFICIENT_HISTORY')}`",
+            f"- Verified prior recoveries: **{historical.get('verified_prior_recoveries', 0)}**",
+            f"- Latest verified recovery: `{historical.get('latest_verified_recovery_at') or 'none'}`",
+            f"- Evidence cutoff: `{historical.get('cutoff') or 'unknown'}`",
+            f"- Authorization: `{historical.get('authorization', 'NOT_AUTHORIZING')}`",
+            "",
+        ])
     lines.extend([
         f"Failed-job runtime observed: **{wasted:.2f} min**",
         "",
@@ -1219,6 +1231,8 @@ def main() -> int:
         api.rerun_failed_jobs(repo, run_id)
         rerun_triggered = True
 
+    historical = collect_historical_reliability(api, repo, run, failed_jobs)
+
     evidence_decision = build_evidence_decision(
         repo=repo,
         run=run,
@@ -1231,7 +1245,7 @@ def main() -> int:
         rerun_triggered=rerun_triggered,
     )
 
-    report = render_report(repo, run_id, run_attempt, assessments, safe, reason, rerun_triggered, recovered)
+    report = render_report(repo, run_id, run_attempt, assessments, safe, reason, rerun_triggered, recovered, historical)
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
         with open(summary_path, "a", encoding="utf-8") as handle:
