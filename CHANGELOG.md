@@ -4,6 +4,29 @@ All notable changes to CI Retry Gate are documented here.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-26
+
+### Added
+
+- Policy-free CI Evidence Producer with explicit OBSERVED, DERIVED, INFERRED, and evidence-quality layers.
+- Canonical `evidence-producer.ci.v1` EvidenceBundle contract for retry authorization.
+- Canonical `*.evidence.json` runtime artifacts with deterministic serialization and SHA-256 integrity verification.
+- Separate-process Evidence Gate CLI so authorization consumes persisted evidence rather than in-memory assessment objects.
+- New Action outputs: `evidence-bundle-path` and `evidence-bundle-sha256` for audit, replay, and downstream verification.
+
+### Changed
+
+- CI Retry Gate now consumes EvidenceBundle as its evidence boundary instead of reading `JobAssessment` directly.
+- Retry policy remains outside the evidence artifact, preserving the distinction between observed evidence and execution authority.
+- Missing, malformed, conflicting, or tampered evidence fails closed to BLOCK.
+- Recovery and recurrence checks remain conservative outer guards: they can narrow an ALLOW to BLOCK but cannot create authorization.
+
+### Verification
+
+- 353 Python tests pass, including artifact tamper detection and process-boundary authorization tests.
+- CI, pytest/Jest/Vitest Compatibility Matrix, Remote v1 Consumer E2E, clean-install verification, and Release Readiness all pass on the release candidate.
+
+
 ## [1.0.2] - 2026-09-24
 
 ### Added

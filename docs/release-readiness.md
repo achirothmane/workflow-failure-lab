@@ -1,6 +1,6 @@
 # v1 Release Readiness
 
-This checklist covers the CI Retry Gate v1 release line. The current Marketplace metadata patch is `v1.0.1`.
+This checklist covers the CI Retry Gate v1 release line. The current release target is `v1.1.0`.
 
 ## Required before tagging
 
@@ -15,6 +15,7 @@ This checklist covers the CI Retry Gate v1 release line. The current Marketplace
 - [x] Two independent real Causal Dominance positive controls are pinned: SWC and pipx.
 - [ ] Third independent Causal Dominance positive control. This is **not a blocker for v1 release** because the feature remains disabled in production.
 - [x] MIT License added for the public v1 release.
+- [x] EvidenceBundle is persisted before authorization and verified by SHA-256 across a separate process boundary.
 
 ## v1 production scope
 
@@ -26,9 +27,9 @@ The causal-dominance override is explicitly excluded from production scope. It r
 
 1. Merge the release-readiness pull request.
 2. Confirm the post-merge CI run is green.
-3. Create the patch release tag from the exact green `main` commit.
+3. Create the `v1.1.0` release tag from the exact green `main` commit.
 4. Create/update the moving major tag `v1` to the same commit so users can pin:
-   `othy19904-eng/workflow-failure-lab@v1`.
+   `achirothmane/workflow-failure-lab@v1`.
 5. Publish release notes from `CHANGELOG.md`.
 6. Keep `auto-rerun: 'false'` in the first-run example; users opt into write behavior explicitly.
 
@@ -40,7 +41,7 @@ The repository contains a permanent consumer smoke test for the published moving
 1. Run **CI Retry Gate Release Smoke Fixture** manually.
 2. The fixture intentionally ends in failure with a deterministic `TypeError`.
 3. **CI Retry Gate v1 Release Smoke** starts automatically through `workflow_run`.
-4. It consumes `othy19904-eng/workflow-failure-lab@v1` in report-only mode.
+4. It consumes `achirothmane/workflow-failure-lab@v1` in report-only mode.
 5. The smoke passes only when the released action reports:
    - `safe-to-rerun=false`
    - `rerun-triggered=false`
