@@ -1219,7 +1219,9 @@ def main() -> int:
             recovered = detect_cross_attempt_recovery(failed_jobs, later_jobs)
             recurrent = detect_cross_attempt_recurrence(failed_jobs, later_jobs)
             recovery_scope = f"attempt {selected_run_attempt + 1}"
+    outer_guard_applied = False
     if failed_jobs and len(recovered) == len(failed_jobs):
+        outer_guard_applied = True
         pairs = "; ".join(
             f"{str(job.get('name') or job.get('id'))} -> {recovered[int(job.get('id') or 0)]}"
             for job in failed_jobs
@@ -1230,6 +1232,7 @@ def main() -> int:
             f"counterpart in {recovery_scope} ({pairs}). Another automatic rerun is not justified."
         )
     elif recurrent:
+        outer_guard_applied = True
         pairs = "; ".join(
             f"{str(job.get('name') or job.get('id'))} -> {recurrent[int(job.get('id') or 0)]}"
             for job in failed_jobs if int(job.get("id") or 0) in recurrent
@@ -1248,7 +1251,7 @@ def main() -> int:
 
     # Recovery/recurrence checks are conservative outer guards. They may only
     # narrow an ALLOW returned by the isolated gate; they can never create one.
-    if evidence_decision["decision"] == "ALLOW" and not safe:
+    if outer_guard_applied:
         evidence_decision["decision"] = "BLOCK"
         evidence_decision["reasons"] = [reason]
         if evidence_decision.get("contradictions"):
