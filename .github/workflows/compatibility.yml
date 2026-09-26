@@ -94,7 +94,9 @@ jobs:
 
       - name: Install Jest major and JUnit reporter
         run: |
-          rm -rf tests/adapter-smoke/node/node_modules\n          (cd tests/adapter-smoke/node && npm install --no-save --ignore-scripts --no-audit --no-fund --package-lock=false "jest@${{ matrix.major }}" "jest-junit@17")
+          rm -rf tests/adapter-smoke/node/node_modules
+          cd tests/adapter-smoke/node
+          npm install --no-save --ignore-scripts --no-audit --no-fund --package-lock=false "jest@${{ matrix.major }}" "jest-junit@17"
           tests/adapter-smoke/node/node_modules/.bin/jest --version
 
       - id: block
