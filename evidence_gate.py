@@ -71,9 +71,8 @@ def _validate_bundle(bundle: object) -> dict[str, Any]:
 def _job_evidence(bundle: object) -> list[JobEvidence]:
     data = _validate_bundle(bundle)
 
-    values: dict[int, dict[str, object]] = {}
-    names: dict[int, str] = {}
-    conflicts: dict[int, set[str]] = {}
+    values: dict[tuple[int, str], dict[str, object]] = {}
+    conflicts: dict[tuple[int, str], set[str]] = {}
 
     for item in data["derived"]:
         if not isinstance(item, dict):
@@ -90,16 +89,17 @@ def _job_evidence(bundle: object) -> list[JobEvidence]:
         except (TypeError, ValueError):
             continue
         name = str(subject.get("job_name") or f"job-{job_id}")
-        names.setdefault(job_id, name)
-        job_values = values.setdefault(job_id, {})
+        job_key = (job_id, name)
+        job_values = values.setdefault(job_key, {})
         if claim in job_values and job_values[claim] != item.get("value"):
-            conflicts.setdefault(job_id, set()).add(str(claim))
+            conflicts.setdefault(job_key, set()).add(str(claim))
             continue
         job_values[claim] = item.get("value")
 
     jobs: list[JobEvidence] = []
-    for job_id in sorted(values):
-        job_values = values[job_id]
+    for job_key in sorted(values):
+        job_id, name = job_key
+        job_values = values[job_key]
         missing_set = set(_REQUIRED_JOB_CLAIMS.difference(job_values))
         if not isinstance(job_values.get("side_effect_risk"), bool):
             missing_set.add("side_effect_risk")
@@ -107,7 +107,7 @@ def _job_evidence(bundle: object) -> list[JobEvidence]:
         jobs.append(
             JobEvidence(
                 job_id=job_id,
-                name=names.get(job_id, f"job-{job_id}"),
+                name=name,
                 category=(
                     str(job_values["failure_category"])
                     if "failure_category" in job_values
@@ -134,7 +134,7 @@ def _job_evidence(bundle: object) -> list[JobEvidence]:
                     else None
                 ),
                 missing_claims=missing,
-                conflicting_claims=tuple(sorted(conflicts.get(job_id, set()))),
+                conflicting_claims=tuple(sorted(conflicts.get(job_key, set()))),
             )
         )
     return jobs
