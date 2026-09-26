@@ -64,13 +64,13 @@ jobs:
           printf '{"private":true}\n' > package.json
           npm install --ignore-scripts --no-audit --no-fund --package-lock=false --no-save jest-junit@17.0.0
 
-      - name: Probe full fixture graph in empty directory
+      - name: Probe Jest plus reporter in empty directory
         run: |
-          rm -rf /tmp/full-fixture-probe
-          mkdir -p /tmp/full-fixture-probe
-          cp tests/adapter-smoke/node/package.json /tmp/full-fixture-probe/package.json
-          cd /tmp/full-fixture-probe
-          npm install --ignore-scripts --no-audit --no-fund --package-lock=false
+          rm -rf /tmp/jest-pair-probe
+          mkdir -p /tmp/jest-pair-probe
+          cd /tmp/jest-pair-probe
+          printf '{"private":true}\n' > package.json
+          npm install --ignore-scripts --no-audit --no-fund --package-lock=false --no-save jest@30.5.2 jest-junit@17.0.0
 
       - id: pytest-block
         name: Pytest blocks a non-quarantined real failure
