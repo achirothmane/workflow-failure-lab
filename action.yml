@@ -138,6 +138,12 @@ outputs:
   evidence-json:
     description: 'Compact JSON evidence contract for downstream agents, policy engines, or audit logs.'
     value: ${{ steps.gate.outputs.evidence-json }}
+  evidence-bundle-path:
+    description: 'Filesystem path to the canonical EvidenceBundle artifact produced before authorization.'
+    value: ${{ steps.gate.outputs.evidence-bundle-path }}
+  evidence-bundle-sha256:
+    description: 'SHA-256 digest of the canonical EvidenceBundle used by the isolated authorization gate.'
+    value: ${{ steps.gate.outputs.evidence-bundle-sha256 }}
   safe-to-rerun:
     description: 'true only when every failed job is a high-confidence transient failure and no side-effect signal is present.'
     value: ${{ steps.gate.outputs.safe-to-rerun }}
