@@ -40,8 +40,11 @@ jobs:
       - name: Install Python test dependencies
         run: python -m pip install -e ".[test]"
 
-      - name: Install pinned Node smoke dependencies
-        run: npm install --prefix tests/adapter-smoke/node --ignore-scripts --no-audit --no-fund --package-lock=false
+      - name: Probe Jest dependency branch
+        run: npm install --prefix tests/adapter-smoke/node --ignore-scripts --no-audit --no-fund --package-lock=false --no-save jest@30.5.2 jest-junit@17.0.0
+
+      - name: Probe Vitest dependency branch
+        run: npm install --prefix tests/adapter-smoke/node --ignore-scripts --no-audit --no-fund --package-lock=false --no-save vitest@5.0.1
 
       - id: pytest-block
         name: Pytest blocks a non-quarantined real failure
