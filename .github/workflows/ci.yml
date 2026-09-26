@@ -56,8 +56,13 @@ jobs:
           printf '{"private":true}\n' > package.json
           npm install --ignore-scripts --no-audit --no-fund --package-lock=false --no-save jest@30.5.2
 
-      - name: Probe Jest JUnit reporter dependency
-        run: npm install --prefix tests/adapter-smoke/node --ignore-scripts --no-audit --no-fund --package-lock=false --no-save jest-junit@17.0.0
+      - name: Probe Jest JUnit reporter in empty directory
+        run: |
+          rm -rf /tmp/jest-junit-probe
+          mkdir -p /tmp/jest-junit-probe
+          cd /tmp/jest-junit-probe
+          printf '{"private":true}\n' > package.json
+          npm install --ignore-scripts --no-audit --no-fund --package-lock=false --no-save jest-junit@17.0.0
 
       - name: Probe Vitest dependency branch
         run: npm install --prefix tests/adapter-smoke/node --ignore-scripts --no-audit --no-fund --package-lock=false --no-save vitest@5.0.1
