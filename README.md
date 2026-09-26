@@ -6,32 +6,24 @@
 
 ## Have a failed GitHub Actions run? Check the evidence before retrying it.
 
-**Paste a public repository and failed run ID. CI Retry Gate tells you whether the observed evidence supports retrying or investigating — without installing anything, changing the target repository, or requesting a target-repository token.**
+CI Retry Gate analyzes a public failed run before installation and returns an evidence-backed retry-versus-investigate decision. The target repository is not changed.
 
-### See the difference on real CI failures
+### Real CI proof
 
-The same read-only analysis was run against two historical failures from `ROCm/rocm-libraries` without telling the gate what happened later:
-
-| Historical failure | Evidence found | Gate result |
+| Historical failure | Observed outcome | Gate result |
 |---|---|---|
-| [ROCm recovery case](https://github.com/achirothmane/workflow-failure-lab/issues/82#issuecomment-5842318725) | Every failed job had a successful counterpart in attempt 2 | `FAILURE_RECOVERED` — do not launch another automatic rerun |
-| [ROCm recurrence case](https://github.com/achirothmane/workflow-failure-lab/issues/83#issuecomment-5842328212) | One job recovered, but the same Windows `hiprand` job failed again in attempt 2 | `NEXT_ATTEMPT_RECURRENCE` — investigate instead of treating later success as proof the retry was safe |
+| [ROCm recovery case](https://github.com/achirothmane/workflow-failure-lab/issues/82#issuecomment-5842318725) | Every failed job had a successful counterpart in attempt 2 | `FAILURE_RECOVERED` |
+| [ROCm recurrence case](https://github.com/achirothmane/workflow-failure-lab/issues/83#issuecomment-5842328212) | One job recovered, but the same Windows `hiprand` job failed again in attempt 2 | `NEXT_ATTEMPT_RECURRENCE` |
 
-In both cases GitHub denied public job-log download with HTTP 403. The gate did **not** invent a failure cause: cause evidence remained `EVIDENCE_UNAVAILABLE`, while observable retry outcomes stayed usable as a separate evidence channel.
+Public job logs were unavailable in these cases, so the gate kept failure cause as `EVIDENCE_UNAVAILABLE` instead of inferring a cause from missing evidence.
 
 ### Analyze one failed run — zero install
 
 **[Analyze a public GitHub Actions failure](https://github.com/achirothmane/workflow-failure-lab/issues/new?template=public-run-analysis.yml)**
 
-Provide only:
+Provide the public repository in `owner/repo` form, the failed Actions run ID, and optionally the historical attempt. The result is posted to the request issue; automatic reruns remain off.
 
-- the public repository in `owner/repo` form;
-- the failed GitHub Actions run ID;
-- optionally, the exact historical run attempt.
-
-The result is posted back to the request issue. Nothing is installed in the target repository and automatic reruns remain off.
-
-**First activation question:** did the evidence change or shorten your `retry vs investigate` decision? If not, do not install the product.
+Use the first trial to answer one question: **did the evidence change or shorten the retry-versus-investigate decision?** Only then consider installation.
 
 ### After proof: run the Setup Doctor — no write permissions
 
