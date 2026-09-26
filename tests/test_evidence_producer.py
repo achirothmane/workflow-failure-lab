@@ -105,13 +105,16 @@ def test_missing_provenance_is_reported_as_evidence_quality_not_policy() -> None
 
 def test_retry_gate_embeds_the_producer_bundle_without_moving_policy_into_it() -> None:
     assessment = _assessment()
-    payload = build_evidence_decision(
+    evidence_bundle = produce_ci_evidence_bundle(
         repo="owner/repo",
         run=_run(),
         run_id=123,
         run_attempt=1,
-        max_attempts=2,
         assessments=[assessment],
+    )
+    payload = build_evidence_decision(
+        evidence_bundle=evidence_bundle,
+        max_attempts=2,
         safe=True,
         reason="All failed jobs passed the rerun safety gate.",
         rerun_triggered=False,
