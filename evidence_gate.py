@@ -23,6 +23,8 @@ _REQUIRED_JOB_CLAIMS = frozenset(
         "side_effect_risk",
     }
 )
+_OPTIONAL_JOB_CLAIMS = frozenset({"failure_step_status"})
+_JOB_CLAIMS = _REQUIRED_JOB_CLAIMS | _OPTIONAL_JOB_CLAIMS
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,6 +35,7 @@ class JobEvidence:
     confidence: str | None
     provenance_status: str | None
     side_effect_risk: bool | None
+    failure_step_status: str | None
     missing_claims: tuple[str, ...]
     conflicting_claims: tuple[str, ...]
 
@@ -76,7 +79,7 @@ def _job_evidence(bundle: object) -> list[JobEvidence]:
         if not isinstance(item, dict):
             continue
         claim = item.get("claim")
-        if claim not in _REQUIRED_JOB_CLAIMS:
+        if claim not in _JOB_CLAIMS:
             continue
         subject = item.get("subject")
         if not isinstance(subject, dict):
@@ -97,7 +100,10 @@ def _job_evidence(bundle: object) -> list[JobEvidence]:
     jobs: list[JobEvidence] = []
     for job_id in sorted(values):
         job_values = values[job_id]
-        missing = tuple(sorted(_REQUIRED_JOB_CLAIMS.difference(job_values)))
+        missing_set = set(_REQUIRED_JOB_CLAIMS.difference(job_values))
+        if not isinstance(job_values.get("side_effect_risk"), bool):
+            missing_set.add("side_effect_risk")
+        missing = tuple(sorted(missing_set))
         jobs.append(
             JobEvidence(
                 job_id=job_id,
@@ -122,6 +128,11 @@ def _job_evidence(bundle: object) -> list[JobEvidence]:
                     if isinstance(job_values.get("side_effect_risk"), bool)
                     else None
                 ),
+                failure_step_status=(
+                    str(job_values["failure_step_status"])
+                    if "failure_step_status" in job_values
+                    else None
+                ),
                 missing_claims=missing,
                 conflicting_claims=tuple(sorted(conflicts.get(job_id, set()))),
             )
@@ -142,6 +153,7 @@ def summarize_failed_jobs(bundle: object) -> list[dict[str, object]]:
             "category": job.category,
             "confidence": job.confidence,
             "provenance_status": job.provenance_status,
+            "failure_step_status": job.failure_step_status,
             "side_effect_risk": job.side_effect_risk,
         }
         for job in jobs
