@@ -8,6 +8,8 @@
 
 CI Retry Gate analyzes a public failed run before installation and returns an evidence-backed retry-versus-investigate decision. The target repository is not changed.
 
+Under the hood, v1.1 turns that decision into a verifiable evidence boundary: the producer writes a canonical EvidenceBundle, records its SHA-256 digest, and the authorization gate re-reads that artifact in a separate process before it can return `ALLOW`. Missing, conflicting, malformed, or tampered evidence remains fail-closed.
+
 ### Real CI proof
 
 | Historical failure | Observed outcome | Gate result |
@@ -177,7 +179,9 @@ Available outputs:
 
 - `decision`: `ALLOW` or `BLOCK`.
 - `evidence-status`: `SUFFICIENT`, `CONTRADICTED`, or `UNKNOWN`.
-- `evidence-json`: the complete compact JSON contract, scoped to the exact run attempt and head SHA.
+- `evidence-json`: the complete compact JSON authorization contract, scoped to the exact run attempt and head SHA.
+- `evidence-bundle-path`: the canonical EvidenceBundle artifact produced before authorization.
+- `evidence-bundle-sha256`: the SHA-256 digest verified by the isolated gate process.
 
 `UNKNOWN` never grants rerun authority. Consumers must recompute the decision after the workflow state, run attempt, or head SHA changes.
 
