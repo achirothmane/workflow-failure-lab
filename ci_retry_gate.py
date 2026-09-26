@@ -593,6 +593,20 @@ def detect_cross_attempt_recovery(failed_jobs: Iterable[dict], later_jobs: Itera
 
 
 
+def detect_cross_attempt_recurrence(failed_jobs: Iterable[dict], later_jobs: Iterable[dict]) -> dict[int, str]:
+    """Match a failed job identity that fails again in the next attempt."""
+    failed_later = [job for job in later_jobs if str(job.get("conclusion") or "").lower() in FAILURE_CONCLUSIONS]
+    recurrent: dict[int, str] = {}
+    for failed in failed_jobs:
+        failed_name = str(failed.get("name") or "")
+        for later in failed_later:
+            later_name = str(later.get("name") or "")
+            if failed_name and _normalized_job_stem(failed_name) == _normalized_job_stem(later_name):
+                recurrent[int(failed.get("id") or 0)] = later_name
+                break
+    return recurrent
+
+
 def historical_reliability_record(
     current_failed_jobs: Iterable[dict],
     prior_incidents: Iterable[dict],
@@ -1075,7 +1089,7 @@ def _write_output(name: str, value: str) -> None:
             handle.write(f"{name}={value}\n")
 
 
-def render_report(repo: str, run_id: int, run_attempt: int, assessments: list[JobAssessment], safe: bool, reason: str, rerun_triggered: bool, recovered: dict[int, str] | None = None, historical: dict | None = None) -> str:
+def render_report(repo: str, run_id: int, run_attempt: int, assessments: list[JobAssessment], safe: bool, reason: str, rerun_triggered: bool, recovered: dict[int, str] | None = None, historical: dict | None = None, recurrent: dict[int, str] | None = None) -> str:
     wasted = round(sum(item.duration_minutes for item in assessments), 2)
     lines = [
         "<!-- ci-retry-gate-report -->",
@@ -1100,6 +1114,14 @@ def render_report(repo: str, run_id: int, run_attempt: int, assessments: list[Jo
             retry_name = recovered.get(item.job_id)
             if retry_name:
                 lines.append(f"- `{item.name}` failed → explicit retry `{retry_name}` succeeded.")
+        lines.append("")
+    recurrent = recurrent or {}
+    if recurrent:
+        lines.extend(["### Recurrence evidence", "", "The next attempt repeated the same failed job identity; later eventual success does not erase this failed rerun.", ""])
+        for item in assessments:
+            later_name = recurrent.get(item.job_id)
+            if later_name:
+                lines.append(f"- `{item.name}` failed → next attempt `{later_name}` failed again.")
         lines.append("")
     historical = historical or {}
     if historical:
@@ -1253,6 +1275,7 @@ def main() -> int:
         assessments.append(assess_job(job, logs))
 
     recovered = detect_recovered_failures(failed_jobs, jobs)
+    recurrent: dict[int, str] = {}
     recovery_scope = "same attempt"
     if failed_jobs and len(recovered) != len(failed_jobs) and selected_run_attempt is not None:
         latest_run = api.get_run(repo, run_id)
@@ -1260,6 +1283,7 @@ def main() -> int:
         if latest_attempt > selected_run_attempt:
             later_jobs = api.get_jobs_attempt(repo, run_id, selected_run_attempt + 1)
             recovered = detect_cross_attempt_recovery(failed_jobs, later_jobs)
+            recurrent = detect_cross_attempt_recurrence(failed_jobs, later_jobs)
             recovery_scope = f"attempt {selected_run_attempt + 1}"
     if failed_jobs and len(recovered) == len(failed_jobs):
         pairs = "; ".join(
@@ -1270,6 +1294,16 @@ def main() -> int:
         reason = (
             "FAILURE_RECOVERED: every failed job has an explicit successful retry "
             f"counterpart in {recovery_scope} ({pairs}). Another automatic rerun is not justified."
+        )
+    elif recurrent:
+        pairs = "; ".join(
+            f"{str(job.get('name') or job.get('id'))} -> {recurrent[int(job.get('id') or 0)]}"
+            for job in failed_jobs if int(job.get("id") or 0) in recurrent
+        )
+        safe = False
+        reason = (
+            "NEXT_ATTEMPT_RECURRENCE: the same failed job identity failed again in "
+            f"{recovery_scope} ({pairs}). A successful later attempt must not erase this recurrence."
         )
     else:
         safe, reason = rerun_decision(assessments, run_attempt, max_attempts)
@@ -1292,7 +1326,7 @@ def main() -> int:
         rerun_triggered=rerun_triggered,
     )
 
-    report = render_report(repo, run_id, run_attempt, assessments, safe, reason, rerun_triggered, recovered, historical)
+    report = render_report(repo, run_id, run_attempt, assessments, safe, reason, rerun_triggered, recovered, historical, recurrent)
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
         with open(summary_path, "a", encoding="utf-8") as handle:
