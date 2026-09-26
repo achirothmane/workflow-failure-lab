@@ -798,11 +798,8 @@ def _evidence_contradictions(
     max_attempts: int,
 ) -> list[str]:
     contradictions: list[str] = []
-    if run_attempt >= max_attempts:
-        contradictions.append(
-            f"retry_limit_reached: run_attempt={run_attempt} max_attempts={max_attempts}"
-        )
-
+    # Retry limits are execution policy, not evidence contradictions.
+    # Keep evidence truth independent from whether policy still permits another attempt.
     for item in assessments:
         if item.side_effect_risk:
             contradictions.append(f"{item.name}: side_effect_risk")
