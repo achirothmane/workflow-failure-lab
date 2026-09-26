@@ -621,14 +621,24 @@ def historical_reliability_record(
             identity = _normalized_job_stem(str(job.get("name") or ""))
             if identity in identities and job_id in recovered:
                 verified.append({
+                    "run_id": int(incident.get("run_id") or 0),
                     "identity": identity,
                     "observed_at": observed_at,
                     "recovered_as": recovered[job_id],
                 })
+    unique_incidents = {
+        (item["run_id"], item["observed_at"])
+        for item in verified
+    }
+    by_identity: dict[str, int] = {}
+    for item in verified:
+        by_identity[item["identity"]] = by_identity.get(item["identity"], 0) + 1
     latest = max((item["observed_at"] for item in verified), default=None)
     return {
         "status": "SUPPORTING_EVIDENCE" if verified else "INSUFFICIENT_HISTORY",
         "verified_prior_recoveries": len(verified),
+        "verified_prior_incidents": len(unique_incidents),
+        "recoveries_by_identity": by_identity,
         "latest_verified_recovery_at": latest,
         "cutoff": cutoff,
         "authorization": "NOT_AUTHORIZING",
