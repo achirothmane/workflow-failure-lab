@@ -52,6 +52,7 @@ def main() -> int:
     require(license_text.startswith("MIT License"), "LICENSE must be MIT")
     require("using: 'composite'" in action, "action.yml must remain a composite action")
     require("icon: 'shield'" in action, "action branding icon is missing")
+    require(len(re.findall(r"(?m)^branding:\\s*$", action)) == 1, "action.yml must define branding exactly once")
     require(input_default(action, "auto-rerun") == "false", "auto-rerun must default to false")
     require(input_default(action, "selective-rerun") == "false", "selective-rerun must default to false")
     require(input_default(action, "comment-on-pr") == "false", "comment-on-pr must default to false")
