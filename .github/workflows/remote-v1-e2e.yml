@@ -99,7 +99,7 @@ jobs:
           node-version: "22"
 
       - name: Install isolated consumer dependencies
-        run: npm install --prefix e2e/remote-consumer/node --ignore-scripts --no-audit --no-fund
+        run: npm install --prefix e2e/remote-consumer/node --ignore-scripts --no-audit --no-fund --package-lock=false
 
       - id: block
         name: Remote adapter keeps non-quarantined failure red
@@ -156,7 +156,7 @@ jobs:
           node-version: "22"
 
       - name: Install isolated consumer dependencies
-        run: npm install --prefix e2e/remote-consumer/node --ignore-scripts --no-audit --no-fund
+        run: npm install --prefix e2e/remote-consumer/node --ignore-scripts --no-audit --no-fund --package-lock=false
 
       - id: block
         name: Remote adapter keeps non-quarantined failure red
