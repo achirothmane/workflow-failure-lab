@@ -1,6 +1,6 @@
 import unittest
 
-from ci_retry_gate import detect_cross_attempt_recovery, detect_recovered_failures, historical_reliability_record, collect_historical_reliability
+from ci_retry_gate import detect_cross_attempt_recovery, detect_cross_attempt_recurrence, detect_recovered_failures, historical_reliability_record, collect_historical_reliability
 
 
 class RecoveryAwareEvidenceTests(unittest.TestCase):
@@ -152,8 +152,8 @@ class RecoveryAwareEvidenceTests(unittest.TestCase):
     def test_next_attempt_recurrence_is_not_recovery(self):
         failed = [{"id": 1, "name": "test-environment-validation", "conclusion": "failure"}]
         next_attempt = [{"id": 2, "name": "test-environment-validation", "conclusion": "failure"}]
-        self.assertEqual(gate.detect_cross_attempt_recovery(failed, next_attempt), {})
-        self.assertEqual(gate.detect_cross_attempt_recurrence(failed, next_attempt), {1: "test-environment-validation"})
+        self.assertEqual(detect_cross_attempt_recovery(failed, next_attempt), {})
+        self.assertEqual(detect_cross_attempt_recurrence(failed, next_attempt), {1: "test-environment-validation"})
 
 
 if __name__ == "__main__":
