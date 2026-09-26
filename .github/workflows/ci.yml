@@ -40,10 +40,20 @@ jobs:
       - name: Install Python test dependencies
         run: python -m pip install -e ".[test]"
 
-      - name: Probe Jest core dependency in clean directory
-        working-directory: tests/adapter-smoke/node
+      - name: Probe npm baseline in empty directory
         run: |
-          rm -rf node_modules
+          rm -rf /tmp/npm-probe
+          mkdir -p /tmp/npm-probe
+          cd /tmp/npm-probe
+          printf '{"private":true}\n' > package.json
+          npm install --ignore-scripts --no-audit --no-fund --package-lock=false --no-save is-number@7.0.0
+
+      - name: Probe Jest core in empty directory
+        run: |
+          rm -rf /tmp/jest-probe
+          mkdir -p /tmp/jest-probe
+          cd /tmp/jest-probe
+          printf '{"private":true}\n' > package.json
           npm install --ignore-scripts --no-audit --no-fund --package-lock=false --no-save jest@30.5.2
 
       - name: Probe Jest JUnit reporter dependency
