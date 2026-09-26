@@ -1173,46 +1173,46 @@ def render_report(repo: str, run_id: int, run_attempt: int, assessments: list[Jo
 def assess_failed_jobs(api: "GitHubAPI", repo: str, failed_jobs: Iterable[dict]) -> list[JobAssessment]:
     """Assess failed jobs and fail closed when log evidence cannot be acquired."""
     assessments: list[JobAssessment] = []
-        for job in failed_jobs:
-            job_id = int(job.get("id") or 0)
-            try:
-                logs = api.get_job_logs(repo, job_id)
-            except RuntimeError as exc:
-                # Evidence acquisition failure is not an ordinary UNKNOWN
-                # classification. Keep it explicit so downstream authorization can
-                # distinguish "log inspected, no signature found" from "the log
-                # could not be inspected at all".
-                error_text = redact(str(exc))
-                if _bool_env("CI_RETRY_GATE_LOG_DIAGNOSTICS", False):
-                    print(
-                        "::warning::job-log acquisition failed "
-                        f"job_id={job_id} error={error_text}"
-                    )
-                failure_step = assess_failure_step_provenance(job)
-                side_effect_risk, side_effect_evidence = detect_side_effect_risk(job)
-                assessments.append(
-                    JobAssessment(
-                        job_id=job_id,
-                        name=str(job.get("name") or f"job-{job_id}"),
-                        category="EVIDENCE_UNAVAILABLE",
-                        confidence="none",
-                        evidence=(f"Job log acquisition failed: {error_text}",),
-                        provenance_status=PROVENANCE_UNAVAILABLE,
-                        provenance_step="",
-                        provenance_command="",
-                        provenance_evidence=("Execution log was unavailable.",),
-                        failure_step_status=failure_step.status,
-                        failure_step=failure_step.step_name,
-                        failure_step_evidence=failure_step.evidence,
-                        side_effect_risk=side_effect_risk,
-                        side_effect_evidence=side_effect_evidence,
-                        duration_minutes=job_duration_minutes(job),
-                    )
+    for job in failed_jobs:
+        job_id = int(job.get("id") or 0)
+        try:
+            logs = api.get_job_logs(repo, job_id)
+        except RuntimeError as exc:
+            # Evidence acquisition failure is not an ordinary UNKNOWN
+            # classification. Keep it explicit so downstream authorization can
+            # distinguish "log inspected, no signature found" from "the log
+            # could not be inspected at all".
+            error_text = redact(str(exc))
+            if _bool_env("CI_RETRY_GATE_LOG_DIAGNOSTICS", False):
+                print(
+                    "::warning::job-log acquisition failed "
+                    f"job_id={job_id} error={error_text}"
                 )
-                continue
-            assessments.append(assess_job(job, logs))
-    
-    return assessments
+            failure_step = assess_failure_step_provenance(job)
+            side_effect_risk, side_effect_evidence = detect_side_effect_risk(job)
+            assessments.append(
+                JobAssessment(
+                    job_id=job_id,
+                    name=str(job.get("name") or f"job-{job_id}"),
+                    category="EVIDENCE_UNAVAILABLE",
+                    confidence="none",
+                    evidence=(f"Job log acquisition failed: {error_text}",),
+                    provenance_status=PROVENANCE_UNAVAILABLE,
+                    provenance_step="",
+                    provenance_command="",
+                    provenance_evidence=("Execution log was unavailable.",),
+                    failure_step_status=failure_step.status,
+                    failure_step=failure_step.step_name,
+                    failure_step_evidence=failure_step.evidence,
+                    side_effect_risk=side_effect_risk,
+                    side_effect_evidence=side_effect_evidence,
+                    duration_minutes=job_duration_minutes(job),
+                )
+            )
+            continue
+        assessments.append(assess_job(job, logs))
+
+return assessments
 
 
 def main() -> int:
