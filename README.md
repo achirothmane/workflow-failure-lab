@@ -4,23 +4,26 @@
 [![Latest release](https://img.shields.io/github/v/release/achirothmane/workflow-failure-lab)](https://github.com/achirothmane/workflow-failure-lab/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## Stop wasting CI runs on failures that should not be retried.
+## Have a failed GitHub Actions run? Check the evidence before retrying it.
 
-**CI Retry Gate tells GitHub Actions when a failed job is safe to retry, detects evidence-backed flaky tests, routes them to the right owner, and tracks the investigation until the test is healthy again.**
+CI Retry Gate analyzes a public failed run before installation and returns an evidence-backed retry-versus-investigate decision. The target repository is not changed.
 
-It is designed to prove value **before installation**. For a public repository, the first trial can analyze an existing failed GitHub Actions run without adding a workflow, changing the target repository, or granting CI Retry Gate any target-repository permission.
+### Real CI proof
 
-### Try a public failure first — zero install
+| Historical failure | Observed outcome | Gate result |
+|---|---|---|
+| [ROCm recovery case](https://github.com/achirothmane/workflow-failure-lab/issues/82#issuecomment-5842318725) | Every failed job had a successful counterpart in attempt 2 | `FAILURE_RECOVERED` |
+| [ROCm recurrence case](https://github.com/achirothmane/workflow-failure-lab/issues/83#issuecomment-5842328212) | One job recovered, but the same Windows `hiprand` job failed again in attempt 2 | `NEXT_ATTEMPT_RECURRENCE` |
 
-Open the [Public CI run analysis](https://github.com/achirothmane/workflow-failure-lab/issues/new?template=public-run-analysis.yml) form and provide:
+Public job logs were unavailable in these cases, so the gate kept failure cause as `EVIDENCE_UNAVAILABLE` instead of inferring a cause from missing evidence.
 
-- the public repository in `owner/repo` form;
-- the failed GitHub Actions run ID;
-- optionally, the exact historical run attempt.
+### Analyze one failed run — zero install
 
-The analysis runs from the CI Retry Gate repository against GitHub's public Actions read endpoints. It posts the decision and evidence back to the request issue. **Nothing is installed in the target repository, and no target-repository token is requested.**
+**[Analyze a public GitHub Actions failure](https://github.com/achirothmane/workflow-failure-lab/issues/new?template=public-run-analysis.yml)**
 
-Use this proof surface first to answer one question: **does the evidence improve the rerun/investigate decision?** Only after that should installation be considered.
+Provide the public repository in `owner/repo` form, the failed Actions run ID, and optionally the historical attempt. The result is posted to the request issue; automatic reruns remain off.
+
+Use the first trial to answer one question: **did the evidence change or shorten the retry-versus-investigate decision?** Only then consider installation.
 
 ### After proof: run the Setup Doctor — no write permissions
 
