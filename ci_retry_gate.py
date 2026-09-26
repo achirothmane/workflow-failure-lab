@@ -14,6 +14,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Iterable
 
+from evidence_producer import produce_ci_evidence_bundle
+
 TRANSIENT_CATEGORIES = {"RUNNER_INFRA", "DEPENDENCY_NETWORK"}
 FAILURE_CONCLUSIONS = {"failure", "timed_out"}
 
@@ -830,6 +832,13 @@ def build_evidence_decision(
     whenever the run attempt, head SHA, or workflow state changes.
     """
     items = list(assessments)
+    evidence_bundle = produce_ci_evidence_bundle(
+        repo=repo,
+        run=run,
+        run_id=run_id,
+        run_attempt=run_attempt,
+        assessments=items,
+    )
     contradictions = _evidence_contradictions(items, run_attempt, max_attempts)
 
     if safe:
@@ -869,6 +878,7 @@ def build_evidence_decision(
             "workflow_id": run.get("workflow_id"),
         },
         "policy": {"max_attempts": max_attempts},
+        "evidence_bundle": evidence_bundle,
         "reasons": [reason],
         "contradictions": contradictions,
         "failed_jobs": [
