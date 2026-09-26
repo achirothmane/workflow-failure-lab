@@ -2,6 +2,10 @@ name: 'CI Retry Gate'
 description: 'Classify failed GitHub Actions jobs and safely gate reruns with provenance, side-effect checks, and retry limits.'
 author: 'achirothmane'
 
+branding:
+  icon: 'shield'
+  color: 'blue'
+
 inputs:
   github-token:
     description: 'GitHub token. actions:read is required; actions:write is required only when a rerun mode is enabled.'
