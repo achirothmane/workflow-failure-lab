@@ -71,6 +71,34 @@ def main() -> int:
         "ci_retry_gate.py": text("ci_retry_gate.py"),
         "selective_rerun.py": text("selective_rerun.py"),
     }
+
+    ci_retry_source = production_entrypoints["ci_retry_gate.py"]
+    evidence_gate_cli = text("evidence_gate_cli.py")
+    evidence_artifact = text("evidence_artifact.py")
+    require(
+        "from evidence_gate import" not in ci_retry_source,
+        "ci_retry_gate.py must not import the authorization gate in-process",
+    )
+    require(
+        "evidence_gate_cli.py" in ci_retry_source and "subprocess.run" in ci_retry_source,
+        "ci_retry_gate.py must invoke the isolated evidence gate process",
+    )
+    require(
+        "write_evidence_artifact" in ci_retry_source,
+        "ci_retry_gate.py must persist EvidenceBundle before authorization",
+    )
+    require(
+        "expected-sha256" in evidence_gate_cli,
+        "evidence gate CLI must verify the producer artifact digest",
+    )
+    require(
+        "hashlib.sha256" in evidence_artifact,
+        "EvidenceBundle artifact must retain SHA-256 integrity verification",
+    )
+    require(
+        "evidence-bundle-path:" in action and "evidence-bundle-sha256:" in action,
+        "action.yml must expose EvidenceBundle path and SHA-256 outputs",
+    )
     forbidden = (
         "causal_dominance_direct_verifier",
         "causal_dominance_shadow",
@@ -107,6 +135,7 @@ def main() -> int:
     print("- PR comments remain explicit opt-in")
     print("- README quick start and permissions present")
     print("- Setup Doctor composite action and fail-closed default present")
+    print("- EvidenceBundle runtime artifact and isolated gate boundary present")
     print("- Causal Dominance remains research-only")
     print("- SWC + pipx evidence pinned at 2/3")
     return 0

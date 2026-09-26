@@ -5,8 +5,8 @@ from ci_retry_gate import (
     PROVENANCE_CONFIRMED,
     PROVENANCE_UNAVAILABLE,
     JobAssessment,
-    build_evidence_decision,
 )
+from evidence_gate import build_ci_retry_decision
 from evidence_producer import EVIDENCE_BUNDLE_SCHEMA, produce_ci_evidence_bundle
 
 
@@ -112,12 +112,9 @@ def test_retry_gate_embeds_the_producer_bundle_without_moving_policy_into_it() -
         run_attempt=1,
         assessments=[assessment],
     )
-    payload = build_evidence_decision(
-        evidence_bundle=evidence_bundle,
+    payload = build_ci_retry_decision(
+        evidence_bundle,
         max_attempts=2,
-        safe=True,
-        reason="All failed jobs passed the rerun safety gate.",
-        rerun_triggered=False,
     )
 
     bundle = payload["evidence_bundle"]

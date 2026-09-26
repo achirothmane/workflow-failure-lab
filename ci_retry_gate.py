@@ -4,7 +4,9 @@ import http.client
 import json
 import os
 import re
+import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -14,12 +16,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Iterable
 
-from evidence_gate import (
-    assess_ci_retry_evidence,
-    decide_ci_retry,
-    evidence_contradictions,
-    summarize_failed_jobs,
-)
+from evidence_artifact import write_evidence_artifact
 from evidence_producer import produce_ci_evidence_bundle
 
 TRANSIENT_CATEGORIES = {"RUNNER_INFRA", "DEPENDENCY_NETWORK"}
@@ -754,79 +751,54 @@ def collect_historical_reliability(
     return record
 
 
-def evidence_assessment(evidence_bundle: object) -> tuple[bool, str]:
-    """Assess retry evidence through the canonical EvidenceBundle boundary only."""
-    return assess_ci_retry_evidence(evidence_bundle)
+def _evidence_artifact_path(repo: str, run_id: int, run_attempt: int) -> Path:
+    root = Path(os.environ.get("RUNNER_TEMP") or tempfile.gettempdir())
+    directory = root / "ci-retry-gate-evidence"
+    safe_repo = re.sub(r"[^A-Za-z0-9_.-]+", "-", repo).strip("-") or "repository"
+    return directory / f"{safe_repo}-run-{run_id}-attempt-{run_attempt}.evidence.json"
 
 
-def rerun_decision(evidence_bundle: object, max_attempts: int) -> tuple[bool, str]:
-    """Apply retry policy after the EvidenceBundle has been assessed."""
-    return decide_ci_retry(evidence_bundle, max_attempts=max_attempts)
-
-
-EVIDENCE_DECISION_SCHEMA = "ci-retry-gate.evidence-decision.v1"
-
-
-def _evidence_contradictions(evidence_bundle: object) -> list[str]:
-    """Expose evidence contradictions without importing execution policy."""
-    return evidence_contradictions(evidence_bundle)
-
-
-def build_evidence_decision(
-    *,
-    evidence_bundle: dict,
+def _run_evidence_gate_process(
+    evidence_path: Path,
+    evidence_sha256: str,
     max_attempts: int,
-    safe: bool,
-    reason: str,
-    rerun_triggered: bool,
 ) -> dict:
-    """Return a stable machine-readable authorization result for downstream agents.
-
-    The authorization layer consumes EvidenceBundle only. Retry policy is supplied
-    separately and is never written back into the producer's evidence artifact.
-    """
-    contradictions = _evidence_contradictions(evidence_bundle)
-
-    if safe:
-        evidence_status = "SUFFICIENT"
-        confidence = "high"
-    elif contradictions:
-        evidence_status = "CONTRADICTED"
-        confidence = "high"
-    else:
-        evidence_status = "UNKNOWN"
-        confidence = "unknown"
-
-    subject = evidence_bundle.get("subject")
-    if not isinstance(subject, dict):
-        subject = {}
-
-    return {
-        "schema_version": EVIDENCE_DECISION_SCHEMA,
-        "action": "rerun_ci",
-        "decision": "ALLOW" if safe else "BLOCK",
-        "evidence_status": evidence_status,
-        "confidence": confidence,
-        "observed_at": evidence_bundle.get("observed_at"),
-        "fresh_until": None,
-        "freshness_basis": (
-            "Scoped to repository/run_id/run_attempt/head_sha; recompute after any "
-            "workflow state, attempt, or head SHA change."
-        ),
-        "scope": {
-            "repository": str(subject.get("repository") or ""),
-            "run_id": subject.get("run_id"),
-            "run_attempt": subject.get("run_attempt"),
-            "head_sha": str(subject.get("head_sha") or ""),
-            "workflow_id": subject.get("workflow_id"),
-        },
-        "policy": {"max_attempts": max_attempts},
-        "evidence_bundle": evidence_bundle,
-        "reasons": [reason],
-        "contradictions": contradictions,
-        "failed_jobs": summarize_failed_jobs(evidence_bundle),
-        "rerun_triggered": rerun_triggered,
-    }
+    """Invoke the authorization gate in a separate Python process."""
+    gate_cli = Path(__file__).with_name("evidence_gate_cli.py")
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(gate_cli),
+            "--evidence",
+            str(evidence_path),
+            "--expected-sha256",
+            evidence_sha256,
+            "--max-attempts",
+            str(max_attempts),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    if completed.returncode != 0:
+        stderr = completed.stderr.strip()
+        raise RuntimeError(
+            "Evidence gate process failed closed"
+            + (f": {stderr}" if stderr else "")
+        )
+    try:
+        decision = json.loads(completed.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("Evidence gate returned invalid JSON") from exc
+    if not isinstance(decision, dict):
+        raise RuntimeError("Evidence gate returned a non-object decision")
+    if decision.get("decision") not in {"ALLOW", "BLOCK"}:
+        raise RuntimeError("Evidence gate returned an invalid authorization decision")
+    reasons = decision.get("reasons")
+    if not isinstance(reasons, list) or not reasons:
+        raise RuntimeError("Evidence gate returned no decision reason")
+    return decision
 
 
 class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -1226,6 +1198,16 @@ def main() -> int:
         run_attempt=run_attempt,
         assessments=assessments,
     )
+    evidence_path = _evidence_artifact_path(repo, run_id, run_attempt)
+    evidence_sha256 = write_evidence_artifact(evidence_path, evidence_bundle)
+    evidence_decision = _run_evidence_gate_process(
+        evidence_path,
+        evidence_sha256,
+        max_attempts,
+    )
+    safe = evidence_decision["decision"] == "ALLOW"
+    reason = str(evidence_decision["reasons"][0])
+
     recovered = detect_recovered_failures(failed_jobs, jobs)
     recurrent: dict[int, str] = {}
     recovery_scope = "same attempt"
@@ -1237,7 +1219,9 @@ def main() -> int:
             recovered = detect_cross_attempt_recovery(failed_jobs, later_jobs)
             recurrent = detect_cross_attempt_recurrence(failed_jobs, later_jobs)
             recovery_scope = f"attempt {selected_run_attempt + 1}"
+    outer_guard_applied = False
     if failed_jobs and len(recovered) == len(failed_jobs):
+        outer_guard_applied = True
         pairs = "; ".join(
             f"{str(job.get('name') or job.get('id'))} -> {recovered[int(job.get('id') or 0)]}"
             for job in failed_jobs
@@ -1248,6 +1232,7 @@ def main() -> int:
             f"counterpart in {recovery_scope} ({pairs}). Another automatic rerun is not justified."
         )
     elif recurrent:
+        outer_guard_applied = True
         pairs = "; ".join(
             f"{str(job.get('name') or job.get('id'))} -> {recurrent[int(job.get('id') or 0)]}"
             for job in failed_jobs if int(job.get("id") or 0) in recurrent
@@ -1257,8 +1242,6 @@ def main() -> int:
             "NEXT_ATTEMPT_RECURRENCE: the same failed job identity failed again in "
             f"{recovery_scope} ({pairs}). A successful later attempt must not erase this recurrence."
         )
-    else:
-        safe, reason = rerun_decision(evidence_bundle, max_attempts)
     rerun_triggered = False
     if safe and auto_rerun:
         api.rerun_failed_jobs(repo, run_id)
@@ -1266,13 +1249,18 @@ def main() -> int:
 
     historical = collect_historical_reliability(api, repo, run, failed_jobs)
 
-    evidence_decision = build_evidence_decision(
-        evidence_bundle=evidence_bundle,
-        max_attempts=max_attempts,
-        safe=safe,
-        reason=reason,
-        rerun_triggered=rerun_triggered,
-    )
+    # Recovery/recurrence checks are conservative outer guards. They may only
+    # narrow an ALLOW returned by the isolated gate; they can never create one.
+    if outer_guard_applied:
+        evidence_decision["decision"] = "BLOCK"
+        evidence_decision["reasons"] = [reason]
+        if evidence_decision.get("contradictions"):
+            evidence_decision["evidence_status"] = "CONTRADICTED"
+            evidence_decision["confidence"] = "high"
+        else:
+            evidence_decision["evidence_status"] = "UNKNOWN"
+            evidence_decision["confidence"] = "unknown"
+    evidence_decision["rerun_triggered"] = rerun_triggered
 
     report = render_report(repo, run_id, run_attempt, assessments, safe, reason, rerun_triggered, recovered, historical, recurrent)
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
@@ -1306,6 +1294,8 @@ def main() -> int:
         "evidence-json",
         json.dumps(evidence_decision, separators=(",", ":"), sort_keys=True),
     )
+    _write_output("evidence-bundle-path", str(evidence_path))
+    _write_output("evidence-bundle-sha256", evidence_sha256)
     _write_output("safe-to-rerun", "true" if safe else "false")
     _write_output("rerun-triggered", "true" if rerun_triggered else "false")
     _write_output("failed-jobs", str(len(assessments)))
