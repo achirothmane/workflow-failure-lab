@@ -1,6 +1,6 @@
 import unittest
 
-from ci_retry_gate import detect_cross_attempt_recovery, detect_cross_attempt_recurrence, detect_recovered_failures, historical_reliability_record, collect_historical_reliability
+from ci_retry_gate import FAILURE_CONCLUSIONS, detect_cross_attempt_recovery, detect_cross_attempt_recurrence, detect_recovered_failures, historical_reliability_record, collect_historical_reliability
 
 
 class RecoveryAwareEvidenceTests(unittest.TestCase):
@@ -206,6 +206,54 @@ class RecoveryAwareEvidenceTests(unittest.TestCase):
             detect_cross_attempt_recurrence(failed, later),
             {1: "Add comment of changelog preview / changelog-preview-comment"},
         )
+
+
+    def test_cancelled_jobs_are_not_failure_candidates(self):
+        jobs = [
+            {"id": 1, "name": "failed", "conclusion": "failure"},
+            {"id": 2, "name": "timed", "conclusion": "timed_out"},
+            {"id": 3, "name": "cancelled", "conclusion": "cancelled"},
+        ]
+        candidates = [job["name"] for job in jobs if job["conclusion"] in FAILURE_CONCLUSIONS]
+        self.assertEqual(candidates, ["failed", "timed"])
+        self.assertNotIn("cancelled", FAILURE_CONCLUSIONS)
+
+    def test_history_rate_limit_is_explicit_and_non_authorizing(self):
+        class RateLimitedAPI:
+            def get_workflow_runs(self, repo, workflow_id, per_page=100, page=1):
+                raise RuntimeError("GitHub API rate limit exceeded")
+
+        record = collect_historical_reliability(
+            RateLimitedAPI(),
+            "example/repo",
+            {"id": 9, "workflow_id": 7, "created_at": "2026-09-24T18:00:00Z"},
+            [{"id": 1, "name": "tests", "conclusion": "failure"}],
+        )
+        self.assertEqual(record["status"], "EVIDENCE_RATE_LIMITED")
+        self.assertTrue(record["evidence_budget_exhausted"])
+        self.assertEqual(record["authorization"], "NOT_AUTHORIZING")
+
+    def test_history_candidate_budget_exhaustion_is_explicit(self):
+        class BudgetAPI:
+            def get_workflow_runs(self, repo, workflow_id, per_page=100, page=1):
+                return [
+                    {"id": 100 + i, "workflow_id": workflow_id, "created_at": "2026-09-20T00:00:00Z", "run_attempt": 2}
+                    for i in range(3)
+                ]
+
+            def get_jobs_attempt(self, repo, run_id, attempt):
+                return []
+
+        record = collect_historical_reliability(
+            BudgetAPI(),
+            "example/repo",
+            {"id": 999, "workflow_id": 7, "created_at": "2026-09-24T18:00:00Z"},
+            [{"id": 1, "name": "tests", "conclusion": "failure"}],
+            max_pages=1,
+            max_candidate_runs=2,
+        )
+        self.assertTrue(record["evidence_budget_exhausted"])
+        self.assertEqual(record["authorization"], "NOT_AUTHORIZING")
 
 
 if __name__ == "__main__":
