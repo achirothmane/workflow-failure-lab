@@ -64,7 +64,7 @@ def main() -> int:
         "Setup Doctor must fail on BLOCKED checks by default",
     )
 
-    require('version = "1.0.2"' in pyproject, "pyproject version must be 1.0.2 for Marketplace patch release")
+    require('version = "1.1.0"' in pyproject, "pyproject version must be 1.1.0 for Marketplace minor release")
 
     # Research-only Causal Dominance must not silently gain production authority.
     production_entrypoints = {
