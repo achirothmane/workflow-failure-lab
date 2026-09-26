@@ -1,6 +1,6 @@
 import unittest
 
-from ci_retry_gate import FAILURE_CONCLUSIONS, detect_cross_attempt_recovery, detect_cross_attempt_recurrence, detect_recovered_failures, historical_reliability_record, collect_historical_reliability
+from ci_retry_gate import FAILURE_CONCLUSIONS, assess_failed_jobs, detect_cross_attempt_recovery, detect_cross_attempt_recurrence, detect_recovered_failures, historical_reliability_record, collect_historical_reliability
 
 
 class RecoveryAwareEvidenceTests(unittest.TestCase):
@@ -254,6 +254,33 @@ class RecoveryAwareEvidenceTests(unittest.TestCase):
         )
         self.assertTrue(record["evidence_budget_exhausted"])
         self.assertEqual(record["authorization"], "NOT_AUTHORIZING")
+
+
+    def test_public_log_403_fails_closed_as_evidence_unavailable(self):
+        class ForbiddenLogsAPI:
+            def get_job_logs(self, repo, job_id):
+                raise RuntimeError(
+                    'GitHub API GET /repos/example/repo/actions/jobs/42/logs failed with HTTP 403: '
+                    '{"message":"Must have admin rights to Repository."}'
+                )
+
+        assessments = assess_failed_jobs(
+            ForbiddenLogsAPI(),
+            "example/repo",
+            [{
+                "id": 42,
+                "name": "public-test",
+                "conclusion": "failure",
+                "steps": [{"name": "Run tests", "conclusion": "failure"}],
+            }],
+        )
+        self.assertEqual(len(assessments), 1)
+        item = assessments[0]
+        self.assertEqual(item.category, "EVIDENCE_UNAVAILABLE")
+        self.assertEqual(item.confidence, "none")
+        self.assertEqual(item.provenance_status, "UNAVAILABLE")
+        self.assertEqual(item.failure_step_status, "FAILURE_STEP_CONFIRMED")
+        self.assertIn("HTTP 403", item.evidence[0])
 
 
 if __name__ == "__main__":
