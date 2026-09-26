@@ -14,6 +14,12 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Iterable
 
+from evidence_gate import (
+    assess_ci_retry_evidence,
+    decide_ci_retry,
+    evidence_contradictions,
+    summarize_failed_jobs,
+)
 from evidence_producer import produce_ci_evidence_bundle
 
 TRANSIENT_CATEGORIES = {"RUNNER_INFRA", "DEPENDENCY_NETWORK"}
@@ -748,98 +754,38 @@ def collect_historical_reliability(
     return record
 
 
-def evidence_assessment(assessments: Iterable[JobAssessment]) -> tuple[bool, str]:
-    """Assess whether the observed failure evidence supports a safe retry.
-
-    This deliberately excludes execution-policy limits such as max_attempts so
-    historical analysis can report what the evidence said at that attempt
-    independently from whether policy would authorize another execution.
-    """
-    items = list(assessments)
-    if not items:
-        return False, "No failed jobs were available to assess."
-    if any(item.side_effect_risk for item in items):
-        return False, "At least one failed job contains a side-effect signal; blind rerun is blocked."
-    unsafe = [
-        item for item in items
-        if item.category not in TRANSIENT_CATEGORIES or item.confidence != "high"
-    ]
-    if unsafe:
-        names = ", ".join(f"{item.name}={item.category}/{item.confidence}" for item in unsafe)
-        return False, f"Not every failed job is a high-confidence transient failure: {names}."
-    unproven = [
-        item for item in items
-        if item.provenance_status != PROVENANCE_CONFIRMED
-    ]
-    if unproven:
-        names = ", ".join(
-            f"{item.name}={item.provenance_status}" for item in unproven
-        )
-        return False, f"Execution provenance was not confirmed for: {names}."
-    return True, "All failed jobs are high-confidence transient failures with confirmed execution provenance and no side-effect signal was found."
+def evidence_assessment(evidence_bundle: object) -> tuple[bool, str]:
+    """Assess retry evidence through the canonical EvidenceBundle boundary only."""
+    return assess_ci_retry_evidence(evidence_bundle)
 
 
-def rerun_decision(assessments: Iterable[JobAssessment], run_attempt: int, max_attempts: int) -> tuple[bool, str]:
-    evidence_safe, evidence_reason = evidence_assessment(assessments)
-    if not evidence_safe:
-        return False, evidence_reason
-    if run_attempt >= max_attempts:
-        return False, (
-            f"Evidence supports a safe retry, but execution policy blocks it: "
-            f"run_attempt={run_attempt} reached max_attempts={max_attempts}."
-        )
-    return True, evidence_reason
+def rerun_decision(evidence_bundle: object, max_attempts: int) -> tuple[bool, str]:
+    """Apply retry policy after the EvidenceBundle has been assessed."""
+    return decide_ci_retry(evidence_bundle, max_attempts=max_attempts)
 
 
 EVIDENCE_DECISION_SCHEMA = "ci-retry-gate.evidence-decision.v1"
 
 
-def _evidence_contradictions(
-    assessments: Iterable[JobAssessment],
-    run_attempt: int,
-    max_attempts: int,
-) -> list[str]:
-    contradictions: list[str] = []
-    # Retry limits are execution policy, not evidence contradictions.
-    # Keep evidence truth independent from whether policy still permits another attempt.
-    for item in assessments:
-        if item.side_effect_risk:
-            contradictions.append(f"{item.name}: side_effect_risk")
-        if item.category not in TRANSIENT_CATEGORIES and item.category != "UNKNOWN":
-            contradictions.append(f"{item.name}: category={item.category}")
-        if item.provenance_status == PROVENANCE_MISMATCH:
-            contradictions.append(f"{item.name}: provenance_mismatch")
-
-    return contradictions
+def _evidence_contradictions(evidence_bundle: object) -> list[str]:
+    """Expose evidence contradictions without importing execution policy."""
+    return evidence_contradictions(evidence_bundle)
 
 
 def build_evidence_decision(
     *,
-    repo: str,
-    run: dict,
-    run_id: int,
-    run_attempt: int,
+    evidence_bundle: dict,
     max_attempts: int,
-    assessments: Iterable[JobAssessment],
     safe: bool,
     reason: str,
     rerun_triggered: bool,
 ) -> dict:
     """Return a stable machine-readable authorization result for downstream agents.
 
-    The payload is deliberately scoped to the exact workflow execution state.
-    It does not create a time-based lease: consumers must recompute the decision
-    whenever the run attempt, head SHA, or workflow state changes.
+    The authorization layer consumes EvidenceBundle only. Retry policy is supplied
+    separately and is never written back into the producer's evidence artifact.
     """
-    items = list(assessments)
-    evidence_bundle = produce_ci_evidence_bundle(
-        repo=repo,
-        run=run,
-        run_id=run_id,
-        run_attempt=run_attempt,
-        assessments=items,
-    )
-    contradictions = _evidence_contradictions(items, run_attempt, max_attempts)
+    contradictions = _evidence_contradictions(evidence_bundle)
 
     if safe:
         evidence_status = "SUFFICIENT"
@@ -851,12 +797,9 @@ def build_evidence_decision(
         evidence_status = "UNKNOWN"
         confidence = "unknown"
 
-    observed_at = (
-        run.get("updated_at")
-        or run.get("run_started_at")
-        or run.get("created_at")
-        or None
-    )
+    subject = evidence_bundle.get("subject")
+    if not isinstance(subject, dict):
+        subject = {}
 
     return {
         "schema_version": EVIDENCE_DECISION_SCHEMA,
@@ -864,35 +807,24 @@ def build_evidence_decision(
         "decision": "ALLOW" if safe else "BLOCK",
         "evidence_status": evidence_status,
         "confidence": confidence,
-        "observed_at": observed_at,
+        "observed_at": evidence_bundle.get("observed_at"),
         "fresh_until": None,
         "freshness_basis": (
             "Scoped to repository/run_id/run_attempt/head_sha; recompute after any "
             "workflow state, attempt, or head SHA change."
         ),
         "scope": {
-            "repository": repo,
-            "run_id": run_id,
-            "run_attempt": run_attempt,
-            "head_sha": str(run.get("head_sha") or ""),
-            "workflow_id": run.get("workflow_id"),
+            "repository": str(subject.get("repository") or ""),
+            "run_id": subject.get("run_id"),
+            "run_attempt": subject.get("run_attempt"),
+            "head_sha": str(subject.get("head_sha") or ""),
+            "workflow_id": subject.get("workflow_id"),
         },
         "policy": {"max_attempts": max_attempts},
         "evidence_bundle": evidence_bundle,
         "reasons": [reason],
         "contradictions": contradictions,
-        "failed_jobs": [
-            {
-                "job_id": item.job_id,
-                "name": item.name,
-                "category": item.category,
-                "confidence": item.confidence,
-                "provenance_status": item.provenance_status,
-                "failure_step_status": item.failure_step_status,
-                "side_effect_risk": item.side_effect_risk,
-            }
-            for item in items
-        ],
+        "failed_jobs": summarize_failed_jobs(evidence_bundle),
         "rerun_triggered": rerun_triggered,
     }
 
@@ -1287,6 +1219,13 @@ def main() -> int:
     failed_jobs = [job for job in jobs if str(job.get("conclusion") or "").lower() in FAILURE_CONCLUSIONS]
 
     assessments = assess_failed_jobs(api, repo, failed_jobs)
+    evidence_bundle = produce_ci_evidence_bundle(
+        repo=repo,
+        run=run,
+        run_id=run_id,
+        run_attempt=run_attempt,
+        assessments=assessments,
+    )
     recovered = detect_recovered_failures(failed_jobs, jobs)
     recurrent: dict[int, str] = {}
     recovery_scope = "same attempt"
@@ -1319,7 +1258,7 @@ def main() -> int:
             f"{recovery_scope} ({pairs}). A successful later attempt must not erase this recurrence."
         )
     else:
-        safe, reason = rerun_decision(assessments, run_attempt, max_attempts)
+        safe, reason = rerun_decision(evidence_bundle, max_attempts)
     rerun_triggered = False
     if safe and auto_rerun:
         api.rerun_failed_jobs(repo, run_id)
@@ -1328,12 +1267,8 @@ def main() -> int:
     historical = collect_historical_reliability(api, repo, run, failed_jobs)
 
     evidence_decision = build_evidence_decision(
-        repo=repo,
-        run=run,
-        run_id=run_id,
-        run_attempt=run_attempt,
+        evidence_bundle=evidence_bundle,
         max_attempts=max_attempts,
-        assessments=assessments,
         safe=safe,
         reason=reason,
         rerun_triggered=rerun_triggered,
