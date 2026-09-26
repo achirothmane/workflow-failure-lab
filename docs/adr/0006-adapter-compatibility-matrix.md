@@ -27,9 +27,9 @@ Each matrix cell must exercise both behavioral paths with a real runner:
 
 ## Version selection
 
-For pytest, CI resolves the latest available release within each tested major range (for example, >=8,<9). For Jest and Vitest, CI installs the requested major from npm.
+For pytest, CI resolves the latest available release within each tested major range (for example, >=8,<9). For Jest and Vitest, CI installs the requested major from npm into separate fixture dependency environments using npm 11.20.0, then invokes the installed local binary. Jest lives in `tests/adapter-smoke/node`; Vitest lives in its own `vitest` subdirectory.
 
-This intentionally trades exact patch reproducibility for continuous compatibility detection within declared supported majors. Wave 5 remains the pinned smoke path for a stable current-version reproduction.
+This intentionally trades exact patch reproducibility for continuous compatibility detection within declared supported majors. Only the compatibility matrix bypasses the fixture lockfiles. The smoke and remote-consumer paths use committed lockfiles and `npm ci` for reproducible dependency graphs. See [the PR #81 installation investigation](../pr-81-node-installation.md) for the resolver failure and validation evidence.
 
 ## Support boundary
 

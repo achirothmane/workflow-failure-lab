@@ -37,11 +37,19 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Use the verified npm resolver
+        run: npm install --global npm@11.20.0 --ignore-scripts --no-audit --no-fund
+
       - name: Install Python test dependencies
         run: python -m pip install -e ".[test]"
 
-      - name: Install pinned Node smoke dependencies
-        run: npm install --prefix tests/adapter-smoke/node --ignore-scripts --no-audit --no-fund
+      - name: Install locked Jest smoke dependencies
+        working-directory: tests/adapter-smoke/node
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Install locked Vitest smoke dependencies
+        working-directory: tests/adapter-smoke/node/vitest
+        run: npm ci --ignore-scripts --no-audit --no-fund
 
       - id: pytest-block
         name: Pytest blocks a non-quarantined real failure
@@ -133,8 +141,8 @@ jobs:
         uses: ./adapters/vitest
         with:
           active-tests-json: '[]'
-          working-directory: 'tests/adapter-smoke/node'
-          test-command: './node_modules/.bin/vitest run vitest/flaky.test.js'
+          working-directory: 'tests/adapter-smoke/node/vitest'
+          test-command: './node_modules/.bin/vitest run flaky.test.js'
           junit-path: '.ci-smoke/vitest-discover.xml'
           artifact-name: 'smoke-vitest-discover'
 
@@ -156,8 +164,8 @@ jobs:
         uses: ./adapters/vitest
         with:
           active-tests-json: ${{ steps.vitest-id.outputs.json }}
-          working-directory: 'tests/adapter-smoke/node'
-          test-command: './node_modules/.bin/vitest run vitest/flaky.test.js'
+          working-directory: 'tests/adapter-smoke/node/vitest'
+          test-command: './node_modules/.bin/vitest run flaky.test.js'
           junit-path: '.ci-smoke/vitest-quarantine.xml'
           artifact-name: 'smoke-vitest-quarantine'
 

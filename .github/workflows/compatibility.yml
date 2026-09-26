@@ -92,10 +92,14 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Use the verified npm resolver
+        run: npm install --global npm@11.20.0 --ignore-scripts --no-audit --no-fund
+
       - name: Install Jest major and JUnit reporter
+        working-directory: tests/adapter-smoke/node
         run: |
-          npm install --prefix tests/adapter-smoke/node --no-save --ignore-scripts --no-audit --no-fund "jest@${{ matrix.major }}" "jest-junit@17"
-          tests/adapter-smoke/node/node_modules/.bin/jest --version
+          npm install --no-save --ignore-scripts --no-audit --no-fund --package-lock=false "jest@${{ matrix.major }}" "jest-junit@17"
+          ./node_modules/.bin/jest --version
 
       - id: block
         name: Non-quarantined failure stays red
@@ -156,11 +160,14 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Resolve Vitest major through npm 11
+      - name: Use the verified npm resolver
+        run: npm install --global npm@11.20.0 --ignore-scripts --no-audit --no-fund
+
+      - name: Install Vitest major in its own fixture
+        working-directory: tests/adapter-smoke/node/vitest
         run: |
-          npm install --global "npm@11"
-          npm --version
-          npx --yes "vitest@${{ matrix.major }}" --version
+          npm install --no-save --ignore-scripts --no-audit --no-fund --package-lock=false "vitest@${{ matrix.major }}"
+          ./node_modules/.bin/vitest --version
 
       - id: block
         name: Non-quarantined failure stays red
@@ -168,8 +175,8 @@ jobs:
         uses: ./adapters/vitest
         with:
           active-tests-json: '[]'
-          working-directory: 'tests/adapter-smoke/node'
-          test-command: 'npx --yes vitest@${{ matrix.major }} run vitest/flaky.test.js'
+          working-directory: 'tests/adapter-smoke/node/vitest'
+          test-command: './node_modules/.bin/vitest run flaky.test.js'
           junit-path: '.compat/vitest-${{ matrix.major }}-discover.xml'
           artifact-name: 'compat-vitest-${{ matrix.major }}-discover'
 
@@ -190,8 +197,8 @@ jobs:
         uses: ./adapters/vitest
         with:
           active-tests-json: ${{ steps.test-id.outputs.json }}
-          working-directory: 'tests/adapter-smoke/node'
-          test-command: 'npx --yes vitest@${{ matrix.major }} run vitest/flaky.test.js'
+          working-directory: 'tests/adapter-smoke/node/vitest'
+          test-command: './node_modules/.bin/vitest run flaky.test.js'
           junit-path: '.compat/vitest-${{ matrix.major }}-quarantine.xml'
           artifact-name: 'compat-vitest-${{ matrix.major }}-quarantine'
 

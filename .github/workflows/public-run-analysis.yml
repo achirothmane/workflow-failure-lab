@@ -32,7 +32,7 @@ jobs:
 
       - name: Run recovery regression tests
         if: steps.request.outputs.valid == 'true'
-        run: python3 -m unittest tests/test_recovery_aware.py
+        run: python3 -m unittest discover -s tests -p 'test_*.py'
 
       - id: analyze
         name: Analyze public workflow run

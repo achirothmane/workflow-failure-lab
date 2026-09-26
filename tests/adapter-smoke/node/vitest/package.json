@@ -1,0 +1,9 @@
+{
+  "name": "ci-retry-gate-adapter-smoke-vitest",
+  "private": true,
+  "type": "module",
+  "packageManager": "npm@11.20.0",
+  "devDependencies": {
+    "vitest": "5.0.1"
+  }
+}

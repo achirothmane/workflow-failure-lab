@@ -117,7 +117,7 @@ def test_missing_provenance_stays_unknown_and_fail_closed() -> None:
     assert payload["contradictions"] == []
 
 
-def test_retry_limit_is_a_policy_contradiction() -> None:
+def test_retry_limit_policy_does_not_become_evidence_contradiction() -> None:
     payload = build_evidence_decision(
         repo="owner/repo",
         run=_run(),
@@ -131,5 +131,5 @@ def test_retry_limit_is_a_policy_contradiction() -> None:
     )
 
     assert payload["decision"] == "BLOCK"
-    assert payload["evidence_status"] == "CONTRADICTED"
-    assert any(item.startswith("retry_limit_reached:") for item in payload["contradictions"])
+    assert payload["evidence_status"] == "UNKNOWN"
+    assert not any(item.startswith("retry_limit_reached:") for item in payload["contradictions"])
