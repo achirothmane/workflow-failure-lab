@@ -276,3 +276,54 @@ def decide_ci_retry(bundle: object, *, max_attempts: int) -> tuple[bool, str]:
         )
 
     return True, evidence_reason
+
+
+EVIDENCE_DECISION_SCHEMA = "ci-retry-gate.evidence-decision.v1"
+
+
+def build_ci_retry_decision(bundle: object, *, max_attempts: int) -> dict[str, Any]:
+    """Build the complete authorization contract from EvidenceBundle + policy only."""
+    safe, reason = decide_ci_retry(bundle, max_attempts=max_attempts)
+    contradictions = evidence_contradictions(bundle)
+
+    if safe:
+        evidence_status = "SUFFICIENT"
+        confidence = "high"
+    elif contradictions:
+        evidence_status = "CONTRADICTED"
+        confidence = "high"
+    else:
+        evidence_status = "UNKNOWN"
+        confidence = "unknown"
+
+    data = bundle if isinstance(bundle, dict) else {}
+    subject = data.get("subject")
+    if not isinstance(subject, dict):
+        subject = {}
+
+    return {
+        "schema_version": EVIDENCE_DECISION_SCHEMA,
+        "action": "rerun_ci",
+        "decision": "ALLOW" if safe else "BLOCK",
+        "evidence_status": evidence_status,
+        "confidence": confidence,
+        "observed_at": data.get("observed_at"),
+        "fresh_until": None,
+        "freshness_basis": (
+            "Scoped to repository/run_id/run_attempt/head_sha; recompute after any "
+            "workflow state, attempt, or head SHA change."
+        ),
+        "scope": {
+            "repository": str(subject.get("repository") or ""),
+            "run_id": subject.get("run_id"),
+            "run_attempt": subject.get("run_attempt"),
+            "head_sha": str(subject.get("head_sha") or ""),
+            "workflow_id": subject.get("workflow_id"),
+        },
+        "policy": {"max_attempts": max_attempts},
+        "evidence_bundle": bundle if isinstance(bundle, dict) else None,
+        "reasons": [reason],
+        "contradictions": contradictions,
+        "failed_jobs": summarize_failed_jobs(bundle),
+        "rerun_triggered": False,
+    }
