@@ -149,5 +149,12 @@ class RecoveryAwareEvidenceTests(unittest.TestCase):
         self.assertEqual(record["authorization"], "NOT_AUTHORIZING")
 
 
+    def test_next_attempt_recurrence_is_not_recovery(self):
+        failed = [{"id": 1, "name": "test-environment-validation", "conclusion": "failure"}]
+        next_attempt = [{"id": 2, "name": "test-environment-validation", "conclusion": "failure"}]
+        self.assertEqual(gate.detect_cross_attempt_recovery(failed, next_attempt), {})
+        self.assertEqual(gate.detect_cross_attempt_recurrence(failed, next_attempt), {1: "test-environment-validation"})
+
+
 if __name__ == "__main__":
     unittest.main()
