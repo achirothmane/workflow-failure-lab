@@ -163,11 +163,12 @@ def test_side_effect_blocks_transient_rerun():
     assert "side-effect" in reason
 
 
-def test_attempt_cap_blocks_loop():
+def test_attempt_cap_does_not_override_missing_evidence():
     a = assess_job(fake_job("install deps"), "ETIMEDOUT\nconnection reset by peer\ncould not resolve host")
     safe, reason = rerun_decision([a], run_attempt=2, max_attempts=2)
     assert safe is False
-    assert "max_attempts" in reason
+    assert "provenance" in reason.lower()
+    assert "max_attempts" not in reason
 
 
 def test_duration_is_measured():
