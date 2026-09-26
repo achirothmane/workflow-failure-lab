@@ -41,7 +41,7 @@ jobs:
         run: python -m pip install -e ".[test]"
 
       - name: Install pinned Node smoke dependencies
-        run: npm install --prefix tests/adapter-smoke/node --ignore-scripts --no-audit --no-fund
+        run: npm install --prefix tests/adapter-smoke/node --ignore-scripts --no-audit --no-fund --package-lock=false
 
       - id: pytest-block
         name: Pytest blocks a non-quarantined real failure
