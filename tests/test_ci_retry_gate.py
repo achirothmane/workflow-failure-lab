@@ -2,6 +2,7 @@ import http.client
 
 import ci_retry_gate
 from ci_retry_gate import AMBIGUOUS, CAUSAL, FAILURE_STEP_AMBIGUOUS, FAILURE_STEP_CONFIRMED, NON_CAUSAL, PROVENANCE_CONFIRMED, PROVENANCE_MISMATCH, PROVENANCE_UNAVAILABLE, TRANSIENT_CATEGORIES, GitHubAPI, assess_failure_step_provenance, assess_job, causal_evidence_role, classify_log, detect_side_effect_risk, rerun_decision
+from evidence_producer import produce_ci_evidence_bundle
 
 
 def fake_job(name="tests", steps=None, start="2026-09-17T01:00:00Z", end="2026-09-17T01:04:30Z"):
@@ -29,6 +30,20 @@ def timestamped_network_log(signal_time="2026-09-17T01:01:30.0000000Z"):
         f"{signal_time} npm ERR! code ETIMEDOUT\n"
         "2026-09-17T01:01:31.0000000Z Error: connection reset by peer\n"
         "2026-09-17T01:01:32.0000000Z Process completed with exit code 1\n"
+    )
+
+
+def evidence_bundle(*assessments, run_attempt=1):
+    return produce_ci_evidence_bundle(
+        repo="owner/repo",
+        run={
+            "head_sha": "abc123",
+            "workflow_id": 99,
+            "updated_at": "2026-09-22T20:10:00Z",
+        },
+        run_id=123,
+        run_attempt=run_attempt,
+        assessments=assessments,
     )
 
 
@@ -140,7 +155,7 @@ def test_detect_publish_step_side_effect():
 def test_safe_rerun_requires_all_failed_jobs_safe():
     a = assess_job(fake_job("install deps"), "ETIMEDOUT\nconnection reset by peer\ncould not resolve host")
     b = assess_job(fake_job("compile"), "AssertionError\nTests failed")
-    safe, reason = rerun_decision([a, b], run_attempt=1, max_attempts=2)
+    safe, reason = rerun_decision(evidence_bundle(a, b, run_attempt=1), max_attempts=2)
     assert safe is False
     assert "compile" in reason
 
@@ -150,7 +165,7 @@ def test_safe_rerun_for_transient_without_side_effects():
         fake_job("install deps", [failed_step()]),
         timestamped_network_log(),
     )
-    safe, reason = rerun_decision([a], run_attempt=1, max_attempts=2)
+    safe, reason = rerun_decision(evidence_bundle(a, run_attempt=1), max_attempts=2)
     assert safe is True
     assert a.provenance_status == PROVENANCE_CONFIRMED
     assert "high-confidence transient" in reason
@@ -158,14 +173,14 @@ def test_safe_rerun_for_transient_without_side_effects():
 
 def test_side_effect_blocks_transient_rerun():
     a = assess_job(fake_job("deploy production"), "ETIMEDOUT\nconnection reset by peer\ncould not resolve host")
-    safe, reason = rerun_decision([a], run_attempt=1, max_attempts=2)
+    safe, reason = rerun_decision(evidence_bundle(a, run_attempt=1), max_attempts=2)
     assert safe is False
     assert "side-effect" in reason
 
 
 def test_attempt_cap_does_not_override_missing_evidence():
     a = assess_job(fake_job("install deps"), "ETIMEDOUT\nconnection reset by peer\ncould not resolve host")
-    safe, reason = rerun_decision([a], run_attempt=2, max_attempts=2)
+    safe, reason = rerun_decision(evidence_bundle(a, run_attempt=2), max_attempts=2)
     assert safe is False
     assert "provenance" in reason.lower()
     assert "max_attempts" not in reason
@@ -394,7 +409,7 @@ def test_execution_provenance_fails_closed_without_timestamps():
     assert assessment.confidence == "high"
     assert assessment.provenance_status == PROVENANCE_UNAVAILABLE
 
-    safe, reason = rerun_decision([assessment], run_attempt=1, max_attempts=2)
+    safe, reason = rerun_decision(evidence_bundle(assessment, run_attempt=1), max_attempts=2)
     assert safe is False
     assert "Execution provenance" in reason
 
@@ -413,7 +428,7 @@ def test_execution_provenance_detects_signal_outside_failed_step_window():
     assert assessment.confidence == "high"
     assert assessment.provenance_status == PROVENANCE_MISMATCH
 
-    safe, reason = rerun_decision([assessment], run_attempt=1, max_attempts=2)
+    safe, reason = rerun_decision(evidence_bundle(assessment, run_attempt=1), max_attempts=2)
     assert safe is False
     assert "MISMATCH" in reason
 
@@ -458,7 +473,7 @@ def test_failure_step_provenance_is_independent_from_unknown_classification():
     assert assessment.failure_step_status == FAILURE_STEP_CONFIRMED
     assert assessment.failure_step == "Mystery operation"
 
-    safe, _ = rerun_decision([assessment], run_attempt=1, max_attempts=2)
+    safe, _ = rerun_decision(evidence_bundle(assessment, run_attempt=1), max_attempts=2)
     assert safe is False
 
 
