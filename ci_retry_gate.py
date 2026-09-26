@@ -1212,7 +1212,7 @@ def assess_failed_jobs(api: "GitHubAPI", repo: str, failed_jobs: Iterable[dict])
             continue
         assessments.append(assess_job(job, logs))
 
-return assessments
+    return assessments
 
 
 def main() -> int:
