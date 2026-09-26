@@ -1,7 +1,8 @@
 import http.client
 
 import ci_retry_gate
-from ci_retry_gate import AMBIGUOUS, CAUSAL, FAILURE_STEP_AMBIGUOUS, FAILURE_STEP_CONFIRMED, NON_CAUSAL, PROVENANCE_CONFIRMED, PROVENANCE_MISMATCH, PROVENANCE_UNAVAILABLE, TRANSIENT_CATEGORIES, GitHubAPI, assess_failure_step_provenance, assess_job, causal_evidence_role, classify_log, detect_side_effect_risk, rerun_decision
+from ci_retry_gate import AMBIGUOUS, CAUSAL, FAILURE_STEP_AMBIGUOUS, FAILURE_STEP_CONFIRMED, NON_CAUSAL, PROVENANCE_CONFIRMED, PROVENANCE_MISMATCH, PROVENANCE_UNAVAILABLE, TRANSIENT_CATEGORIES, GitHubAPI, assess_failure_step_provenance, assess_job, causal_evidence_role, classify_log, detect_side_effect_risk
+from evidence_gate import decide_ci_retry as rerun_decision
 from evidence_producer import produce_ci_evidence_bundle
 
 
