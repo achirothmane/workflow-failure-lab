@@ -7,8 +7,8 @@ from ci_retry_gate import (
     PROVENANCE_CONFIRMED,
     PROVENANCE_UNAVAILABLE,
     JobAssessment,
-    build_evidence_decision,
 )
+from evidence_gate import build_ci_retry_decision
 from evidence_producer import produce_ci_evidence_bundle
 
 
@@ -57,12 +57,9 @@ def _bundle(*, assessment: JobAssessment, run_attempt: int = 1) -> dict:
 
 
 def test_safe_decision_emits_sufficient_allow_contract() -> None:
-    payload = build_evidence_decision(
-        evidence_bundle=_bundle(assessment=_assessment(), run_attempt=1),
+    payload = build_ci_retry_decision(
+        _bundle(assessment=_assessment(), run_attempt=1),
         max_attempts=2,
-        safe=True,
-        reason="All failed jobs passed the rerun safety gate.",
-        rerun_triggered=False,
     )
 
     assert payload["schema_version"] == "ci-retry-gate.evidence-decision.v1"
@@ -87,15 +84,12 @@ def test_safe_decision_emits_sufficient_allow_contract() -> None:
 
 
 def test_side_effect_is_explicit_contradiction_and_blocks() -> None:
-    payload = build_evidence_decision(
-        evidence_bundle=_bundle(
+    payload = build_ci_retry_decision(
+        _bundle(
             assessment=_assessment(side_effect_risk=True),
             run_attempt=1,
         ),
         max_attempts=2,
-        safe=False,
-        reason="At least one failed job contains a side-effect signal.",
-        rerun_triggered=False,
     )
 
     assert payload["decision"] == "BLOCK"
@@ -105,15 +99,12 @@ def test_side_effect_is_explicit_contradiction_and_blocks() -> None:
 
 
 def test_missing_provenance_stays_unknown_and_fail_closed() -> None:
-    payload = build_evidence_decision(
-        evidence_bundle=_bundle(
+    payload = build_ci_retry_decision(
+        _bundle(
             assessment=_assessment(provenance_status=PROVENANCE_UNAVAILABLE),
             run_attempt=1,
         ),
         max_attempts=2,
-        safe=False,
-        reason="Execution provenance was not confirmed.",
-        rerun_triggered=False,
     )
 
     assert payload["decision"] == "BLOCK"
@@ -123,12 +114,9 @@ def test_missing_provenance_stays_unknown_and_fail_closed() -> None:
 
 
 def test_retry_limit_policy_does_not_become_evidence_contradiction() -> None:
-    payload = build_evidence_decision(
-        evidence_bundle=_bundle(assessment=_assessment(), run_attempt=2),
+    payload = build_ci_retry_decision(
+        _bundle(assessment=_assessment(), run_attempt=2),
         max_attempts=2,
-        safe=False,
-        reason="Run attempt reached the configured retry limit.",
-        rerun_triggered=False,
     )
 
     assert payload["decision"] == "BLOCK"
