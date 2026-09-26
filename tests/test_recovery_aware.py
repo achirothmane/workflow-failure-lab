@@ -156,5 +156,57 @@ class RecoveryAwareEvidenceTests(unittest.TestCase):
         self.assertEqual(detect_cross_attempt_recurrence(failed, next_attempt), {1: "test-environment-validation"})
 
 
+    def test_minipdf_later_success_does_not_create_prior_history(self):
+        current = [{"id": 1, "name": "test (10, ubuntu-22.04)", "conclusion": "failure"}]
+        self.assertEqual(
+            detect_cross_attempt_recovery(
+                current,
+                [{"id": 2, "name": "test (10, ubuntu-22.04)", "conclusion": "success"}],
+            ),
+            {1: "test (10, ubuntu-22.04)"},
+        )
+        history = historical_reliability_record(current, [], "2026-09-19T07:06:47Z")
+        self.assertEqual(history["verified_prior_incidents"], 0)
+        self.assertEqual(history["authorization"], "NOT_AUTHORIZING")
+
+    def test_tortoise_partial_recovery_is_not_full_workflow_recovery(self):
+        failed = [
+            {"id": 1, "name": "changes", "conclusion": "failure"},
+            {"id": 2, "name": "python-ci-gate", "conclusion": "failure"},
+        ]
+        later = [
+            {"id": 3, "name": "changes", "conclusion": "success"},
+            {"id": 4, "name": "python-ci-gate", "conclusion": "failure"},
+        ]
+        recovered = detect_cross_attempt_recovery(failed, later)
+        self.assertEqual(recovered, {1: "changes"})
+        self.assertNotEqual(len(recovered), len(failed))
+
+    def test_pglite_separate_run_is_not_cross_attempt_evidence(self):
+        failed = [{"id": 1, "name": "Build and Test packages/pglite (24.x)", "conclusion": "failure"}]
+        # A separate workflow run is deliberately not supplied to the cross-attempt matcher.
+        self.assertEqual(detect_cross_attempt_recovery(failed, []), {})
+
+    def test_kitsune_mixed_recovery_and_recurrence_remain_distinct(self):
+        failed = [
+            {"id": 1, "name": "Add comment of changelog preview / changelog-preview-comment", "conclusion": "failure"},
+            {"id": 2, "name": "test-windows (windows-latest)", "conclusion": "failure"},
+            {"id": 3, "name": "ci_pass", "conclusion": "failure"},
+        ]
+        later = [
+            {"id": 11, "name": "Add comment of changelog preview / changelog-preview-comment", "conclusion": "failure"},
+            {"id": 12, "name": "test-windows (windows-latest)", "conclusion": "success"},
+            {"id": 13, "name": "ci_pass", "conclusion": "success"},
+        ]
+        self.assertEqual(
+            detect_cross_attempt_recovery(failed, later),
+            {2: "test-windows (windows-latest)", 3: "ci_pass"},
+        )
+        self.assertEqual(
+            detect_cross_attempt_recurrence(failed, later),
+            {1: "Add comment of changelog preview / changelog-preview-comment"},
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
