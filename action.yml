@@ -24,7 +24,7 @@ inputs:
     required: false
     default: 'false'
   selective-rerun:
-    description: 'Rerun only individually safe high-confidence transient failed jobs. Cannot be combined with auto-rerun.'
+    description: 'Rerun at most one state-bound high-confidence transient failed job per evaluated workflow-state epoch. Cannot be combined with auto-rerun.'
     required: false
     default: 'false'
   max-attempts:
@@ -163,7 +163,7 @@ outputs:
     description: 'Number of failed jobs blocked from selective rerun.'
     value: ${{ steps.selective.outputs.selective-blocked-jobs }}
   selective-reruns-triggered:
-    description: 'Number of individual job reruns requested by selective mode.'
+    description: 'Number of individual job reruns requested by selective mode in this state epoch; currently 0 or 1.'
     value: ${{ steps.selective.outputs.selective-reruns-triggered }}
   history-runs-analyzed:
     description: 'Number of previous workflow runs inspected.'
