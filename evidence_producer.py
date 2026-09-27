@@ -11,6 +11,8 @@ from typing import Iterable, Protocol
 
 
 EVIDENCE_BUNDLE_SCHEMA = "evidence-producer.ci.v1"
+MASKING_POLICY_REF = "workflow-failure-lab.secret-redaction.v1"
+MASKING_REASON = "Prevent detected credential material from entering evidence artifacts."
 
 
 class JobAssessmentLike(Protocol):
@@ -29,6 +31,7 @@ class JobAssessmentLike(Protocol):
     side_effect_risk: bool
     side_effect_evidence: tuple[str, ...]
     duration_minutes: float
+    masking_fields_redacted: tuple[str, ...]
 
 
 def _observed_at(run: dict) -> str | None:
@@ -92,6 +95,13 @@ def produce_ci_evidence_bundle(
     derived: list[dict] = []
     missing_sources: list[str] = []
     contradictions: list[str] = []
+    fields_redacted = sorted(
+        {
+            field
+            for item in items
+            for field in getattr(item, "masking_fields_redacted", ())
+        }
+    )
 
     if not items:
         missing_sources.append("failed_jobs")
@@ -192,6 +202,11 @@ def produce_ci_evidence_bundle(
             "workflow_id": run.get("workflow_id"),
         },
         "observed_at": _observed_at(run),
+        "masking_provenance": {
+            "masking_policy_ref": MASKING_POLICY_REF,
+            "fields_redacted": fields_redacted,
+            "reason": MASKING_REASON,
+        },
         "observations": observations,
         "derived": derived,
         # Reserved explicitly so a future AI-assisted producer cannot blur

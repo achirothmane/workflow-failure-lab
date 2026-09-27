@@ -139,6 +139,8 @@ def test_secret_redaction_in_evidence():
     result = classify_log("token=github_pat_abcdefghijklmnopqrstuvwxyz1234567890 ETIMEDOUT")
     assert result.category == "DEPENDENCY_NETWORK"
     assert all("github_pat_" not in line for line in result.evidence)
+    assert "github_fine_grained_token" in result.fields_redacted
+    assert "credential_assignment" in result.fields_redacted
 
 
 def test_detect_deploy_side_effect():
