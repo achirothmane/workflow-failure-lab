@@ -4,11 +4,29 @@
 [![Latest release](https://img.shields.io/github/v/release/achirothmane/workflow-failure-lab)](https://github.com/achirothmane/workflow-failure-lab/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## Have a failed GitHub Actions run? Check the evidence before retrying it.
+## Stop blindly rerunning failed GitHub Actions jobs.
 
-CI Retry Gate analyzes a public failed run before installation and returns an evidence-backed retry-versus-investigate decision. The target repository is not changed.
+A failed workflow does not tell you whether a retry is safe.
 
-Under the hood, v1.1 turns that decision into a verifiable evidence boundary: the producer writes a canonical EvidenceBundle, records its SHA-256 digest, and the authorization gate re-reads that artifact in a separate process before it can return `ALLOW`. Missing, conflicting, malformed, or tampered evidence remains fail-closed.
+CI Retry Gate evaluates the failed run and returns an evidence-backed `ALLOW` or `BLOCK` decision before any rerun is authorized. Deterministic regressions, side-effect risk, stale state, contradictory evidence, and insufficient evidence remain fail-closed.
+
+In v1.2, authorization is also bound to the exact workflow state that produced the evidence. If the run attempt, head SHA, workflow identity, lifecycle, or relevant failed-job state changes, the old justification cannot be reused for a later mutation.
+
+### Try one real failure first — zero install, zero write access
+
+**[Analyze a public GitHub Actions failure](https://github.com/achirothmane/workflow-failure-lab/issues/new?template=public-run-analysis.yml)**
+
+Paste a public repository in `owner/repo` form and a failed Actions run ID. CI Retry Gate analyzes that historical run without changing the target repository and posts the evidence-backed result to the request issue.
+
+Interpret the result in seconds:
+
+| Result | Meaning |
+|---|---|
+| `ALLOW / SUFFICIENT` | The observed evidence supports the bounded rerun policy. |
+| `BLOCK` | The failure should not receive rerun authority from the current evidence. |
+| `UNKNOWN` | Evidence is insufficient or unavailable, so the gate fails closed. |
+
+The first trial has one job: **tell you whether the evidence changed or shortened your retry-versus-investigate decision.** If it does not, do not install anything.
 
 ### Real CI proof
 
@@ -17,15 +35,9 @@ Under the hood, v1.1 turns that decision into a verifiable evidence boundary: th
 | [ROCm recovery case](https://github.com/achirothmane/workflow-failure-lab/issues/82#issuecomment-5842318725) | Every failed job had a successful counterpart in attempt 2 | `FAILURE_RECOVERED` |
 | [ROCm recurrence case](https://github.com/achirothmane/workflow-failure-lab/issues/83#issuecomment-5842328212) | One job recovered, but the same Windows `hiprand` job failed again in attempt 2 | `NEXT_ATTEMPT_RECURRENCE` |
 
-Public job logs were unavailable in these cases, so the gate kept failure cause as `EVIDENCE_UNAVAILABLE` instead of inferring a cause from missing evidence.
+Public job logs were unavailable in these cases, so the gate kept failure cause as `EVIDENCE_UNAVAILABLE` instead of inventing a cause from missing evidence.
 
-### Analyze one failed run — zero install
-
-**[Analyze a public GitHub Actions failure](https://github.com/achirothmane/workflow-failure-lab/issues/new?template=public-run-analysis.yml)**
-
-Provide the public repository in `owner/repo` form, the failed Actions run ID, and optionally the historical attempt. The result is posted to the request issue; automatic reruns remain off.
-
-Use the first trial to answer one question: **did the evidence change or shorten the retry-versus-investigate decision?** Only then consider installation.
+The v1.2 selective-rerun path is also proven from a separate consumer repository: two failed jobs qualified as selective-safe candidates, exactly one rerun mutation was issued for that evaluated state epoch, GitHub advanced the workflow attempt, exactly one job received a new execution, and no second mutation reused the old justification.
 
 ### After proof: run the Setup Doctor — no write permissions
 
