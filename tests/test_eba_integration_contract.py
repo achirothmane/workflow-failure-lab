@@ -117,3 +117,21 @@ def test_receipt_is_bound_to_decision_and_request():
     assert receipt["action_digest"] == decision["action_digest"]
     assert receipt["outcome"] == "SUCCEEDED"
     assert receipt["resource_changes"][0]["result"] == "dispatch-accepted"
+
+
+def test_allow_with_mismatched_evidence_scope_becomes_block():
+    request = _request()
+    legacy = _legacy()
+    legacy["scope"]["head_sha"] = "other-sha"
+
+    decision = build_decision_artifact(
+        action_request=request,
+        evidence_decision=legacy,
+        evidence_sha256="b" * 64,
+        created_at="2026-09-27T16:00:01Z",
+    )
+
+    assert decision["decision"] == "BLOCK"
+    assert decision["reason_codes"] == ["CONTEXT_MISMATCH"]
+    with pytest.raises(ContractViolation, match="ALLOW"):
+        ensure_decision_allows_request(decision, request)
