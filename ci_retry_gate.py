@@ -1129,6 +1129,91 @@ def assess_failed_jobs(api: "GitHubAPI", repo: str, failed_jobs: Iterable[dict])
     return assessments
 
 
+def revalidate_rerun_subject_binding(
+    api: "GitHubAPI",
+    repo: str,
+    run_id: int,
+    evidence_decision: dict,
+    expected_failed_jobs: Iterable[dict],
+) -> tuple[bool, str]:
+    """Re-read the target run immediately before mutation and fail closed on drift.
+
+    The evidence decision is scoped to a specific workflow run attempt, head SHA,
+    workflow identity, and failed-job set. A later automatic rerun must not reuse
+    that authorization after any of those bindings change.
+    """
+    scope = evidence_decision.get("scope")
+    if not isinstance(scope, dict):
+        return False, "RERUN_SCOPE_INVALID: evidence decision has no valid scope."
+
+    expected_repository = str(scope.get("repository") or "")
+    if expected_repository != repo:
+        return False, (
+            "RERUN_SCOPE_CHANGED: repository binding changed "
+            f"({expected_repository!r} -> {repo!r})."
+        )
+
+    try:
+        expected_run_id = int(scope.get("run_id"))
+        expected_attempt = int(scope.get("run_attempt"))
+    except (TypeError, ValueError):
+        return False, "RERUN_SCOPE_INVALID: run_id/run_attempt binding is missing or invalid."
+
+    if expected_run_id != run_id:
+        return False, (
+            "RERUN_SCOPE_CHANGED: run_id binding changed "
+            f"({expected_run_id} -> {run_id})."
+        )
+
+    current_run = api.get_run(repo, run_id)
+    current_attempt = int(current_run.get("run_attempt") or 0)
+    current_head_sha = str(current_run.get("head_sha") or "")
+    current_workflow_id = current_run.get("workflow_id")
+
+    expected_head_sha = str(scope.get("head_sha") or "")
+    expected_workflow_id = scope.get("workflow_id")
+
+    mismatches: list[str] = []
+    if current_attempt != expected_attempt:
+        mismatches.append(f"run_attempt {expected_attempt}->{current_attempt}")
+    if current_head_sha != expected_head_sha:
+        mismatches.append(f"head_sha {expected_head_sha!r}->{current_head_sha!r}")
+    if current_workflow_id != expected_workflow_id:
+        mismatches.append(
+            f"workflow_id {expected_workflow_id!r}->{current_workflow_id!r}"
+        )
+
+    current_jobs = api.get_jobs(repo, run_id)
+    expected_failed = sorted(
+        (
+            int(job.get("id") or 0),
+            str(job.get("conclusion") or "").lower(),
+        )
+        for job in expected_failed_jobs
+        if str(job.get("conclusion") or "").lower() in FAILURE_CONCLUSIONS
+    )
+    current_failed = sorted(
+        (
+            int(job.get("id") or 0),
+            str(job.get("conclusion") or "").lower(),
+        )
+        for job in current_jobs
+        if str(job.get("conclusion") or "").lower() in FAILURE_CONCLUSIONS
+    )
+    if current_failed != expected_failed:
+        mismatches.append(
+            f"failed_job_set {expected_failed!r}->{current_failed!r}"
+        )
+
+    if mismatches:
+        return False, "RERUN_SCOPE_CHANGED: " + "; ".join(mismatches) + "."
+
+    return True, (
+        "RERUN_SCOPE_CONFIRMED: repository, run attempt, head SHA, workflow, "
+        "and failed-job set still match the evidence decision."
+    )
+
+
 def main() -> int:
     token = os.environ.get("INPUT_GITHUB_TOKEN") or os.environ.get("GITHUB_TOKEN")
     repo = os.environ.get("INPUT_REPOSITORY") or os.environ.get("GITHUB_REPOSITORY")
@@ -1244,8 +1329,28 @@ def main() -> int:
         )
     rerun_triggered = False
     if safe and auto_rerun:
-        api.rerun_failed_jobs(repo, run_id)
-        rerun_triggered = True
+        try:
+            binding_valid, binding_reason = revalidate_rerun_subject_binding(
+                api,
+                repo,
+                run_id,
+                evidence_decision,
+                failed_jobs,
+            )
+        except RuntimeError as exc:
+            binding_valid = False
+            binding_reason = (
+                "RERUN_SCOPE_UNAVAILABLE: could not re-read current workflow state "
+                f"before rerun: {redact(str(exc))}"
+            )
+
+        if not binding_valid:
+            safe = False
+            reason = binding_reason
+            outer_guard_applied = True
+        else:
+            api.rerun_failed_jobs(repo, run_id)
+            rerun_triggered = True
 
     historical = collect_historical_reliability(api, repo, run, failed_jobs)
 
