@@ -10,7 +10,11 @@ from evidence_gate import build_ci_retry_decision
 from evidence_producer import EVIDENCE_BUNDLE_SCHEMA, produce_ci_evidence_bundle
 
 
-def _assessment(*, provenance_status: str = PROVENANCE_CONFIRMED) -> JobAssessment:
+def _assessment(
+    *,
+    provenance_status: str = PROVENANCE_CONFIRMED,
+    masking_fields_redacted: tuple[str, ...] = (),
+) -> JobAssessment:
     return JobAssessment(
         job_id=42,
         name="unit-tests",
@@ -31,6 +35,7 @@ def _assessment(*, provenance_status: str = PROVENANCE_CONFIRMED) -> JobAssessme
         side_effect_risk=False,
         side_effect_evidence=(),
         duration_minutes=2.5,
+        masking_fields_redacted=masking_fields_redacted,
     )
 
 
@@ -86,6 +91,32 @@ def test_producer_separates_observed_from_derived_and_has_no_policy() -> None:
     assert not _contains_key(bundle, "retry_permitted")
     assert not _contains_key(bundle, "policy")
     assert not _contains_key(bundle, "max_attempts")
+
+
+def test_masking_provenance_records_policy_ref_fields_and_reason() -> None:
+    bundle = produce_ci_evidence_bundle(
+        repo="owner/repo",
+        run=_run(),
+        run_id=123,
+        run_attempt=1,
+        assessments=[
+            _assessment(
+                masking_fields_redacted=(
+                    "credential_assignment",
+                    "github_fine_grained_token",
+                )
+            )
+        ],
+    )
+
+    assert bundle["masking_provenance"] == {
+        "masking_policy_ref": "workflow-failure-lab.secret-redaction.v1",
+        "fields_redacted": [
+            "credential_assignment",
+            "github_fine_grained_token",
+        ],
+        "reason": "Prevent detected credential material from entering evidence artifacts.",
+    }
 
 
 def test_missing_provenance_is_reported_as_evidence_quality_not_policy() -> None:
