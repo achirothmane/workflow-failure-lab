@@ -895,9 +895,13 @@ This creates a controlled path from `UNKNOWN` → repeated evidence → candidat
 
 ## Selective Safe Rerun
 
-`selective-rerun: 'true'` reruns only failed jobs that are high-confidence transient failures. Code regressions, unknown failures, low-confidence failures, and side-effect jobs remain blocked. The attempt cap prevents rerun loops.
+`selective-rerun: 'true'` identifies failed jobs that are high-confidence transient failures. Code regressions, unknown failures, low-confidence failures, and side-effect jobs remain blocked. The attempt cap prevents rerun loops.
 
-Because GitHub may also rerun dependent jobs when one job is rerun, selective mode fails closed if the workflow contains deploy/publish/migrate or other side-effect signals.
+Before mutation, the selected job is re-bound to the exact workflow attempt, head SHA, workflow identity, lifecycle, and failed job execution using the same EASL subject-state invariant used by the legacy auto-rerun path.
+
+Selective mode performs **at most one write per evaluated workflow-state epoch**. GitHub's job-rerun endpoint also reruns dependent jobs, so once one selective rerun is accepted the workflow is known to be changing. Remaining safe candidates are not allowed to reuse the old pre-mutation justification; they must be re-evaluated from a later stable workflow state.
+
+Because GitHub may also rerun dependent jobs when one job is rerun, selective mode also fails closed if the workflow contains deploy/publish/migrate or other side-effect signals.
 
 ## Basic usage
 
