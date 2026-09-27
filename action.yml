@@ -156,6 +156,12 @@ outputs:
   eba-assumption-sha256:
     description: 'SHA-256 digest of the canonical EBA AssumptionState artifact.'
     value: ${{ steps.gate.outputs.eba-assumption-sha256 }}
+  eba-authority-json:
+    description: 'Evidence-before-Action v0.1 AuthorityGrant produced by the Agent Action Guard CI retry profile.'
+    value: ${{ steps.gate.outputs.eba-authority-json }}
+  eba-authority-sha256:
+    description: 'SHA-256 digest of the canonical EBA AuthorityGrant artifact.'
+    value: ${{ steps.gate.outputs.eba-authority-sha256 }}
   eba-decision-json:
     description: 'Evidence-before-Action v0.1 Decision artifact authorizing or blocking the exact ActionRequest.'
     value: ${{ steps.gate.outputs.eba-decision-json }}
