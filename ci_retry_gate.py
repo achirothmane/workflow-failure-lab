@@ -24,6 +24,7 @@ from easl_state_binding import (
 from evidence_artifact import write_evidence_artifact
 from evidence_producer import produce_ci_evidence_bundle
 from ci_assumption_profile import build_ci_retry_assumption_state
+from ci_authority_profile import build_ci_authority_grant
 from eba_integration_contract import (
     ContractViolation,
     build_ci_action_request,
@@ -1385,11 +1386,17 @@ def main() -> int:
         evidence_sha256=evidence_sha256,
         created_at=contract_timestamp,
     )
+    authority_grant = build_ci_authority_grant(
+        action_request=action_request,
+        created_at=contract_timestamp,
+    )
     contract_decision = build_decision_artifact(
         action_request=action_request,
         evidence_decision=evidence_decision,
         evidence_sha256=evidence_sha256,
         assumption_states=[assumption_state],
+        authority_grant=authority_grant,
+        require_authority=True,
         created_at=contract_timestamp,
     )
 
@@ -1454,6 +1461,7 @@ def main() -> int:
                     contract_decision,
                     action_request,
                     assumption_states=[assumption_state],
+                    authority_grant=authority_grant,
                 )
             except ContractViolation as exc:
                 safe = False
@@ -1485,12 +1493,15 @@ def main() -> int:
         evidence_decision=evidence_decision,
         evidence_sha256=evidence_sha256,
         assumption_states=[assumption_state],
+        authority_grant=authority_grant,
+        require_authority=True,
         created_at=contract_timestamp,
     )
     execution_receipt = build_execution_receipt(
         action_request=action_request,
         decision_artifact=contract_decision,
         assumption_states=[assumption_state],
+        authority_grant=authority_grant,
         rerun_triggered=rerun_triggered,
     )
 
@@ -1500,6 +1511,9 @@ def main() -> int:
     assumption_path = evidence_path.with_name(
         evidence_path.name.replace(".evidence.json", ".eba-assumption.json")
     )
+    authority_path = evidence_path.with_name(
+        evidence_path.name.replace(".evidence.json", ".eba-authority.json")
+    )
     decision_path = evidence_path.with_name(
         evidence_path.name.replace(".evidence.json", ".eba-decision.json")
     )
@@ -1508,6 +1522,7 @@ def main() -> int:
     )
     request_sha256 = write_contract_artifact(request_path, action_request)
     assumption_sha256 = write_contract_artifact(assumption_path, assumption_state)
+    authority_sha256 = write_contract_artifact(authority_path, authority_grant)
     decision_sha256 = write_contract_artifact(decision_path, contract_decision)
     receipt_sha256 = write_contract_artifact(receipt_path, execution_receipt)
 
@@ -1555,6 +1570,11 @@ def main() -> int:
         json.dumps(assumption_state, separators=(",", ":"), sort_keys=True),
     )
     _write_output("eba-assumption-sha256", assumption_sha256)
+    _write_output(
+        "eba-authority-json",
+        json.dumps(authority_grant, separators=(",", ":"), sort_keys=True),
+    )
+    _write_output("eba-authority-sha256", authority_sha256)
     _write_output(
         "eba-decision-json",
         json.dumps(contract_decision, separators=(",", ":"), sort_keys=True),
