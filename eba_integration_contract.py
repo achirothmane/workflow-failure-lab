@@ -11,6 +11,7 @@ CONTRACT_VERSION = "eba.integration/v0.1"
 DECISION_KIND = "Decision"
 RECEIPT_KIND = "ExecutionReceipt"
 ASSUMPTION_KIND = "AssumptionState"
+AUTHORITY_KIND = "AuthorityGrant"
 
 
 class ContractViolation(RuntimeError):
@@ -88,9 +89,11 @@ def build_ci_action_request(
             "id": "ci-retry-gate",
         },
         "action": {
+            "tool": "github-actions",
             "verb": "rerun_failed_jobs",
             "resource": f"github://{repository}/actions/runs/{int(run_id)}",
             "environment": "ci",
+            "side_effect": True,
         },
         "context": scope,
     }
@@ -126,12 +129,86 @@ def _validate_assumption_state(artifact: dict[str, Any]) -> None:
         raise ContractViolation("ASSUMPTION_INTEGRITY_INVALID")
 
 
+def _authority_scope_digest(action_request: dict[str, Any]) -> str:
+    principal = action_request.get("principal")
+    action = action_request.get("action")
+    if not isinstance(principal, dict) or not isinstance(action, dict):
+        raise ContractViolation("AUTHORITY_REQUEST_INVALID")
+    return _digest(
+        {
+            "actor": principal.get("id"),
+            "tool": action.get("tool"),
+            "operation": action.get("verb"),
+            "resource": action.get("resource"),
+            "side_effect": action.get("side_effect"),
+        }
+    )
+
+
+def _validate_authority_grant(
+    artifact: dict[str, Any],
+    action_request: dict[str, Any],
+) -> None:
+    if artifact.get("contract_version") != CONTRACT_VERSION:
+        raise ContractViolation("AUTHORITY_CONTRACT_VERSION_INVALID")
+    if artifact.get("kind") != AUTHORITY_KIND:
+        raise ContractViolation("AUTHORITY_KIND_INVALID")
+    if artifact.get("revoked") is not False:
+        raise ContractViolation("AUTHORITY_REVOKED")
+
+    integrity = artifact.get("integrity")
+    if not isinstance(integrity, dict) or integrity.get("algorithm") != "sha256":
+        raise ContractViolation("AUTHORITY_INTEGRITY_INVALID")
+    unsigned = dict(artifact)
+    unsigned.pop("integrity", None)
+    if integrity.get("digest") != _digest(unsigned):
+        raise ContractViolation("AUTHORITY_INTEGRITY_INVALID")
+
+    principal = action_request.get("principal")
+    action = action_request.get("action")
+    if not isinstance(principal, dict) or not isinstance(action, dict):
+        raise ContractViolation("AUTHORITY_REQUEST_INVALID")
+
+    grant_principal = artifact.get("principal")
+    if not isinstance(grant_principal, dict) or grant_principal.get("id") != principal.get("id"):
+        raise ContractViolation("AUTHORITY_PRINCIPAL_MISMATCH")
+
+    if artifact.get("action_id") != action_request.get("id"):
+        raise ContractViolation("AUTHORITY_ACTION_ID_MISMATCH")
+    if artifact.get("action_scope_digest") != _authority_scope_digest(action_request):
+        raise ContractViolation("AUTHORITY_SCOPE_MISMATCH")
+
+    resource_scope = artifact.get("resource_scope")
+    if not isinstance(resource_scope, list) or action.get("resource") not in resource_scope:
+        raise ContractViolation("AUTHORITY_RESOURCE_MISMATCH")
+
+    allowed = artifact.get("allowed_actions")
+    if not isinstance(allowed, list):
+        raise ContractViolation("AUTHORITY_ACTIONS_INVALID")
+    expected_action = {
+        "tool": action.get("tool"),
+        "operation": action.get("verb"),
+        "side_effect": action.get("side_effect"),
+    }
+    if expected_action not in allowed:
+        raise ContractViolation("AUTHORITY_OPERATION_MISMATCH")
+
+    constraints = artifact.get("context_constraints")
+    if isinstance(constraints, dict):
+        environments = constraints.get("environment")
+        if environments is not None:
+            if not isinstance(environments, list) or action.get("environment") not in environments:
+                raise ContractViolation("AUTHORITY_CONTEXT_MISMATCH")
+
+
 def build_decision_artifact(
     *,
     action_request: dict[str, Any],
     evidence_decision: dict[str, Any],
     evidence_sha256: str,
     assumption_states: list[dict[str, Any]] | tuple[dict[str, Any], ...] = (),
+    authority_grant: dict[str, Any] | None = None,
+    require_authority: bool = False,
     created_at: str | None = None,
 ) -> dict[str, Any]:
     decision = str(evidence_decision.get("decision") or "")
@@ -166,6 +243,17 @@ def build_decision_artifact(
             decision = "BLOCK"
             reason = f"ASSUMPTION_INVALID: {exc}."
 
+    if decision == "ALLOW" and require_authority and authority_grant is None:
+        decision = "BLOCK"
+        reason = "AUTHORITY_MISSING: required AuthorityGrant was not supplied."
+
+    if decision == "ALLOW" and authority_grant is not None:
+        try:
+            _validate_authority_grant(authority_grant, action_request)
+        except ContractViolation as exc:
+            decision = "BLOCK"
+            reason = f"AUTHORITY_INVALID: {exc}."
+
     timestamp = created_at or _utc_now()
 
     artifact: dict[str, Any] = {
@@ -186,7 +274,11 @@ def build_decision_artifact(
                 for item in assumption_states
                 if item.get("id")
             ],
-            "authority_ref": None,
+            "authority_ref": (
+                str(authority_grant.get("id"))
+                if isinstance(authority_grant, dict) and authority_grant.get("id")
+                else None
+            ),
             "budget_ref": None,
             "approval_refs": [],
         },
@@ -212,6 +304,7 @@ def ensure_decision_allows_request(
     action_request: dict[str, Any],
     *,
     assumption_states: list[dict[str, Any]] | tuple[dict[str, Any], ...] = (),
+    authority_grant: dict[str, Any] | None = None,
 ) -> None:
     """Fail closed unless the Decision authorizes this exact ActionRequest."""
     if decision_artifact.get("contract_version") != CONTRACT_VERSION:
@@ -241,6 +334,14 @@ def ensure_decision_allows_request(
     for ref in required_refs:
         _validate_assumption_state(supplied[ref])
 
+    authority_ref = basis.get("authority_ref")
+    if authority_ref is not None:
+        if authority_grant is None:
+            raise ContractViolation("AUTHORITY_REFERENCE_MISSING")
+        if str(authority_grant.get("id")) != str(authority_ref):
+            raise ContractViolation("AUTHORITY_REFERENCE_MISMATCH")
+        _validate_authority_grant(authority_grant, action_request)
+
 
 def build_execution_receipt(
     *,
@@ -248,6 +349,7 @@ def build_execution_receipt(
     decision_artifact: dict[str, Any],
     rerun_triggered: bool,
     assumption_states: list[dict[str, Any]] | tuple[dict[str, Any], ...] = (),
+    authority_grant: dict[str, Any] | None = None,
     created_at: str | None = None,
 ) -> dict[str, Any]:
     timestamp = created_at or _utc_now()
@@ -256,6 +358,7 @@ def build_execution_receipt(
             decision_artifact,
             action_request,
             assumption_states=assumption_states,
+            authority_grant=authority_grant,
         )
 
     receipt: dict[str, Any] = {

@@ -148,3 +148,35 @@ The Decision contains a real `basis.assumption_refs` entry. At the execution bou
 A missing, non-VALID, or tampered AssumptionState fails closed.
 
 This integration is contract-based rather than a runtime network call to the separate assumption-gate repository. That preserves reproducibility for GitHub Action consumers and avoids turning a remote repository outage into an authorization ambiguity.
+
+
+## Agent Action Guard authority integration
+
+The CI Retry Gate profile now produces an explicit `AuthorityGrant` using the
+Agent Action Guard authority contract.
+
+The precompiled policy permits the `ci-retry-gate` principal to perform the
+`github-actions / rerun_failed_jobs` operation with an explicit side effect.
+The resulting grant is narrowed to the exact workflow-run resource from the
+ActionRequest.
+
+The EBA Decision now contains a real `basis.authority_ref`.
+
+At the execution boundary the consumer validates:
+
+- contract version and `AuthorityGrant` kind;
+- SHA-256 artifact integrity;
+- grant is not revoked;
+- principal id matches the ActionRequest;
+- action id matches the ActionRequest;
+- action-scope digest matches actor/tool/operation/resource/side-effect;
+- exact resource is inside `resource_scope`;
+- requested operation appears in `allowed_actions`;
+- environment satisfies `context_constraints`.
+
+A missing, tampered, revoked, or scope-mismatched AuthorityGrant fails closed.
+
+As with assumption-gate, this is a contract-based integration rather than a
+runtime network call to the Agent Action Guard repository. The policy profile
+is precompiled into the action package so a remote repository outage cannot
+silently change authorization behavior.
