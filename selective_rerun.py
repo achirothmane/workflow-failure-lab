@@ -13,9 +13,15 @@ from ci_retry_gate import (
     GitHubAPI,
     JobAssessment,
     _event_payload,
+    _state_binding_token,
     _write_output,
     assess_job,
     detect_side_effect_risk,
+)
+from easl_state_binding import (
+    StateBinding,
+    StateBindingError,
+    evaluate_required_state_bindings,
 )
 
 
@@ -62,6 +68,130 @@ def selective_plan(
         else:
             safe.append(item)
     return safe, blocked
+
+
+def _selective_job_binding_value(job: dict | None) -> dict[str, object] | None:
+    if job is None:
+        return None
+    return {
+        "id": int(job.get("id") or 0),
+        "name": str(job.get("name") or ""),
+        "conclusion": str(job.get("conclusion") or "").lower(),
+        "started_at": str(job.get("started_at") or ""),
+        "completed_at": str(job.get("completed_at") or ""),
+    }
+
+
+def revalidate_selective_job_binding(
+    api: GitHubAPI,
+    repo: str,
+    run_id: int,
+    expected_run: dict,
+    expected_job: dict,
+) -> tuple[bool, str]:
+    """Re-read one selective-rerun subject immediately before mutation.
+
+    A selective rerun is authorized for one exact workflow/job execution state.
+    The opaque binding covers the workflow attempt and the specific failed job
+    whose transient evidence was assessed.
+    """
+    current_run = api.get_run(repo, run_id)
+    current_jobs = api.get_jobs(repo, run_id)
+    expected_job_id = int(expected_job.get("id") or 0)
+    current_job = next(
+        (
+            job
+            for job in current_jobs
+            if int(job.get("id") or 0) == expected_job_id
+        ),
+        None,
+    )
+
+    expected_attempt = int(expected_run.get("run_attempt") or 0)
+    current_attempt = int(current_run.get("run_attempt") or 0)
+    expected_head_sha = str(expected_run.get("head_sha") or "")
+    current_head_sha = str(current_run.get("head_sha") or "")
+    expected_workflow_id = expected_run.get("workflow_id")
+    current_workflow_id = current_run.get("workflow_id")
+
+    bindings = (
+        StateBinding(
+            id="run-attempt",
+            expected=_state_binding_token(expected_attempt),
+            observed=_state_binding_token(current_attempt),
+        ),
+        StateBinding(
+            id="head-sha",
+            expected=_state_binding_token(expected_head_sha),
+            observed=_state_binding_token(current_head_sha),
+        ),
+        StateBinding(
+            id="workflow-id",
+            expected=_state_binding_token(expected_workflow_id),
+            observed=_state_binding_token(current_workflow_id),
+        ),
+        StateBinding(
+            id="run-lifecycle",
+            expected=_state_binding_token(
+                {
+                    "status": str(expected_run.get("status") or ""),
+                    "conclusion": str(expected_run.get("conclusion") or ""),
+                }
+            ),
+            observed=_state_binding_token(
+                {
+                    "status": str(current_run.get("status") or ""),
+                    "conclusion": str(current_run.get("conclusion") or ""),
+                }
+            ),
+        ),
+        StateBinding(
+            id="target-job",
+            expected=_state_binding_token(_selective_job_binding_value(expected_job)),
+            observed=_state_binding_token(_selective_job_binding_value(current_job)),
+        ),
+    )
+    details = {
+        "run-attempt": f"run_attempt {expected_attempt}->{current_attempt}",
+        "head-sha": f"head_sha {expected_head_sha!r}->{current_head_sha!r}",
+        "workflow-id": (
+            f"workflow_id {expected_workflow_id!r}->{current_workflow_id!r}"
+        ),
+        "run-lifecycle": (
+            "workflow lifecycle changed before selective rerun"
+        ),
+        "target-job": (
+            f"job {expected_job_id} no longer matches the failed execution "
+            "that produced the rerun evidence"
+        ),
+    }
+
+    try:
+        invalidations = evaluate_required_state_bindings(
+            bindings,
+            (
+                "run-attempt",
+                "head-sha",
+                "workflow-id",
+                "run-lifecycle",
+                "target-job",
+            ),
+        )
+    except StateBindingError as exc:
+        return False, f"SELECTIVE_SCOPE_INVALID: {exc}."
+
+    if invalidations:
+        changed = [
+            details[item.state_binding_id]
+            for item in invalidations
+            if item.state_binding_id in details
+        ]
+        return False, "SELECTIVE_SCOPE_CHANGED: " + "; ".join(changed) + "."
+
+    return True, (
+        "SELECTIVE_SCOPE_CONFIRMED: workflow attempt, head SHA, workflow, "
+        "lifecycle, and target job still match the assessed failure."
+    )
 
 
 def _rerun_job(api: GitHubAPI, repo: str, job_id: int) -> None:
@@ -194,12 +324,64 @@ def main() -> int:
     )
 
     triggered: list[JobAssessment] = []
-    for item in safe:
-        try:
-            _rerun_job(api, repo, item.job_id)
-            triggered.append(item)
-        except RuntimeError as exc:
-            print(f"::warning::{exc}")
+    if safe:
+        # One selective mutation per evaluated workflow-state epoch.
+        #
+        # GitHub's job-rerun endpoint also reruns dependent jobs. Once the first
+        # mutation is accepted, the workflow state is known to be changing, so
+        # the remaining pre-mutation justifications must not be reused as if the
+        # original snapshot still held.
+        candidate = min(safe, key=lambda item: item.job_id)
+        expected_jobs = {
+            int(job.get("id") or 0): job
+            for job in failed_jobs
+        }
+        expected_job = expected_jobs.get(candidate.job_id)
+
+        if expected_job is None:
+            blocked.append(
+                BlockedJob(
+                    candidate,
+                    "SELECTIVE_SCOPE_INVALID: assessed job is absent from the original failed-job snapshot.",
+                )
+            )
+        else:
+            try:
+                binding_valid, binding_reason = revalidate_selective_job_binding(
+                    api,
+                    repo,
+                    run_id,
+                    run,
+                    expected_job,
+                )
+            except RuntimeError as exc:
+                binding_valid = False
+                binding_reason = (
+                    "SELECTIVE_SCOPE_UNAVAILABLE: could not re-read current workflow "
+                    f"state before rerun: {exc}"
+                )
+
+            if not binding_valid:
+                blocked.append(BlockedJob(candidate, binding_reason))
+            else:
+                try:
+                    _rerun_job(api, repo, candidate.job_id)
+                    triggered.append(candidate)
+                except RuntimeError as exc:
+                    blocked.append(BlockedJob(candidate, str(exc)))
+
+        if triggered:
+            mutated_job_id = triggered[0].job_id
+            for item in safe:
+                if item.job_id == mutated_job_id:
+                    continue
+                blocked.append(
+                    BlockedJob(
+                        item,
+                        "SELECTIVE_STATE_EPOCH_ENDED: a prior selective rerun mutation "
+                        "changed the workflow subject state; re-evaluate before another write.",
+                    )
+                )
 
     report = render_selective_report(repo, run_id, safe, blocked, workflow_side_effects, triggered)
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
