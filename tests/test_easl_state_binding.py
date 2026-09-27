@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 from easl_state_binding import (
@@ -10,66 +13,44 @@ from easl_state_binding import (
 )
 
 
-def test_matching_binding_remains_valid() -> None:
-    result = evaluate_required_state_bindings(
-        [StateBinding(id="target-state", expected="sha256:abc", observed="sha256:abc")],
-        ["target-state"],
-    )
-
-    assert result == ()
+CONFORMANCE_PATH = (
+    Path(__file__).parent / "conformance" / "easl" / "subject_state_binding.json"
+)
 
 
-def test_changed_binding_emits_subject_state_changed() -> None:
-    result = evaluate_required_state_bindings(
-        [
-            StateBinding(
-                id="target-state",
-                expected="sha256:before",
-                observed="sha256:after",
-            )
-        ],
-        ["target-state"],
-    )
-
-    assert len(result) == 1
-    assert result[0].state_binding_id == "target-state"
-    assert result[0].reason == REASON_SUBJECT_STATE_CHANGED
+def _load_vectors() -> dict:
+    payload = json.loads(CONFORMANCE_PATH.read_text(encoding="utf-8"))
+    assert payload["version"] == 1
+    assert payload["primitive"] == "subject_state_binding"
+    return payload
 
 
-def test_multiple_changed_bindings_preserve_required_order() -> None:
-    result = evaluate_required_state_bindings(
-        [
-            StateBinding(id="run-attempt", expected="json:1", observed="json:2"),
-            StateBinding(id="head-sha", expected='json:"abc"', observed='json:"def"'),
-        ],
-        ["head-sha", "run-attempt"],
-    )
-
-    assert [item.state_binding_id for item in result] == [
-        "head-sha",
-        "run-attempt",
-    ]
+VECTORS = _load_vectors()
 
 
-def test_unknown_required_binding_is_structural_error() -> None:
-    with pytest.raises(StateBindingError, match="unknown state binding"):
-        evaluate_required_state_bindings([], ["missing"])
+@pytest.mark.parametrize(
+    "case",
+    VECTORS["cases"],
+    ids=[case["name"] for case in VECTORS["cases"]],
+)
+def test_python_consumer_matches_easl_subject_state_conformance(case: dict) -> None:
+    bindings = [StateBinding(**item) for item in case["bindings"]]
 
+    expected_error = case.get("want_error_contains")
+    if expected_error:
+        with pytest.raises(StateBindingError, match=expected_error):
+            evaluate_required_state_bindings(bindings, case["required"])
+        return
 
-def test_duplicate_binding_id_is_structural_error() -> None:
-    with pytest.raises(StateBindingError, match="duplicate state binding id"):
-        evaluate_required_state_bindings(
-            [
-                StateBinding(id="target-state", expected="a", observed="a"),
-                StateBinding(id="target-state", expected="a", observed="a"),
-            ],
-            ["target-state"],
-        )
+    result = evaluate_required_state_bindings(bindings, case["required"])
 
+    invalidated = sorted(item.state_binding_id for item in result)
+    expected_invalidated = sorted(case["want_invalidated_bindings"])
+    assert invalidated == expected_invalidated
+    assert all(item.reason == REASON_SUBJECT_STATE_CHANGED for item in result)
 
-def test_empty_binding_token_is_structural_error() -> None:
-    with pytest.raises(StateBindingError, match="requires expected and observed tokens"):
-        evaluate_required_state_bindings(
-            [StateBinding(id="target-state", expected="", observed="current")],
-            ["target-state"],
-        )
+    actual_state = "INVALID" if result else "VALID"
+    actual_evidence_status = "INSUFFICIENT" if result else "SUFFICIENT"
+
+    assert actual_state == case["want_state"]
+    assert actual_evidence_status == case["want_evidence_status"]
