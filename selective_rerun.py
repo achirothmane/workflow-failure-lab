@@ -248,13 +248,11 @@ def execute_selective_epoch(
     extra_blocked: list[BlockedJob] = []
 
     if expected_job is None:
-        extra_blocked.append(
-            BlockedJob(
-                candidate,
-                "SELECTIVE_SCOPE_INVALID: assessed job is absent from the original failed-job snapshot.",
-            )
+        reason = (
+            "SELECTIVE_SCOPE_INVALID: assessed job is absent from the original "
+            "failed-job snapshot."
         )
-        return [], extra_blocked
+        return [], [BlockedJob(item, reason) for item in safe]
 
     try:
         binding_valid, binding_reason = revalidate_selective_job_binding(
@@ -272,14 +270,16 @@ def execute_selective_epoch(
         )
 
     if not binding_valid:
-        extra_blocked.append(BlockedJob(candidate, binding_reason))
-        return [], extra_blocked
+        return [], [BlockedJob(item, binding_reason) for item in safe]
 
     try:
         rerun_job(api, repo, candidate.job_id)
     except RuntimeError as exc:
-        extra_blocked.append(BlockedJob(candidate, str(exc)))
-        return [], extra_blocked
+        reason = (
+            "SELECTIVE_MUTATION_UNCONFIRMED: the rerun request did not complete "
+            f"successfully: {exc}"
+        )
+        return [], [BlockedJob(item, reason) for item in safe]
 
     triggered = [candidate]
     for item in safe:
