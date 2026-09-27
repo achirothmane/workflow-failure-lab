@@ -23,6 +23,14 @@ from easl_state_binding import (
 )
 from evidence_artifact import write_evidence_artifact
 from evidence_producer import produce_ci_evidence_bundle
+from eba_integration_contract import (
+    ContractViolation,
+    build_ci_action_request,
+    build_decision_artifact,
+    build_execution_receipt,
+    ensure_decision_allows_request,
+    write_contract_artifact,
+)
 
 TRANSIENT_CATEGORIES = {"RUNNER_INFRA", "DEPENDENCY_NETWORK"}
 FAILURE_CONCLUSIONS = {"failure", "timed_out"}
@@ -1362,6 +1370,21 @@ def main() -> int:
     safe = evidence_decision["decision"] == "ALLOW"
     reason = str(evidence_decision["reasons"][0])
 
+    action_request = build_ci_action_request(
+        repository=repo,
+        run_id=run_id,
+        run_attempt=run_attempt,
+        head_sha=str(run.get("head_sha") or ""),
+        workflow_id=run.get("workflow_id"),
+    )
+    contract_timestamp = str(action_request["created_at"])
+    contract_decision = build_decision_artifact(
+        action_request=action_request,
+        evidence_decision=evidence_decision,
+        evidence_sha256=evidence_sha256,
+        created_at=contract_timestamp,
+    )
+
     recovered = detect_recovered_failures(failed_jobs, jobs)
     recurrent: dict[int, str] = {}
     recovery_scope = "same attempt"
@@ -1418,8 +1441,15 @@ def main() -> int:
             reason = binding_reason
             outer_guard_applied = True
         else:
-            api.rerun_failed_jobs(repo, run_id)
-            rerun_triggered = True
+            try:
+                ensure_decision_allows_request(contract_decision, action_request)
+            except ContractViolation as exc:
+                safe = False
+                reason = f"INTEGRATION_CONTRACT_BLOCK: {exc}."
+                outer_guard_applied = True
+            else:
+                api.rerun_failed_jobs(repo, run_id)
+                rerun_triggered = True
 
     historical = collect_historical_reliability(api, repo, run, failed_jobs)
 
@@ -1435,6 +1465,33 @@ def main() -> int:
             evidence_decision["evidence_status"] = "UNKNOWN"
             evidence_decision["confidence"] = "unknown"
     evidence_decision["rerun_triggered"] = rerun_triggered
+
+    # Rebuild the public contract from the final narrowed decision. If execution
+    # occurred, this is identical to the Decision checked at the boundary.
+    contract_decision = build_decision_artifact(
+        action_request=action_request,
+        evidence_decision=evidence_decision,
+        evidence_sha256=evidence_sha256,
+        created_at=contract_timestamp,
+    )
+    execution_receipt = build_execution_receipt(
+        action_request=action_request,
+        decision_artifact=contract_decision,
+        rerun_triggered=rerun_triggered,
+    )
+
+    request_path = evidence_path.with_name(
+        evidence_path.name.replace(".evidence.json", ".eba-request.json")
+    )
+    decision_path = evidence_path.with_name(
+        evidence_path.name.replace(".evidence.json", ".eba-decision.json")
+    )
+    receipt_path = evidence_path.with_name(
+        evidence_path.name.replace(".evidence.json", ".eba-receipt.json")
+    )
+    request_sha256 = write_contract_artifact(request_path, action_request)
+    decision_sha256 = write_contract_artifact(decision_path, contract_decision)
+    receipt_sha256 = write_contract_artifact(receipt_path, execution_receipt)
 
     report = render_report(repo, run_id, run_attempt, assessments, safe, reason, rerun_triggered, recovered, historical, recurrent)
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
@@ -1470,6 +1527,21 @@ def main() -> int:
     )
     _write_output("evidence-bundle-path", str(evidence_path))
     _write_output("evidence-bundle-sha256", evidence_sha256)
+    _write_output(
+        "eba-request-json",
+        json.dumps(action_request, separators=(",", ":"), sort_keys=True),
+    )
+    _write_output("eba-request-sha256", request_sha256)
+    _write_output(
+        "eba-decision-json",
+        json.dumps(contract_decision, separators=(",", ":"), sort_keys=True),
+    )
+    _write_output("eba-decision-sha256", decision_sha256)
+    _write_output(
+        "eba-receipt-json",
+        json.dumps(execution_receipt, separators=(",", ":"), sort_keys=True),
+    )
+    _write_output("eba-receipt-sha256", receipt_sha256)
     _write_output("safe-to-rerun", "true" if safe else "false")
     _write_output("rerun-triggered", "true" if rerun_triggered else "false")
     _write_output("failed-jobs", str(len(assessments)))
