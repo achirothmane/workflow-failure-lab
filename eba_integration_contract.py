@@ -10,6 +10,7 @@ from typing import Any
 CONTRACT_VERSION = "eba.integration/v0.1"
 DECISION_KIND = "Decision"
 RECEIPT_KIND = "ExecutionReceipt"
+ASSUMPTION_KIND = "AssumptionState"
 
 
 class ContractViolation(RuntimeError):
@@ -107,11 +108,30 @@ def _block_reason_code(reason: str) -> str:
     return "CI_RETRY_EVIDENCE_BLOCK"
 
 
+def _validate_assumption_state(artifact: dict[str, Any]) -> None:
+    if artifact.get("contract_version") != CONTRACT_VERSION:
+        raise ContractViolation("ASSUMPTION_CONTRACT_VERSION_INVALID")
+    if artifact.get("kind") != ASSUMPTION_KIND:
+        raise ContractViolation("ASSUMPTION_KIND_INVALID")
+    if artifact.get("status") != "VALID":
+        raise ContractViolation(f"ASSUMPTION_NOT_VALID:{artifact.get('status')!r}")
+
+    integrity = artifact.get("integrity")
+    if not isinstance(integrity, dict) or integrity.get("algorithm") != "sha256":
+        raise ContractViolation("ASSUMPTION_INTEGRITY_INVALID")
+    expected = integrity.get("digest")
+    unsigned = dict(artifact)
+    unsigned.pop("integrity", None)
+    if expected != _digest(unsigned):
+        raise ContractViolation("ASSUMPTION_INTEGRITY_INVALID")
+
+
 def build_decision_artifact(
     *,
     action_request: dict[str, Any],
     evidence_decision: dict[str, Any],
     evidence_sha256: str,
+    assumption_states: list[dict[str, Any]] | tuple[dict[str, Any], ...] = (),
     created_at: str | None = None,
 ) -> dict[str, Any]:
     decision = str(evidence_decision.get("decision") or "")
@@ -138,6 +158,14 @@ def build_decision_artifact(
                 decision = "BLOCK"
                 reason = "CONTEXT_MISMATCH: " + ", ".join(mismatches) + "."
 
+    if decision == "ALLOW":
+        try:
+            for assumption_state in assumption_states:
+                _validate_assumption_state(assumption_state)
+        except ContractViolation as exc:
+            decision = "BLOCK"
+            reason = f"ASSUMPTION_INVALID: {exc}."
+
     timestamp = created_at or _utc_now()
 
     artifact: dict[str, Any] = {
@@ -153,7 +181,11 @@ def build_decision_artifact(
         ),
         "basis": {
             "evidence_refs": [f"sha256:{evidence_sha256}"],
-            "assumption_refs": [],
+            "assumption_refs": [
+                str(item.get("id"))
+                for item in assumption_states
+                if item.get("id")
+            ],
             "authority_ref": None,
             "budget_ref": None,
             "approval_refs": [],
@@ -178,6 +210,8 @@ def build_decision_artifact(
 def ensure_decision_allows_request(
     decision_artifact: dict[str, Any],
     action_request: dict[str, Any],
+    *,
+    assumption_states: list[dict[str, Any]] | tuple[dict[str, Any], ...] = (),
 ) -> None:
     """Fail closed unless the Decision authorizes this exact ActionRequest."""
     if decision_artifact.get("contract_version") != CONTRACT_VERSION:
@@ -192,17 +226,37 @@ def ensure_decision_allows_request(
     if decision_artifact.get("action_digest") != expected:
         raise ContractViolation("ACTION_MUTATED_AFTER_DECISION")
 
+    basis = decision_artifact.get("basis")
+    if not isinstance(basis, dict):
+        raise ContractViolation("decision basis is missing")
+    required_refs = [str(item) for item in basis.get("assumption_refs") or []]
+    supplied = {
+        str(item.get("id")): item
+        for item in assumption_states
+        if item.get("id")
+    }
+    missing = [ref for ref in required_refs if ref not in supplied]
+    if missing:
+        raise ContractViolation("ASSUMPTION_REFERENCE_MISSING")
+    for ref in required_refs:
+        _validate_assumption_state(supplied[ref])
+
 
 def build_execution_receipt(
     *,
     action_request: dict[str, Any],
     decision_artifact: dict[str, Any],
     rerun_triggered: bool,
+    assumption_states: list[dict[str, Any]] | tuple[dict[str, Any], ...] = (),
     created_at: str | None = None,
 ) -> dict[str, Any]:
     timestamp = created_at or _utc_now()
     if rerun_triggered:
-        ensure_decision_allows_request(decision_artifact, action_request)
+        ensure_decision_allows_request(
+            decision_artifact,
+            action_request,
+            assumption_states=assumption_states,
+        )
 
     receipt: dict[str, Any] = {
         "contract_version": CONTRACT_VERSION,
