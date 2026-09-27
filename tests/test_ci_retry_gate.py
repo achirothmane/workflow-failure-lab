@@ -1,7 +1,7 @@
 import http.client
 
 import ci_retry_gate
-from ci_retry_gate import AMBIGUOUS, CAUSAL, FAILURE_STEP_AMBIGUOUS, FAILURE_STEP_CONFIRMED, NON_CAUSAL, PROVENANCE_CONFIRMED, PROVENANCE_MISMATCH, PROVENANCE_UNAVAILABLE, TRANSIENT_CATEGORIES, GitHubAPI, assess_failure_step_provenance, assess_job, causal_evidence_role, classify_log, detect_side_effect_risk
+from ci_retry_gate import AMBIGUOUS, CAUSAL, FAILURE_STEP_AMBIGUOUS, FAILURE_STEP_CONFIRMED, NON_CAUSAL, PROVENANCE_CONFIRMED, PROVENANCE_MISMATCH, PROVENANCE_UNAVAILABLE, TRANSIENT_CATEGORIES, GitHubAPI, assess_failure_step_provenance, assess_job, causal_evidence_role, classify_log, detect_side_effect_risk, revalidate_rerun_subject_binding
 from evidence_gate import decide_ci_retry as rerun_decision
 from evidence_producer import produce_ci_evidence_bundle
 
@@ -494,3 +494,136 @@ def test_failure_step_provenance_is_ambiguous_with_multiple_failed_steps():
     assert "Step A" in result.evidence[0]
     assert "Step B" in result.evidence[0]
 
+
+
+class _BindingAPI:
+    def __init__(self, run, jobs):
+        self.run = run
+        self.jobs = jobs
+        self.get_run_calls = 0
+        self.get_jobs_calls = 0
+
+    def get_run(self, repo, run_id):
+        self.get_run_calls += 1
+        return self.run
+
+    def get_jobs(self, repo, run_id):
+        self.get_jobs_calls += 1
+        return self.jobs
+
+
+def _allow_decision_scope():
+    return {
+        "scope": {
+            "repository": "owner/repo",
+            "run_id": 123,
+            "run_attempt": 1,
+            "head_sha": "abc123",
+            "workflow_id": 99,
+        }
+    }
+
+
+def _failed_binding_job(job_id=42):
+    return {
+        "id": job_id,
+        "name": "unit-tests",
+        "conclusion": "failure",
+    }
+
+
+def test_rerun_subject_binding_allows_unchanged_scope():
+    api = _BindingAPI(
+        run={
+            "run_attempt": 1,
+            "head_sha": "abc123",
+            "workflow_id": 99,
+        },
+        jobs=[
+            _failed_binding_job(),
+            {"id": 43, "name": "lint", "conclusion": "success"},
+        ],
+    )
+
+    valid, reason = revalidate_rerun_subject_binding(
+        api,
+        "owner/repo",
+        123,
+        _allow_decision_scope(),
+        [_failed_binding_job()],
+    )
+
+    assert valid is True
+    assert "RERUN_SCOPE_CONFIRMED" in reason
+    assert api.get_run_calls == 1
+    assert api.get_jobs_calls == 1
+
+
+def test_rerun_subject_binding_blocks_when_attempt_advances():
+    api = _BindingAPI(
+        run={
+            "run_attempt": 2,
+            "head_sha": "abc123",
+            "workflow_id": 99,
+        },
+        jobs=[_failed_binding_job()],
+    )
+
+    valid, reason = revalidate_rerun_subject_binding(
+        api,
+        "owner/repo",
+        123,
+        _allow_decision_scope(),
+        [_failed_binding_job()],
+    )
+
+    assert valid is False
+    assert "RERUN_SCOPE_CHANGED" in reason
+    assert "run_attempt 1->2" in reason
+
+
+def test_rerun_subject_binding_blocks_when_head_sha_changes():
+    api = _BindingAPI(
+        run={
+            "run_attempt": 1,
+            "head_sha": "def456",
+            "workflow_id": 99,
+        },
+        jobs=[_failed_binding_job()],
+    )
+
+    valid, reason = revalidate_rerun_subject_binding(
+        api,
+        "owner/repo",
+        123,
+        _allow_decision_scope(),
+        [_failed_binding_job()],
+    )
+
+    assert valid is False
+    assert "head_sha 'abc123'->'def456'" in reason
+
+
+def test_rerun_subject_binding_blocks_when_failed_job_set_changes():
+    api = _BindingAPI(
+        run={
+            "run_attempt": 1,
+            "head_sha": "abc123",
+            "workflow_id": 99,
+        },
+        jobs=[
+            _failed_binding_job(),
+            _failed_binding_job(44),
+        ],
+    )
+
+    valid, reason = revalidate_rerun_subject_binding(
+        api,
+        "owner/repo",
+        123,
+        _allow_decision_scope(),
+        [_failed_binding_job()],
+    )
+
+    assert valid is False
+    assert "failed_job_set" in reason
