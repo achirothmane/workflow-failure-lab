@@ -1037,6 +1037,9 @@ Benchmark Mode emits:
 
 ## Safety model
 
+Before legacy `auto-rerun` mutates the workflow, the gate re-reads the target run and evaluates repository/run identity, attempt, head SHA, workflow identity, and failed-job set as opaque **EASL subject-state bindings**. Any binding drift invalidates the earlier rerun justification and blocks mutation. The Python action uses a narrow compatibility layer for this single EASL invariant; the Go EASL module remains the reference implementation.
+
+
 The action fails closed. `UNKNOWN`, code failures, mixed evidence, low-confidence classifications, attempt caps, and side-effect signals block automatic reruns. Log evidence is redacted for common token/API-key patterns before it is included in reports or fingerprint inputs.
 
 History, fingerprinting, Policy Learning, Shadow Mode, and Benchmark Mode are read-only. They read workflow runs, attempts, jobs, and logs through the GitHub API and do not persist them to an external database.
