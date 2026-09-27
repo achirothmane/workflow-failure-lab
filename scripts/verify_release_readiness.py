@@ -35,10 +35,13 @@ def main() -> int:
     doctor_action = text("doctor/action.yml")
     text("setup_doctor.py")
     pyproject = text("pyproject.toml")
-    text("CHANGELOG.md")
+    changelog = text("CHANGELOG.md")
     text("SECURITY.md")
     license_text = text("LICENSE")
     release_doc = text("docs/release-readiness.md")
+    release_smoke = text(".github/workflows/release-smoke.yml")
+    easl_compat = text("easl_state_binding.py")
+    conformance_vectors = text("tests/conformance/easl/subject_state_binding.json")
 
     require("# CI Retry Gate" in readme, "README product heading is missing")
     require("achirothmane/workflow-failure-lab@v1" in readme, "README v1 usage example is missing")
@@ -64,7 +67,23 @@ def main() -> int:
         "Setup Doctor must fail on BLOCKED checks by default",
     )
 
-    require('version = "1.1.0"' in pyproject, "pyproject version must be 1.1.0 for Marketplace minor release")
+    require('version = "1.2.0"' in pyproject, "pyproject version must be 1.2.0 for Marketplace minor release")
+    require("## [1.2.0] - 2026-09-27" in changelog, "CHANGELOG v1.2.0 entry is missing")
+    require("current release target is `v1.2.0`" in release_doc, "release readiness target must be v1.2.0")
+    require(
+        "achirothmane/workflow-failure-lab@v1" in release_smoke
+        and "othy19904-eng/workflow-failure-lab@v1" not in release_smoke,
+        "release smoke must consume the current achirothmane @v1 ref",
+    )
+    require(
+        "REASON_SUBJECT_STATE_CHANGED" in easl_compat
+        and "evaluate_required_state_bindings" in easl_compat,
+        "EASL subject-state compatibility layer is missing",
+    )
+    require(
+        '"primitive": "subject_state_binding"' in conformance_vectors,
+        "canonical subject-state conformance vectors are missing",
+    )
 
     # Research-only Causal Dominance must not silently gain production authority.
     production_entrypoints = {
@@ -119,7 +138,7 @@ def main() -> int:
         "pipx independent positive control is not pinned",
     )
     require(
-        "Production promotion for Causal Dominance remains blocked at 2/3" in text("CHANGELOG.md"),
+        "Production promotion for Causal Dominance remains blocked at 2/3" in changelog,
         "release notes must state the Causal Dominance promotion boundary",
     )
     require(
@@ -135,6 +154,8 @@ def main() -> int:
     print("- PR comments remain explicit opt-in")
     print("- README quick start and permissions present")
     print("- Setup Doctor composite action and fail-closed default present")
+    print("- v1.2.0 subject-state binding and conformance contract present")
+    print("- release smoke consumes achirothmane/workflow-failure-lab@v1")
     print("- EvidenceBundle runtime artifact and isolated gate boundary present")
     print("- Causal Dominance remains research-only")
     print("- SWC + pipx evidence pinned at 2/3")
