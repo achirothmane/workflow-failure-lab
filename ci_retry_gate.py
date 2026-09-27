@@ -39,11 +39,17 @@ FAILURE_CONCLUSIONS = {"failure", "timed_out"}
 
 
 _SECRET_PATTERNS = [
-    re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{20,}\b"),
-    re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b"),
-    re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
-    re.compile(r"(?i)(authorization:\s*bearer\s+)[A-Za-z0-9._~+\-/]+=*"),
-    re.compile(r"(?i)\b(api[_-]?key|token|secret|password)\s*[:=]\s*[^\s]+"),
+    ("github_legacy_token", re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{20,}\b")),
+    ("github_fine_grained_token", re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b")),
+    ("aws_access_key_id", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
+    (
+        "authorization_bearer",
+        re.compile(r"(?i)(authorization:\s*bearer\s+)[A-Za-z0-9._~+\-/]+=*"),
+    ),
+    (
+        "credential_assignment",
+        re.compile(r"(?i)\b(api[_-]?key|token|secret|password)\s*[:=]\s*[^\s]+"),
+    ),
 ]
 
 # GitHub logs can contain terminal color/control sequences inside error lines.
@@ -210,6 +216,7 @@ class Classification:
     confidence: str
     score: int
     evidence: tuple[str, ...]
+    fields_redacted: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -244,13 +251,25 @@ class JobAssessment:
     side_effect_risk: bool
     side_effect_evidence: tuple[str, ...]
     duration_minutes: float
+    masking_fields_redacted: tuple[str, ...] = ()
+
+
+def redact_with_provenance(text: str) -> tuple[str, tuple[str, ...]]:
+    """Redact credential material and report which masking rules matched."""
+    value = text
+    fields_redacted: set[str] = set()
+    for field_name, pattern in _SECRET_PATTERNS:
+        if pattern.search(text):
+            fields_redacted.add(field_name)
+        value = pattern.sub(
+            lambda m: (m.group(1) if m.lastindex else "") + "[REDACTED]",
+            value,
+        )
+    return value, tuple(sorted(fields_redacted))
 
 
 def redact(text: str) -> str:
-    value = text
-    for pattern in _SECRET_PATTERNS:
-        value = pattern.sub(lambda m: (m.group(1) if m.lastindex else "") + "[REDACTED]", value)
-    return value
+    return redact_with_provenance(text)[0]
 
 
 def _useful_line(line: str) -> str:
@@ -284,8 +303,11 @@ def classify_log(log_text: str) -> Classification:
     }
 
     seen_lines: set[str] = set()
+    fields_redacted: set[str] = set()
     for raw_line in log_text.splitlines():
-        line = _useful_line(raw_line)
+        redacted_line, redacted_fields = redact_with_provenance(raw_line)
+        fields_redacted.update(redacted_fields)
+        line = _useful_line(redacted_line)
         role = causal_evidence_role(line)
         if not line or role == NON_CAUSAL or line in seen_lines:
             continue
@@ -318,7 +340,13 @@ def classify_log(log_text: str) -> Classification:
     second_score = ranked[1][1]
 
     if top_score < 3:
-        return Classification("UNKNOWN", "low", top_score, tuple())
+        return Classification(
+            "UNKNOWN",
+            "low",
+            top_score,
+            tuple(),
+            tuple(sorted(fields_redacted)),
+        )
 
     margin = top_score - second_score
     if top_score >= 7 and margin >= 3:
@@ -338,7 +366,23 @@ def classify_log(log_text: str) -> Classification:
     if top_category == "CODE_REGRESSION" and top_score < 7:
         confidence = "medium" if top_score >= 4 else "low"
 
-    return Classification(top_category, confidence, top_score, tuple(evidence[top_category]))
+    return Classification(
+        top_category,
+        confidence,
+        top_score,
+        tuple(evidence[top_category]),
+        tuple(sorted(fields_redacted)),
+    )
+
+
+def _metadata_redacted_fields(job: dict) -> tuple[str, ...]:
+    fields_redacted: set[str] = set()
+    candidates = [str(job.get("name") or "")]
+    candidates.extend(str(step.get("name") or "") for step in job.get("steps") or [])
+    for candidate in candidates:
+        _, matched = redact_with_provenance(candidate)
+        fields_redacted.update(matched)
+    return tuple(sorted(fields_redacted))
 
 
 def detect_side_effect_risk(job: dict) -> tuple[bool, tuple[str, ...]]:
@@ -539,6 +583,12 @@ def assess_job(job: dict, log_text: str) -> JobAssessment:
         side_effect_risk=side_effect_risk,
         side_effect_evidence=side_effect_evidence,
         duration_minutes=job_duration_minutes(job),
+        masking_fields_redacted=tuple(
+            sorted(
+                set(classification.fields_redacted)
+                | set(_metadata_redacted_fields(job))
+            )
+        ),
     )
 
 
