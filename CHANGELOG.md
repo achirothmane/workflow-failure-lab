@@ -4,6 +4,34 @@ All notable changes to CI Retry Gate are documented here.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-27
+
+### Added
+
+- EASL-compatible subject-state binding layer for domain-neutral pre-mutation state equality checks.
+- Canonical subject-state conformance vectors vendored from EASL and executed by the Python compatibility test suite.
+- Exact pre-mutation subject revalidation for legacy full-workflow auto-rerun across repository, run ID, run attempt, head SHA, workflow ID, and failed-job set.
+- Exact pre-mutation workflow/job revalidation for Selective Safe Rerun across run attempt, head SHA, workflow ID, workflow lifecycle, and failed job execution identity.
+
+### Changed
+
+- Selective Safe Rerun now performs at most one job rerun mutation per evaluated workflow-state epoch. Remaining safe candidates require a fresh evaluation after the first accepted mutation changes workflow state.
+- Subject-state drift fails closed before mutation instead of reusing authorization produced from an older workflow snapshot.
+- The stable v1 release smoke workflow now consumes the current `achirothmane/workflow-failure-lab@v1` owner path.
+
+### Safety
+
+- Mutating GitHub API POST requests remain single-attempt on transport ambiguity; they are not blindly replayed.
+- Structural state-binding errors and unavailable pre-mutation state reads fail closed.
+- EASL remains a compatibility invariant only; CI retry policy, GitHub-specific identity, and mutation semantics stay inside CI Retry Gate.
+- Causal Dominance remains research/shadow-only. Production promotion for Causal Dominance remains blocked at 2/3 independent real positive controls.
+
+### Verification
+
+- CI, Compatibility Matrix, and Remote v1 Consumer E2E passed for the state-binding and conformance changes.
+- External consumer proof run `36323452061` validated two selective-safe candidates, exactly one real rerun mutation, one copied untouched GitHub job, and zero second mutation after re-evaluation at the configured attempt cap.
+
+
 ## [1.1.0] - 2026-09-26
 
 ### Added

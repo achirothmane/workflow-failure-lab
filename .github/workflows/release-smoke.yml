@@ -16,7 +16,7 @@ jobs:
     steps:
       - id: gate
         name: Consume published @v1 in report-only mode
-        uses: othy19904-eng/workflow-failure-lab@v1
+        uses: achirothmane/workflow-failure-lab@v1
         with:
           github-token: ${{ github.token }}
           run-id: ${{ github.event.workflow_run.id }}
@@ -40,6 +40,6 @@ jobs:
           test "${FAILED_JOBS:-0}" -ge 1
 
           echo "v1 release smoke: PASS"
-          echo "- consumed othy19904-eng/workflow-failure-lab@v1"
+          echo "- consumed achirothmane/workflow-failure-lab@v1"
           echo "- deterministic failure remained blocked"
           echo "- no rerun was triggered"

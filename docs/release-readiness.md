@@ -1,6 +1,6 @@
 # v1 Release Readiness
 
-This checklist covers the CI Retry Gate v1 release line. The current release target is `v1.1.0`.
+This checklist covers the CI Retry Gate v1 release line. The current release target is `v1.2.0`.
 
 ## Required before tagging
 
@@ -16,10 +16,14 @@ This checklist covers the CI Retry Gate v1 release line. The current release tar
 - [ ] Third independent Causal Dominance positive control. This is **not a blocker for v1 release** because the feature remains disabled in production.
 - [x] MIT License added for the public v1 release.
 - [x] EvidenceBundle is persisted before authorization and verified by SHA-256 across a separate process boundary.
+- [x] Legacy full-workflow rerun revalidates exact subject state immediately before mutation.
+- [x] Selective rerun binds the exact workflow/job execution and performs at most one write per evaluated state epoch.
+- [x] Python subject-state compatibility executes the canonical EASL conformance vectors.
+- [x] External consumer proof run `36323452061` validates one real selective rerun mutation and no second mutation after re-evaluation.
 
 ## v1 production scope
 
-The public v1 release includes the conservative retry gate, provenance checks, side-effect boundaries, history/fingerprint analysis, selective rerun, policy learning, shadow mode, benchmark mode, and research diagnostics already wired into the action.
+The public v1 release includes the conservative retry gate, provenance checks, side-effect boundaries, history/fingerprint analysis, state-bound full-workflow and selective rerun authorization, policy learning, shadow mode, benchmark mode, and research diagnostics already wired into the action.
 
 The causal-dominance override is explicitly excluded from production scope. It remains a research feature until its separate evidence threshold is met.
 
@@ -27,7 +31,7 @@ The causal-dominance override is explicitly excluded from production scope. It r
 
 1. Merge the release-readiness pull request.
 2. Confirm the post-merge CI run is green.
-3. Create the `v1.1.0` release tag from the exact green `main` commit.
+3. Create the `v1.2.0` release tag from the exact green `main` commit.
 4. Create/update the moving major tag `v1` to the same commit so users can pin:
    `achirothmane/workflow-failure-lab@v1`.
 5. Publish release notes from `CHANGELOG.md`.
