@@ -28,6 +28,8 @@ The producer emits `evidence-producer.ci.v1` with four explicit layers:
 - `derived`: deterministic claims computed from those facts.
 - `inferred`: reserved for non-deterministic/model inference; empty in v1.
 - `quality`: missing sources and structural contradictions.
+- `masking_provenance`: the redaction policy reference, categories of fields
+  actually redacted, and the reason masking was applied before evidence storage.
 
 The producer is intentionally **policy-free**. It must not emit ALLOW/BLOCK, retry
 limits, or trigger an action.
@@ -40,6 +42,7 @@ while authorization logic still consumes the existing assessments directly.
 
 - Observation is never relabeled as inference or vice versa.
 - Missing evidence remains explicit.
+- Secret masking remains observable as provenance without exposing the secret value.
 - A producer may report evidence quality, but not action authorization.
 - Retry policy stays outside the evidence bundle.
 - V1 is deterministic; AI/model interpretation cannot silently become a fact.
