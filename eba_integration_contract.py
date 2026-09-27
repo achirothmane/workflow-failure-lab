@@ -120,6 +120,24 @@ def build_decision_artifact(
 
     reasons = evidence_decision.get("reasons")
     reason = str(reasons[0]) if isinstance(reasons, list) and reasons else "No gate reason supplied."
+
+    scope = evidence_decision.get("scope")
+    context = action_request.get("context")
+    if decision == "ALLOW":
+        if not isinstance(scope, dict) or not isinstance(context, dict):
+            decision = "BLOCK"
+            reason = "CONTEXT_MISMATCH: decision scope or action context is missing."
+        else:
+            scope_fields = ("repository", "run_id", "run_attempt", "head_sha", "workflow_id")
+            mismatches = [
+                field
+                for field in scope_fields
+                if scope.get(field) != context.get(field)
+            ]
+            if mismatches:
+                decision = "BLOCK"
+                reason = "CONTEXT_MISMATCH: " + ", ".join(mismatches) + "."
+
     timestamp = created_at or _utc_now()
 
     artifact: dict[str, Any] = {
