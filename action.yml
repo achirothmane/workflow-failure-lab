@@ -144,6 +144,24 @@ outputs:
   evidence-bundle-sha256:
     description: 'SHA-256 digest of the canonical EvidenceBundle used by the isolated authorization gate.'
     value: ${{ steps.gate.outputs.evidence-bundle-sha256 }}
+  eba-request-json:
+    description: 'Evidence-before-Action v0.1 ActionRequest bound to the exact CI rerun subject.'
+    value: ${{ steps.gate.outputs.eba-request-json }}
+  eba-request-sha256:
+    description: 'SHA-256 digest of the canonical EBA ActionRequest artifact.'
+    value: ${{ steps.gate.outputs.eba-request-sha256 }}
+  eba-decision-json:
+    description: 'Evidence-before-Action v0.1 Decision artifact authorizing or blocking the exact ActionRequest.'
+    value: ${{ steps.gate.outputs.eba-decision-json }}
+  eba-decision-sha256:
+    description: 'SHA-256 digest of the canonical EBA Decision artifact.'
+    value: ${{ steps.gate.outputs.eba-decision-sha256 }}
+  eba-receipt-json:
+    description: 'Evidence-before-Action v0.1 ExecutionReceipt; SUCCEEDED means rerun dispatch was accepted, not that the later CI rerun passed.'
+    value: ${{ steps.gate.outputs.eba-receipt-json }}
+  eba-receipt-sha256:
+    description: 'SHA-256 digest of the canonical EBA ExecutionReceipt artifact.'
+    value: ${{ steps.gate.outputs.eba-receipt-sha256 }}
   safe-to-rerun:
     description: 'true only when every failed job is a high-confidence transient failure and no side-effect signal is present.'
     value: ${{ steps.gate.outputs.safe-to-rerun }}
