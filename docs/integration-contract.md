@@ -127,3 +127,24 @@ The first proving ground is CI Retry Gate because it already contains:
 - a real side effect: GitHub failed-job rerun.
 
 This makes it the smallest real end-to-end Evidence-before-Action integration surface.
+
+
+## Assumption-gate integration
+
+The CI Retry Gate profile now emits an explicit `AssumptionState` before the EBA Decision.
+
+The assumption is:
+
+> The failed CI job set bound to this ActionRequest is transient, causally supported, side-effect-safe, and safe to rerun under the current evidence scope.
+
+The Decision contains a real `basis.assumption_refs` entry. At the execution boundary, CI Retry Gate must present the referenced AssumptionState again; the consumer validates:
+
+- `contract_version == eba.integration/v0.1`
+- `kind == AssumptionState`
+- `status == VALID`
+- SHA-256 integrity
+- referenced assumption artifact is actually present
+
+A missing, non-VALID, or tampered AssumptionState fails closed.
+
+This integration is contract-based rather than a runtime network call to the separate assumption-gate repository. That preserves reproducibility for GitHub Action consumers and avoids turning a remote repository outage into an authorization ambiguity.
