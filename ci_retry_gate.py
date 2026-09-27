@@ -16,6 +16,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Iterable
 
+from easl_state_binding import (
+    StateBinding,
+    StateBindingError,
+    evaluate_required_state_bindings,
+)
 from evidence_artifact import write_evidence_artifact
 from evidence_producer import produce_ci_evidence_bundle
 
@@ -1129,6 +1134,40 @@ def assess_failed_jobs(api: "GitHubAPI", repo: str, failed_jobs: Iterable[dict])
     return assessments
 
 
+def _state_binding_token(value: object) -> str:
+    """Canonicalize one domain value into a non-empty opaque EASL token."""
+    return "json:" + json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    )
+
+
+def _failed_job_binding_value(jobs: Iterable[dict]) -> list[list[object]]:
+    return sorted(
+        [
+            [
+                int(job.get("id") or 0),
+                str(job.get("conclusion") or "").lower(),
+            ]
+            for job in jobs
+            if str(job.get("conclusion") or "").lower() in FAILURE_CONCLUSIONS
+        ],
+        key=lambda item: (int(item[0]), str(item[1])),
+    )
+
+
+def _changed_binding_reason(
+    invalidation_ids: Iterable[str],
+    details: dict[str, str],
+) -> str | None:
+    changed = [details[binding_id] for binding_id in invalidation_ids if binding_id in details]
+    if not changed:
+        return None
+    return "RERUN_SCOPE_CHANGED: " + "; ".join(changed) + "."
+
+
 def revalidate_rerun_subject_binding(
     api: "GitHubAPI",
     repo: str,
@@ -1136,34 +1175,48 @@ def revalidate_rerun_subject_binding(
     evidence_decision: dict,
     expected_failed_jobs: Iterable[dict],
 ) -> tuple[bool, str]:
-    """Re-read the target run immediately before mutation and fail closed on drift.
-
-    The evidence decision is scoped to a specific workflow run attempt, head SHA,
-    workflow identity, and failed-job set. A later automatic rerun must not reuse
-    that authorization after any of those bindings change.
-    """
+    """Re-read the target run and evaluate its subject state with EASL semantics."""
     scope = evidence_decision.get("scope")
     if not isinstance(scope, dict):
         return False, "RERUN_SCOPE_INVALID: evidence decision has no valid scope."
 
     expected_repository = str(scope.get("repository") or "")
-    if expected_repository != repo:
-        return False, (
-            "RERUN_SCOPE_CHANGED: repository binding changed "
-            f"({expected_repository!r} -> {repo!r})."
-        )
-
     try:
         expected_run_id = int(scope.get("run_id"))
         expected_attempt = int(scope.get("run_attempt"))
     except (TypeError, ValueError):
         return False, "RERUN_SCOPE_INVALID: run_id/run_attempt binding is missing or invalid."
 
-    if expected_run_id != run_id:
-        return False, (
-            "RERUN_SCOPE_CHANGED: run_id binding changed "
-            f"({expected_run_id} -> {run_id})."
+    static_bindings = (
+        StateBinding(
+            id="repository",
+            expected=_state_binding_token(expected_repository),
+            observed=_state_binding_token(repo),
+        ),
+        StateBinding(
+            id="run-id",
+            expected=_state_binding_token(expected_run_id),
+            observed=_state_binding_token(run_id),
+        ),
+    )
+    static_details = {
+        "repository": f"repository {expected_repository!r}->{repo!r}",
+        "run-id": f"run_id {expected_run_id}->{run_id}",
+    }
+    try:
+        static_invalidations = evaluate_required_state_bindings(
+            static_bindings,
+            ("repository", "run-id"),
         )
+    except StateBindingError as exc:
+        return False, f"RERUN_SCOPE_INVALID: {exc}."
+
+    static_reason = _changed_binding_reason(
+        (item.state_binding_id for item in static_invalidations),
+        static_details,
+    )
+    if static_reason is not None:
+        return False, static_reason
 
     current_run = api.get_run(repo, run_id)
     current_attempt = int(current_run.get("run_attempt") or 0)
@@ -1173,40 +1226,56 @@ def revalidate_rerun_subject_binding(
     expected_head_sha = str(scope.get("head_sha") or "")
     expected_workflow_id = scope.get("workflow_id")
 
-    mismatches: list[str] = []
-    if current_attempt != expected_attempt:
-        mismatches.append(f"run_attempt {expected_attempt}->{current_attempt}")
-    if current_head_sha != expected_head_sha:
-        mismatches.append(f"head_sha {expected_head_sha!r}->{current_head_sha!r}")
-    if current_workflow_id != expected_workflow_id:
-        mismatches.append(
-            f"workflow_id {expected_workflow_id!r}->{current_workflow_id!r}"
-        )
-
     current_jobs = api.get_jobs(repo, run_id)
-    expected_failed = sorted(
-        (
-            int(job.get("id") or 0),
-            str(job.get("conclusion") or "").lower(),
-        )
-        for job in expected_failed_jobs
-        if str(job.get("conclusion") or "").lower() in FAILURE_CONCLUSIONS
-    )
-    current_failed = sorted(
-        (
-            int(job.get("id") or 0),
-            str(job.get("conclusion") or "").lower(),
-        )
-        for job in current_jobs
-        if str(job.get("conclusion") or "").lower() in FAILURE_CONCLUSIONS
-    )
-    if current_failed != expected_failed:
-        mismatches.append(
-            f"failed_job_set {expected_failed!r}->{current_failed!r}"
-        )
+    expected_failed = _failed_job_binding_value(expected_failed_jobs)
+    current_failed = _failed_job_binding_value(current_jobs)
 
-    if mismatches:
-        return False, "RERUN_SCOPE_CHANGED: " + "; ".join(mismatches) + "."
+    dynamic_bindings = (
+        StateBinding(
+            id="run-attempt",
+            expected=_state_binding_token(expected_attempt),
+            observed=_state_binding_token(current_attempt),
+        ),
+        StateBinding(
+            id="head-sha",
+            expected=_state_binding_token(expected_head_sha),
+            observed=_state_binding_token(current_head_sha),
+        ),
+        StateBinding(
+            id="workflow-id",
+            expected=_state_binding_token(expected_workflow_id),
+            observed=_state_binding_token(current_workflow_id),
+        ),
+        StateBinding(
+            id="failed-job-set",
+            expected=_state_binding_token(expected_failed),
+            observed=_state_binding_token(current_failed),
+        ),
+    )
+    dynamic_details = {
+        "run-attempt": f"run_attempt {expected_attempt}->{current_attempt}",
+        "head-sha": f"head_sha {expected_head_sha!r}->{current_head_sha!r}",
+        "workflow-id": (
+            f"workflow_id {expected_workflow_id!r}->{current_workflow_id!r}"
+        ),
+        "failed-job-set": (
+            f"failed_job_set {expected_failed!r}->{current_failed!r}"
+        ),
+    }
+    try:
+        dynamic_invalidations = evaluate_required_state_bindings(
+            dynamic_bindings,
+            ("run-attempt", "head-sha", "workflow-id", "failed-job-set"),
+        )
+    except StateBindingError as exc:
+        return False, f"RERUN_SCOPE_INVALID: {exc}."
+
+    dynamic_reason = _changed_binding_reason(
+        (item.state_binding_id for item in dynamic_invalidations),
+        dynamic_details,
+    )
+    if dynamic_reason is not None:
+        return False, dynamic_reason
 
     return True, (
         "RERUN_SCOPE_CONFIRMED: repository, run attempt, head SHA, workflow, "
