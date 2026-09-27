@@ -218,6 +218,84 @@ def _rerun_job(api: GitHubAPI, repo: str, job_id: int) -> None:
         ) from exc
 
 
+def execute_selective_epoch(
+    api: GitHubAPI,
+    repo: str,
+    run_id: int,
+    expected_run: dict,
+    failed_jobs: list[dict],
+    safe: list[JobAssessment],
+    rerun_job=None,
+) -> tuple[list[JobAssessment], list[BlockedJob]]:
+    """Execute at most one selective rerun from one evaluated state epoch.
+
+    The first accepted mutation ends the epoch because the workflow subject is
+    then known to be changing. Remaining candidates must be re-evaluated from a
+    later stable snapshot rather than reusing pre-mutation justification.
+    """
+    if not safe:
+        return [], []
+
+    if rerun_job is None:
+        rerun_job = _rerun_job
+
+    candidate = min(safe, key=lambda item: item.job_id)
+    expected_jobs = {
+        int(job.get("id") or 0): job
+        for job in failed_jobs
+    }
+    expected_job = expected_jobs.get(candidate.job_id)
+    extra_blocked: list[BlockedJob] = []
+
+    if expected_job is None:
+        extra_blocked.append(
+            BlockedJob(
+                candidate,
+                "SELECTIVE_SCOPE_INVALID: assessed job is absent from the original failed-job snapshot.",
+            )
+        )
+        return [], extra_blocked
+
+    try:
+        binding_valid, binding_reason = revalidate_selective_job_binding(
+            api,
+            repo,
+            run_id,
+            expected_run,
+            expected_job,
+        )
+    except RuntimeError as exc:
+        binding_valid = False
+        binding_reason = (
+            "SELECTIVE_SCOPE_UNAVAILABLE: could not re-read current workflow "
+            f"state before rerun: {exc}"
+        )
+
+    if not binding_valid:
+        extra_blocked.append(BlockedJob(candidate, binding_reason))
+        return [], extra_blocked
+
+    try:
+        rerun_job(api, repo, candidate.job_id)
+    except RuntimeError as exc:
+        extra_blocked.append(BlockedJob(candidate, str(exc)))
+        return [], extra_blocked
+
+    triggered = [candidate]
+    for item in safe:
+        if item.job_id == candidate.job_id:
+            continue
+        extra_blocked.append(
+            BlockedJob(
+                item,
+                "SELECTIVE_STATE_EPOCH_ENDED: a prior selective rerun mutation "
+                "changed the workflow subject state; re-evaluate before another write.",
+            )
+        )
+
+    return triggered, extra_blocked
+
+
 def render_selective_report(
     repo: str,
     run_id: int,
@@ -323,65 +401,15 @@ def main() -> int:
         workflow_side_effect_risk=bool(workflow_side_effects),
     )
 
-    triggered: list[JobAssessment] = []
-    if safe:
-        # One selective mutation per evaluated workflow-state epoch.
-        #
-        # GitHub's job-rerun endpoint also reruns dependent jobs. Once the first
-        # mutation is accepted, the workflow state is known to be changing, so
-        # the remaining pre-mutation justifications must not be reused as if the
-        # original snapshot still held.
-        candidate = min(safe, key=lambda item: item.job_id)
-        expected_jobs = {
-            int(job.get("id") or 0): job
-            for job in failed_jobs
-        }
-        expected_job = expected_jobs.get(candidate.job_id)
-
-        if expected_job is None:
-            blocked.append(
-                BlockedJob(
-                    candidate,
-                    "SELECTIVE_SCOPE_INVALID: assessed job is absent from the original failed-job snapshot.",
-                )
-            )
-        else:
-            try:
-                binding_valid, binding_reason = revalidate_selective_job_binding(
-                    api,
-                    repo,
-                    run_id,
-                    run,
-                    expected_job,
-                )
-            except RuntimeError as exc:
-                binding_valid = False
-                binding_reason = (
-                    "SELECTIVE_SCOPE_UNAVAILABLE: could not re-read current workflow "
-                    f"state before rerun: {exc}"
-                )
-
-            if not binding_valid:
-                blocked.append(BlockedJob(candidate, binding_reason))
-            else:
-                try:
-                    _rerun_job(api, repo, candidate.job_id)
-                    triggered.append(candidate)
-                except RuntimeError as exc:
-                    blocked.append(BlockedJob(candidate, str(exc)))
-
-        if triggered:
-            mutated_job_id = triggered[0].job_id
-            for item in safe:
-                if item.job_id == mutated_job_id:
-                    continue
-                blocked.append(
-                    BlockedJob(
-                        item,
-                        "SELECTIVE_STATE_EPOCH_ENDED: a prior selective rerun mutation "
-                        "changed the workflow subject state; re-evaluate before another write.",
-                    )
-                )
+    triggered, mutation_blocked = execute_selective_epoch(
+        api,
+        repo,
+        run_id,
+        run,
+        failed_jobs,
+        safe,
+    )
+    blocked.extend(mutation_blocked)
 
     report = render_selective_report(repo, run_id, safe, blocked, workflow_side_effects, triggered)
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
