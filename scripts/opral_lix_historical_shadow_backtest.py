@@ -5,6 +5,7 @@ import os
 
 from ci_retry_gate import GitHubAPI
 from flaky_test_history import collect_flaky_history
+from flaky_test_intelligence import FAIL, PASS
 from historical_flakiness_shadow import compare_historical_flakiness_shadow
 
 TARGET_REPO = "opral/lix"
@@ -41,13 +42,13 @@ def main() -> int:
             "observed_at": item.observed_at,
         }
         for item in history.case_observations
-        if item.run_id == TARGET_RUN and item.attempt == 1 and item.status == "FAIL"
+        if item.run_id == TARGET_RUN and item.attempt == 1 and item.status == FAIL
     ]
 
     current_attempt2_passes = {
         item.test_id
         for item in history.case_observations
-        if item.run_id == TARGET_RUN and item.attempt == 2 and item.status == "PASS"
+        if item.run_id == TARGET_RUN and item.attempt == 2 and item.status == PASS
     }
 
     recovered_current = [
