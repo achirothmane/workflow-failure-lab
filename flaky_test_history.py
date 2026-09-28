@@ -67,6 +67,74 @@ def _artifact_attempt(name: str, run_attempt: int) -> int | None:
     return None
 
 
+def _parse_artifact_time(value: str) -> datetime | None:
+    raw = value.strip()
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _attempt_metadata(
+    api: GitHubAPI,
+    repo: str,
+    run: dict,
+) -> dict[int, dict]:
+    run_id = int(run.get("id") or 0)
+    run_attempt = max(1, int(run.get("run_attempt") or 1))
+    if not run_id:
+        return {}
+
+    if run_attempt == 1:
+        return {1: run}
+
+    result: dict[int, dict] = {}
+    for attempt in range(1, run_attempt + 1):
+        try:
+            result[attempt] = api.request(
+                "GET",
+                f"/repos/{repo}/actions/runs/{run_id}/attempts/{attempt}",
+            )
+        except RuntimeError:
+            return {}
+    return result
+
+
+def _artifact_attempt_from_metadata(
+    name: str,
+    run_attempt: int,
+    artifact_created_at: str,
+    attempt_metadata: dict[int, dict],
+) -> int | None:
+    explicit = _artifact_attempt(name, run_attempt)
+    if explicit is not None:
+        return explicit
+    if run_attempt <= 1:
+        return 1
+
+    created_at = _parse_artifact_time(artifact_created_at)
+    if created_at is None or not attempt_metadata:
+        return None
+
+    candidates: list[int] = []
+    for attempt, metadata in sorted(attempt_metadata.items()):
+        start = _parse_artifact_time(str(metadata.get("run_started_at") or ""))
+        end = _parse_artifact_time(str(metadata.get("updated_at") or ""))
+        if start is None or end is None or end < start:
+            continue
+        if start <= created_at <= end:
+            candidates.append(attempt)
+
+    if len(candidates) != 1:
+        return None
+    return candidates[0]
+
+
 def _xml_members(blob: bytes) -> tuple[tuple[str, str], ...]:
     if len(blob) > MAX_ARTIFACT_BYTES:
         raise ValueError("artifact ZIP exceeds size limit")
@@ -146,10 +214,28 @@ def collect_flaky_history(
         ]
         artifacts_seen += len(artifacts)
 
+        needs_temporal_binding = (
+            run_attempt > 1
+            and any(
+                _artifact_attempt(str(item.get("name") or ""), run_attempt) is None
+                for item in artifacts
+            )
+        )
+        attempt_metadata = (
+            _attempt_metadata(api, repo, run)
+            if needs_temporal_binding
+            else {}
+        )
+
         for artifact in artifacts:
             artifact_id = int(artifact.get("id") or 0)
             name = str(artifact.get("name") or "")
-            attempt = _artifact_attempt(name, run_attempt)
+            attempt = _artifact_attempt_from_metadata(
+                name,
+                run_attempt,
+                str(artifact.get("created_at") or ""),
+                attempt_metadata,
+            )
             if not artifact_id:
                 continue
             if attempt is None:
@@ -176,9 +262,9 @@ def collect_flaky_history(
                         attempt=attempt,
                         job_name=name or "junit",
                         observed_at=str(
-                            run.get("run_started_at")
-                            or run.get("updated_at")
-                            or run.get("created_at")
+                            (attempt_metadata.get(attempt) or run).get("run_started_at")
+                            or (attempt_metadata.get(attempt) or run).get("updated_at")
+                            or (attempt_metadata.get(attempt) or run).get("created_at")
                             or ""
                         ),
                     )
