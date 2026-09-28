@@ -1,0 +1,23 @@
+name: Opral Lix Shadow Backtest
+
+on:
+  push:
+    branches: [opral-lix-shadow-backtest]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Evaluate strictly-prior history against independent UNKNOWN recovery
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PYTHONPATH: ${{ github.workspace }}
+        run: python3 scripts/opral_lix_historical_shadow_backtest.py
