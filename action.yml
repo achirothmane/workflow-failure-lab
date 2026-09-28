@@ -556,6 +556,9 @@ outputs:
   flaky-estimated-waste-minutes:
     description: 'Estimated test-level failed plus validating-recovery runtime across analyzed observations.'
     value: ${{ steps.flaky.outputs.flaky-estimated-waste-minutes }}
+  historical-flakiness-evidence-json:
+    description: 'Policy-free evidence for tests observed failing in the exact analyzed run attempt. Shadow/read-only; never grants rerun authority.'
+    value: ${{ steps.flaky.outputs.historical-flakiness-evidence-json }}
 
   active-quarantines:
     description: 'Number of human-approved quarantine entries currently active after fail-closed lifecycle evaluation.'
