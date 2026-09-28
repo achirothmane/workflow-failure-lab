@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 import re
 import zipfile
@@ -26,6 +27,7 @@ from flaky_test_intelligence import (
     observations_from_junit,
     summarize_flaky_tests,
 )
+from historical_flakiness_evidence import produce_historical_flakiness_evidence
 from flaky_triage import (
     build_triage_items,
     emit_triage_annotations,
@@ -308,6 +310,14 @@ def main() -> int:
         print(f"::warning::Flaky Test Intelligence could not analyze artifacts: {exc}")
         return 0
 
+    historical_evidence = produce_historical_flakiness_evidence(
+        repo=repo,
+        current_run=current_run,
+        run_id=run_id,
+        run_attempt=max(1, int(current_run.get("run_attempt") or 1)),
+        result=result,
+    )
+
     report = render_flaky_history_report(result)
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
@@ -480,6 +490,10 @@ def main() -> int:
     _write_output("quarantine-candidates", str(candidates))
     _write_output("junit-artifacts-analyzed", str(result.artifacts_analyzed))
     _write_output("flaky-estimated-waste-minutes", f"{waste_minutes:.2f}")
+    _write_output(
+        "historical-flakiness-evidence-json",
+        json.dumps(historical_evidence, separators=(",", ":"), sort_keys=True),
+    )
     _write_output("active-quarantines", str(active_count))
     _write_output("expired-quarantines", str(expired_count))
     _write_output("auto-released-quarantines", str(released_count))
