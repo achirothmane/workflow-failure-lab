@@ -559,6 +559,18 @@ outputs:
   historical-flakiness-evidence-json:
     description: 'Policy-free evidence for tests observed failing in the exact analyzed run attempt. Shadow/read-only; never grants rerun authority.'
     value: ${{ steps.flaky.outputs.historical-flakiness-evidence-json }}
+  historical-flakiness-shadow-json:
+    description: 'Read-only comparison of the production retry baseline with strictly-prior flaky-test history.'
+    value: ${{ steps.flaky.outputs.historical-flakiness-shadow-json }}
+  historical-flakiness-shadow-status:
+    description: 'Shadow-only status such as HISTORICAL_SUPPORT_PRESENT, HISTORICAL_CONTRADICTION, or ORDERING_UNAVAILABLE.'
+    value: ${{ steps.flaky.outputs.historical-flakiness-shadow-status }}
+  historical-flakiness-shadow-supported-tests:
+    description: 'Current failed tests with at least two strictly-prior same-SHA recoveries and no persistent prior failure.'
+    value: ${{ steps.flaky.outputs.historical-flakiness-shadow-supported-tests }}
+  historical-flakiness-shadow-contradictions:
+    description: 'Current failed tests whose strictly-prior history contains a persistent failure revision.'
+    value: ${{ steps.flaky.outputs.historical-flakiness-shadow-contradictions }}
 
   active-quarantines:
     description: 'Number of human-approved quarantine entries currently active after fail-closed lifecycle evaluation.'
@@ -711,6 +723,8 @@ runs:
         INPUT_QUARANTINE_MANIFEST: ${{ inputs.quarantine-manifest }}
         INPUT_QUARANTINE_MAX_DAYS: ${{ inputs.quarantine-max-days }}
         INPUT_QUARANTINE_RELEASE_CLEAN_SHAS: ${{ inputs.quarantine-release-clean-shas }}
+        INPUT_BASELINE_DECISION: ${{ steps.gate.outputs.decision }}
+        INPUT_BASELINE_EVIDENCE_STATUS: ${{ steps.gate.outputs.evidence-status }}
       run: python3 "$GITHUB_ACTION_PATH/flaky_test_history.py"
 
     - id: shadow
