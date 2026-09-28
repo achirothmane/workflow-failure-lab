@@ -21,4 +21,5 @@ jobs:
       - name: Run independent public-repository probe
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          PYTHONPATH: ${{ github.workspace }}
         run: python3 scripts/independent_flaky_artifact_probe.py
