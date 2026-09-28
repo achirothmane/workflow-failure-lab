@@ -3,6 +3,7 @@ import zipfile
 
 from flaky_test_history import (
     _artifact_attempt,
+    _artifact_attempt_from_metadata,
     _xml_members,
     collect_flaky_history,
     render_flaky_history_report,
@@ -30,10 +31,11 @@ def zip_xml(files):
 
 
 class FakeAPI:
-    def __init__(self, runs, artifacts, blobs):
+    def __init__(self, runs, artifacts, blobs, attempts=None):
         self.runs = runs
         self.artifacts = artifacts
         self.blobs = blobs
+        self.attempts = attempts or {}
 
     def request(self, method, path, payload=None, accept="application/vnd.github+json"):
         if "/actions/workflows/" in path and "/runs?" in path:
@@ -41,6 +43,14 @@ class FakeAPI:
         if "/actions/runs/" in path and "/artifacts?" in path:
             run_id = int(path.split("/actions/runs/", 1)[1].split("/", 1)[0])
             return {"artifacts": self.artifacts.get(run_id, [])}
+        if "/actions/runs/" in path and "/attempts/" in path:
+            tail = path.split("/actions/runs/", 1)[1]
+            run_id = int(tail.split("/", 1)[0])
+            attempt = int(tail.rsplit("/", 1)[1])
+            item = self.attempts.get((run_id, attempt))
+            if item is None:
+                raise RuntimeError("attempt metadata unavailable")
+            return item
         raise AssertionError(path)
 
     def request_bytes(self, method, path, accept="application/vnd.github+json"):
@@ -114,6 +124,130 @@ def test_ambiguous_rerun_artifact_is_skipped():
     assert result.artifacts_skipped_ambiguous == 1
     assert result.artifacts_analyzed == 0
     assert result.observations == 0
+
+
+
+def test_temporal_binding_assigns_duplicate_unsuffixed_artifacts_to_unique_attempts():
+    metadata = {
+        1: {
+            "run_started_at": "2026-09-28T20:47:23Z",
+            "updated_at": "2026-09-28T20:52:10Z",
+        },
+        2: {
+            "run_started_at": "2026-09-28T20:52:18Z",
+            "updated_at": "2026-09-28T20:54:23Z",
+        },
+    }
+
+    assert (
+        _artifact_attempt_from_metadata(
+            "junit-aws-sdk-8",
+            2,
+            "2026-09-28T20:49:23Z",
+            metadata,
+        )
+        == 1
+    )
+    assert (
+        _artifact_attempt_from_metadata(
+            "junit-aws-sdk-8",
+            2,
+            "2026-09-28T20:54:19Z",
+            metadata,
+        )
+        == 2
+    )
+
+
+def test_collects_same_name_rerun_artifacts_via_trusted_attempt_windows():
+    runs = [
+        {
+            "id": 11,
+            "head_sha": "sha-a",
+            "run_attempt": 2,
+            "workflow_id": 7,
+            "run_started_at": "2026-09-28T20:52:18Z",
+            "updated_at": "2026-09-28T20:54:23Z",
+        }
+    ]
+    attempts = {
+        (11, 1): {
+            "id": 11,
+            "run_attempt": 1,
+            "run_started_at": "2026-09-28T20:47:23Z",
+            "updated_at": "2026-09-28T20:52:10Z",
+        },
+        (11, 2): {
+            "id": 11,
+            "run_attempt": 2,
+            "run_started_at": "2026-09-28T20:52:18Z",
+            "updated_at": "2026-09-28T20:54:23Z",
+        },
+    }
+    artifacts = {
+        11: [
+            {
+                "id": 101,
+                "name": "junit-aws-sdk-8",
+                "expired": False,
+                "created_at": "2026-09-28T20:49:23Z",
+            },
+            {
+                "id": 102,
+                "name": "junit-aws-sdk-8",
+                "expired": False,
+                "created_at": "2026-09-28T20:54:19Z",
+            },
+        ]
+    }
+    blobs = {
+        101: zip_xml({"junit.xml": junit("fail", 20)}),
+        102: zip_xml({"junit.xml": junit("pass", 18)}),
+    }
+    api = FakeAPI(runs, artifacts, blobs, attempts=attempts)
+
+    result = collect_flaky_history(
+        api,
+        "o/r",
+        runs[0],
+        history_runs=20,
+        artifact_prefix="junit-",
+    )
+
+    assert result.artifacts_skipped_ambiguous == 0
+    assert result.artifacts_analyzed == 2
+    assert result.observations == 2
+    assert result.case_observations[0].attempt == 1
+    assert result.case_observations[0].observed_at == "2026-09-28T20:47:23Z"
+    assert result.case_observations[1].attempt == 2
+    assert result.case_observations[1].observed_at == "2026-09-28T20:52:18Z"
+    assert result.summaries[0].validated_recoveries == 1
+
+
+def test_temporal_binding_still_fails_closed_when_windows_are_missing():
+    runs = [{"id": 11, "head_sha": "sha-a", "run_attempt": 2, "workflow_id": 7}]
+    artifacts = {
+        11: [
+            {
+                "id": 101,
+                "name": "junit-results",
+                "expired": False,
+                "created_at": "2026-09-28T20:49:23Z",
+            }
+        ]
+    }
+    api = FakeAPI(runs, artifacts, {101: zip_xml({"junit.xml": junit("fail")})})
+
+    result = collect_flaky_history(
+        api,
+        "o/r",
+        runs[0],
+        history_runs=20,
+        artifact_prefix="junit-results",
+    )
+
+    assert result.artifacts_skipped_ambiguous == 1
+    assert result.artifacts_analyzed == 0
 
 
 def test_persistent_failure_blocks_quarantine():
