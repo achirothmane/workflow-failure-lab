@@ -9,6 +9,8 @@ from flaky_test_intelligence import FAIL, PASS, observations_from_junit
 
 
 DEFAULT_REPOSITORIES = (
+    "huggingface/transformers",
+    "denoland/deno",
     "DataDog/dd-trace-js",
     "databricks/dbt-databricks",
     "opencobra/cobratoolbox",
