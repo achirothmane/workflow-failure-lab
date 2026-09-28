@@ -171,6 +171,12 @@ def collect_flaky_history(
                         run_id=run_id,
                         attempt=attempt,
                         job_name=name or "junit",
+                        observed_at=str(
+                            run.get("run_started_at")
+                            or run.get("updated_at")
+                            or run.get("created_at")
+                            or ""
+                        ),
                     )
                 )
 
