@@ -1,0 +1,25 @@
+name: External Flakiness Discovery Wave 1
+
+on:
+  push:
+    branches: [external-flakiness-backtest-wave1]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run read-only independent repository discovery
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          EXTERNAL_BACKTEST_RUN_LIMIT: '150'
+        run: python3 scripts/external_flakiness_discovery.py
