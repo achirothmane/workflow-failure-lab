@@ -1,0 +1,24 @@
+name: Independent Flakiness Probe
+
+on:
+  push:
+    branches: [independent-flakiness-probe]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run independent public-repository probe
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/independent_flaky_artifact_probe.py
