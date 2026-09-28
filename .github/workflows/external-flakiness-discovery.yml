@@ -21,5 +21,6 @@ jobs:
       - name: Run read-only independent repository discovery
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          EXTERNAL_BACKTEST_RUN_LIMIT: '150'
+          EXTERNAL_BACKTEST_RUN_LIMIT: '100'
+          EXTERNAL_BACKTEST_REPOSITORIES: 'device-management-toolkit/console,opral/lix,opennextjs/opennextjs-netlify'
         run: PYTHONPATH=. python3 scripts/external_flakiness_discovery.py
