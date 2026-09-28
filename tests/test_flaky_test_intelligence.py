@@ -162,3 +162,21 @@ def test_junit_parser_captures_optional_source_file_for_ownership():
     )
 
     assert items[0].source_file == "tests/test_cart.py"
+
+
+def test_junit_parser_retains_trusted_observation_time():
+    xml = """
+    <testsuite>
+      <testcase classname="pkg.TestCart" name="test_total" time="1.0">
+        <failure message="boom" />
+      </testcase>
+    </testsuite>
+    """
+    items = observations_from_junit(
+        xml,
+        sha="abc",
+        run_id=10,
+        observed_at="2026-09-28T12:00:00Z",
+    )
+
+    assert items[0].observed_at == "2026-09-28T12:00:00Z"

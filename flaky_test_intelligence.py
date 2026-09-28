@@ -24,6 +24,7 @@ class CaseObservation:
     duration_seconds: float
     job_name: str = "tests"
     source_file: str = ""
+    observed_at: str = ""
 
 
 @dataclass(frozen=True)
@@ -63,6 +64,7 @@ def observations_from_junit(
     run_id: int,
     attempt: int = 1,
     job_name: str = "tests",
+    observed_at: str = "",
 ) -> list[CaseObservation]:
     """Convert JUnit XML into test-level observations.
 
@@ -120,6 +122,7 @@ def observations_from_junit(
                 duration_seconds=duration,
                 job_name=job_name,
                 source_file=source_file,
+                observed_at=observed_at,
             )
         )
 

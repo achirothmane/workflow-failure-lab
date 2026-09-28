@@ -28,6 +28,10 @@ from flaky_test_intelligence import (
     summarize_flaky_tests,
 )
 from historical_flakiness_evidence import produce_historical_flakiness_evidence
+from historical_flakiness_shadow import (
+    compare_historical_flakiness_shadow,
+    render_historical_flakiness_shadow,
+)
 from flaky_triage import (
     build_triage_items,
     emit_triage_annotations,
@@ -171,6 +175,12 @@ def collect_flaky_history(
                         run_id=run_id,
                         attempt=attempt,
                         job_name=name or "junit",
+                        observed_at=str(
+                            run.get("run_started_at")
+                            or run.get("updated_at")
+                            or run.get("created_at")
+                            or ""
+                        ),
                     )
                 )
 
@@ -310,15 +320,31 @@ def main() -> int:
         print(f"::warning::Flaky Test Intelligence could not analyze artifacts: {exc}")
         return 0
 
+    run_attempt = max(1, int(current_run.get("run_attempt") or 1))
     historical_evidence = produce_historical_flakiness_evidence(
         repo=repo,
         current_run=current_run,
         run_id=run_id,
-        run_attempt=max(1, int(current_run.get("run_attempt") or 1)),
+        run_attempt=run_attempt,
         result=result,
     )
+    historical_shadow = compare_historical_flakiness_shadow(
+        repo=repo,
+        run_id=run_id,
+        run_attempt=run_attempt,
+        observations=result.case_observations,
+        baseline_decision=os.environ.get("INPUT_BASELINE_DECISION", ""),
+        baseline_evidence_status=os.environ.get(
+            "INPUT_BASELINE_EVIDENCE_STATUS",
+            "",
+        ),
+    )
 
-    report = render_flaky_history_report(result)
+    report = (
+        render_flaky_history_report(result)
+        + "\n"
+        + render_historical_flakiness_shadow(historical_shadow)
+    )
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
         with open(summary_path, "a", encoding="utf-8") as handle:
@@ -493,6 +519,19 @@ def main() -> int:
     _write_output(
         "historical-flakiness-evidence-json",
         json.dumps(historical_evidence, separators=(",", ":"), sort_keys=True),
+    )
+    _write_output(
+        "historical-flakiness-shadow-json",
+        json.dumps(historical_shadow, separators=(",", ":"), sort_keys=True),
+    )
+    _write_output("historical-flakiness-shadow-status", historical_shadow["shadow"]["status"])
+    _write_output(
+        "historical-flakiness-shadow-supported-tests",
+        str(historical_shadow["shadow"]["tests_with_historical_support"]),
+    )
+    _write_output(
+        "historical-flakiness-shadow-contradictions",
+        str(historical_shadow["shadow"]["tests_with_historical_contradiction"]),
     )
     _write_output("active-quarantines", str(active_count))
     _write_output("expired-quarantines", str(expired_count))
