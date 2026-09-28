@@ -21,3 +21,9 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           PYTHONPATH: ${{ github.workspace }}
         run: python3 scripts/independent_unknown_test_backtest.py
+
+      - name: Run opral/lix historical shadow backtest
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PYTHONPATH: ${{ github.workspace }}
+        run: python3 scripts/opral_lix_historical_shadow_backtest.py
