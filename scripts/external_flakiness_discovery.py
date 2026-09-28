@@ -9,6 +9,10 @@ from flaky_test_intelligence import FAIL, PASS, observations_from_junit
 
 
 DEFAULT_REPOSITORIES = (
+    "vercel/next.js",
+    "psf/requests",
+    "codeceptjs/CodeceptJS",
+    "schemathesis/schemathesis",
     "huggingface/transformers",
     "denoland/deno",
     "DataDog/dd-trace-js",
