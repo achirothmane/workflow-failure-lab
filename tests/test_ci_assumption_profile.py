@@ -90,7 +90,7 @@ def test_decision_contains_real_assumption_reference_and_enforces_it():
     )
 
     assert decision["basis"]["assumption_refs"] == [state["id"]]
-    ensure_decision_allows_request(decision, request, assumption_states=[state])
+    ensure_decision_allows_request(decision, request, now=NOW, assumption_states=[state])
 
 
 def test_missing_assumption_artifact_fails_execution_boundary():
@@ -111,7 +111,7 @@ def test_missing_assumption_artifact_fails_execution_boundary():
     )
 
     with pytest.raises(ContractViolation, match="ASSUMPTION_REFERENCE_MISSING"):
-        ensure_decision_allows_request(decision, request)
+        ensure_decision_allows_request(decision, request, now=NOW)
 
 
 def test_tampered_assumption_fails_execution_boundary():
@@ -134,7 +134,7 @@ def test_tampered_assumption_fails_execution_boundary():
     tampered["proposition"] = "mutated"
 
     with pytest.raises(ContractViolation, match="ASSUMPTION_INTEGRITY_INVALID"):
-        ensure_decision_allows_request(decision, request, assumption_states=[tampered])
+        ensure_decision_allows_request(decision, request, now=NOW, assumption_states=[tampered])
 
 
 def test_non_valid_assumption_turns_allow_into_block():

@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import hashlib
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from eba_integration_contract import CONTRACT_VERSION, canonical_json_bytes
+from eba_integration_contract import (
+    CONTRACT_VERSION,
+    TEMPORAL_PROFILE_VERSION,
+    canonical_json_bytes,
+)
 
 POLICY_ID = "ci-retry-gate-runtime-authority-v1"
 ALLOW_RULE_ID = "allow-ci-retry-rerun-failed-jobs"
+AUTHORITY_TTL_SECONDS = 300
 
 
 class AuthorityProfileError(ValueError):
@@ -68,6 +74,22 @@ def authority_scope_digest(action_request: dict[str, Any]) -> str:
     return _digest(_mapped_action(action_request))
 
 
+def _parse_time(value: str) -> datetime:
+    if not isinstance(value, str) or not value:
+        raise AuthorityProfileError("AUTHORITY_TIMESTAMP_INVALID")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise AuthorityProfileError("AUTHORITY_TIMESTAMP_INVALID") from exc
+    if parsed.tzinfo is None:
+        raise AuthorityProfileError("AUTHORITY_TIMESTAMP_INVALID")
+    return parsed.astimezone(timezone.utc)
+
+
+def _format_time(value: datetime) -> str:
+    return value.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
 def build_ci_authority_grant(
     *,
     action_request: dict[str, Any],
@@ -86,10 +108,17 @@ def build_ci_authority_grant(
     repository/run_id in the ActionRequest.
     """
     mapped = _mapped_action(action_request)
+    issued_at = _parse_time(created_at)
+    if expires_at is None:
+        expires_at = _format_time(issued_at + timedelta(seconds=AUTHORITY_TTL_SECONDS))
+    expiry = _parse_time(expires_at)
+    if expiry <= issued_at:
+        raise AuthorityProfileError("AUTHORITY_WINDOW_INVALID")
 
     grant: dict[str, Any] = {
         "contract_version": CONTRACT_VERSION,
         "kind": "AuthorityGrant",
+        "temporal_profile": TEMPORAL_PROFILE_VERSION,
         "trace_id": action_request.get("trace_id"),
         "producer": "agent-action-guard/ci-retry-profile",
         "created_at": created_at,

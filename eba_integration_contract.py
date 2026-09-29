@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 CONTRACT_VERSION = "eba.integration/v0.1"
+TEMPORAL_PROFILE_VERSION = "eba.temporal/v1"
 DECISION_KIND = "Decision"
 RECEIPT_KIND = "ExecutionReceipt"
 ASSUMPTION_KIND = "AssumptionState"
@@ -20,6 +21,22 @@ class ContractViolation(RuntimeError):
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _parse_timestamp(value: Any, *, field: str, allow_none: bool = False) -> datetime | None:
+    if value is None:
+        if allow_none:
+            return None
+        raise ContractViolation(f"{field.upper()}_MISSING")
+    if not isinstance(value, str) or not value:
+        raise ContractViolation(f"{field.upper()}_INVALID")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ContractViolation(f"{field.upper()}_INVALID") from exc
+    if parsed.tzinfo is None:
+        raise ContractViolation(f"{field.upper()}_INVALID")
+    return parsed.astimezone(timezone.utc)
 
 
 def canonical_json_bytes(value: dict[str, Any]) -> bytes:
@@ -111,13 +128,35 @@ def _block_reason_code(reason: str) -> str:
     return "CI_RETRY_EVIDENCE_BLOCK"
 
 
-def _validate_assumption_state(artifact: dict[str, Any]) -> None:
+def _validate_assumption_state(
+    artifact: dict[str, Any],
+    *,
+    now: str,
+) -> None:
     if artifact.get("contract_version") != CONTRACT_VERSION:
         raise ContractViolation("ASSUMPTION_CONTRACT_VERSION_INVALID")
     if artifact.get("kind") != ASSUMPTION_KIND:
         raise ContractViolation("ASSUMPTION_KIND_INVALID")
     if artifact.get("status") != "VALID":
         raise ContractViolation(f"ASSUMPTION_NOT_VALID:{artifact.get('status')!r}")
+    if artifact.get("temporal_profile") not in {None, TEMPORAL_PROFILE_VERSION}:
+        raise ContractViolation("ASSUMPTION_TEMPORAL_PROFILE_INVALID")
+
+    current = _parse_timestamp(now, field="evaluation_time")
+    checked_at = _parse_timestamp(artifact.get("checked_at"), field="assumption_checked_at")
+    assert current is not None and checked_at is not None
+    if checked_at > current:
+        raise ContractViolation("ASSUMPTION_CHECKED_AT_FUTURE")
+
+    if "valid_until" not in artifact:
+        raise ContractViolation("ASSUMPTION_VALID_UNTIL_MISSING")
+    valid_until = _parse_timestamp(
+        artifact.get("valid_until"),
+        field="assumption_valid_until",
+        allow_none=True,
+    )
+    if valid_until is not None and current >= valid_until:
+        raise ContractViolation("ASSUMPTION_STALE")
 
     integrity = artifact.get("integrity")
     if not isinstance(integrity, dict) or integrity.get("algorithm") != "sha256":
@@ -127,7 +166,6 @@ def _validate_assumption_state(artifact: dict[str, Any]) -> None:
     unsigned.pop("integrity", None)
     if expected != _digest(unsigned):
         raise ContractViolation("ASSUMPTION_INTEGRITY_INVALID")
-
 
 def _authority_scope_digest(action_request: dict[str, Any]) -> str:
     principal = action_request.get("principal")
@@ -148,6 +186,8 @@ def _authority_scope_digest(action_request: dict[str, Any]) -> str:
 def _validate_authority_grant(
     artifact: dict[str, Any],
     action_request: dict[str, Any],
+    *,
+    now: str,
 ) -> None:
     if artifact.get("contract_version") != CONTRACT_VERSION:
         raise ContractViolation("AUTHORITY_CONTRACT_VERSION_INVALID")
@@ -155,6 +195,25 @@ def _validate_authority_grant(
         raise ContractViolation("AUTHORITY_KIND_INVALID")
     if artifact.get("revoked") is not False:
         raise ContractViolation("AUTHORITY_REVOKED")
+    if artifact.get("temporal_profile") not in {None, TEMPORAL_PROFILE_VERSION}:
+        raise ContractViolation("AUTHORITY_TEMPORAL_PROFILE_INVALID")
+
+    current = _parse_timestamp(now, field="evaluation_time")
+    not_before = _parse_timestamp(
+        artifact.get("not_before"),
+        field="authority_not_before",
+    )
+    expires_at = _parse_timestamp(
+        artifact.get("expires_at"),
+        field="authority_expires_at",
+    )
+    assert current is not None and not_before is not None and expires_at is not None
+    if expires_at <= not_before:
+        raise ContractViolation("AUTHORITY_WINDOW_INVALID")
+    if current < not_before:
+        raise ContractViolation("AUTHORITY_NOT_YET_VALID")
+    if current >= expires_at:
+        raise ContractViolation("AUTHORITY_EXPIRED")
 
     integrity = artifact.get("integrity")
     if not isinstance(integrity, dict) or integrity.get("algorithm") != "sha256":
@@ -211,6 +270,8 @@ def build_decision_artifact(
     require_authority: bool = False,
     created_at: str | None = None,
 ) -> dict[str, Any]:
+    validation_time = created_at or _utc_now()
+    _parse_timestamp(validation_time, field="decision_created_at")
     decision = str(evidence_decision.get("decision") or "")
     if decision not in {"ALLOW", "BLOCK"}:
         raise ContractViolation(f"unsupported decision: {decision!r}")
@@ -238,7 +299,7 @@ def build_decision_artifact(
     if decision == "ALLOW":
         try:
             for assumption_state in assumption_states:
-                _validate_assumption_state(assumption_state)
+                _validate_assumption_state(assumption_state, now=validation_time)
         except ContractViolation as exc:
             decision = "BLOCK"
             reason = f"ASSUMPTION_INVALID: {exc}."
@@ -249,12 +310,12 @@ def build_decision_artifact(
 
     if decision == "ALLOW" and authority_grant is not None:
         try:
-            _validate_authority_grant(authority_grant, action_request)
+            _validate_authority_grant(authority_grant, action_request, now=validation_time)
         except ContractViolation as exc:
             decision = "BLOCK"
             reason = f"AUTHORITY_INVALID: {exc}."
 
-    timestamp = created_at or _utc_now()
+    timestamp = validation_time
 
     artifact: dict[str, Any] = {
         "contract_version": CONTRACT_VERSION,
@@ -303,6 +364,7 @@ def ensure_decision_allows_request(
     decision_artifact: dict[str, Any],
     action_request: dict[str, Any],
     *,
+    now: str,
     assumption_states: list[dict[str, Any]] | tuple[dict[str, Any], ...] = (),
     authority_grant: dict[str, Any] | None = None,
 ) -> None:
@@ -319,6 +381,18 @@ def ensure_decision_allows_request(
     if decision_artifact.get("action_digest") != expected:
         raise ContractViolation("ACTION_MUTATED_AFTER_DECISION")
 
+    current = _parse_timestamp(now, field="evaluation_time")
+    assert current is not None
+    if "valid_until" not in decision_artifact:
+        raise ContractViolation("DECISION_VALID_UNTIL_MISSING")
+    valid_until = _parse_timestamp(
+        decision_artifact.get("valid_until"),
+        field="decision_valid_until",
+        allow_none=True,
+    )
+    if valid_until is not None and current >= valid_until:
+        raise ContractViolation("DECISION_EXPIRED")
+
     basis = decision_artifact.get("basis")
     if not isinstance(basis, dict):
         raise ContractViolation("decision basis is missing")
@@ -332,7 +406,7 @@ def ensure_decision_allows_request(
     if missing:
         raise ContractViolation("ASSUMPTION_REFERENCE_MISSING")
     for ref in required_refs:
-        _validate_assumption_state(supplied[ref])
+        _validate_assumption_state(supplied[ref], now=now)
 
     authority_ref = basis.get("authority_ref")
     if authority_ref is not None:
@@ -340,7 +414,7 @@ def ensure_decision_allows_request(
             raise ContractViolation("AUTHORITY_REFERENCE_MISSING")
         if str(authority_grant.get("id")) != str(authority_ref):
             raise ContractViolation("AUTHORITY_REFERENCE_MISMATCH")
-        _validate_authority_grant(authority_grant, action_request)
+        _validate_authority_grant(authority_grant, action_request, now=now)
 
 
 def build_execution_receipt(
@@ -351,12 +425,15 @@ def build_execution_receipt(
     assumption_states: list[dict[str, Any]] | tuple[dict[str, Any], ...] = (),
     authority_grant: dict[str, Any] | None = None,
     created_at: str | None = None,
+    admitted_at: str | None = None,
 ) -> dict[str, Any]:
     timestamp = created_at or _utc_now()
     if rerun_triggered:
+        boundary_time = admitted_at or timestamp
         ensure_decision_allows_request(
             decision_artifact,
             action_request,
+            now=boundary_time,
             assumption_states=assumption_states,
             authority_grant=authority_grant,
         )
@@ -370,6 +447,7 @@ def build_execution_receipt(
         "request_ref": action_request.get("id"),
         "decision_ref": decision_artifact.get("id"),
         "action_digest": action_digest(action_request),
+        "admitted_at": admitted_at if rerun_triggered else None,
         "started_at": timestamp,
         "finished_at": timestamp,
         "outcome": "SUCCEEDED" if rerun_triggered else "NOT_EXECUTED",

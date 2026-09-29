@@ -3,7 +3,11 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
-from eba_integration_contract import CONTRACT_VERSION, canonical_json_bytes
+from eba_integration_contract import (
+    CONTRACT_VERSION,
+    TEMPORAL_PROFILE_VERSION,
+    canonical_json_bytes,
+)
 
 ASSUMPTION_ID = "ci.retry.failure-is-transient-and-rerunnable"
 ASSUMPTION_PROPOSITION = (
@@ -69,6 +73,7 @@ def build_ci_retry_assumption_state(
     artifact: dict[str, Any] = {
         "contract_version": CONTRACT_VERSION,
         "kind": "AssumptionState",
+        "temporal_profile": TEMPORAL_PROFILE_VERSION,
         "trace_id": action_request.get("trace_id"),
         "producer": "assumption-gate/ci-retry-profile",
         "created_at": created_at,

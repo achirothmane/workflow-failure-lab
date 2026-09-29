@@ -12,7 +12,7 @@ import urllib.error
 import urllib.request
 from urllib.parse import urlparse
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable
 
@@ -1485,6 +1485,7 @@ def main() -> int:
             f"{recovery_scope} ({pairs}). A successful later attempt must not erase this recurrence."
         )
     rerun_triggered = False
+    execution_time: str | None = None
     if safe and auto_rerun:
         try:
             binding_valid, binding_reason = revalidate_rerun_subject_binding(
@@ -1507,9 +1508,15 @@ def main() -> int:
             outer_guard_applied = True
         else:
             try:
+                execution_time = (
+                    datetime.now(timezone.utc)
+                    .isoformat(timespec="seconds")
+                    .replace("+00:00", "Z")
+                )
                 ensure_decision_allows_request(
                     contract_decision,
                     action_request,
+                    now=execution_time,
                     assumption_states=[assumption_state],
                     authority_grant=authority_grant,
                 )
@@ -1553,6 +1560,7 @@ def main() -> int:
         assumption_states=[assumption_state],
         authority_grant=authority_grant,
         rerun_triggered=rerun_triggered,
+        admitted_at=execution_time,
     )
 
     request_path = evidence_path.with_name(

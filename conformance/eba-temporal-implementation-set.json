@@ -1,0 +1,43 @@
+{
+  "profile": "eba.temporal/v1",
+  "status": "C03 implementation set; merge each owner only with green exact-head CI",
+  "source_vectors": "conformance/eba-temporal-v1.json",
+  "owners": [
+    {
+      "repository": "achirothmane/workflow-failure-lab",
+      "pull_request": 110,
+      "revision": "same commit as this manifest",
+      "role": "integration corpus and CI authorizing consumer"
+    },
+    {
+      "repository": "achirothmane/assumption-gate-",
+      "pull_request": 2,
+      "revision": "af8b907edc3618d734931ceaf8c9454c1d471951",
+      "role": "assumption projection and validation"
+    },
+    {
+      "repository": "achirothmane/agent-action-guard",
+      "pull_request": 11,
+      "revision": "b79322ea42769b18650b20fe4382f0ecd7759365",
+      "role": "AuthorityGrant construction and validation"
+    },
+    {
+      "repository": "achirothmane/token-governance-protocol",
+      "pull_request": 3,
+      "revision": "03de82a609552291738ecac7d69f2c5b569fe9f6",
+      "role": "BudgetReservation validity"
+    },
+    {
+      "repository": "achirothmane/easl",
+      "pull_request": 13,
+      "revision": "f6bf490d1bf9d4076553bf1f64e929cc6596a89a",
+      "role": "epistemic exact-expiry and future-observation semantics"
+    },
+    {
+      "repository": "achirothmane/aegis-ege",
+      "pull_request": 69,
+      "revision": "31461753efd789744e81bdef64c7db85fc7d0163",
+      "role": "Kubernetes-drain commit-boundary consumer"
+    }
+  ]
+}
