@@ -5,6 +5,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from eba_integration_contract import (
+    CI_AUDIENCE,
+    CONTEXT_PROFILE_VERSION,
     CONTRACT_VERSION,
     TEMPORAL_PROFILE_VERSION,
     canonical_json_bytes,
@@ -119,8 +121,16 @@ def build_ci_authority_grant(
         "contract_version": CONTRACT_VERSION,
         "kind": "AuthorityGrant",
         "temporal_profile": TEMPORAL_PROFILE_VERSION,
+        "context_profile": CONTEXT_PROFILE_VERSION,
         "trace_id": action_request.get("trace_id"),
+        "subject_ref": action_request.get("id"),
         "producer": "agent-action-guard/ci-retry-profile",
+        "trust": {
+            "mode": "trusted_in_process",
+            "issuer": f"policy:{POLICY_ID}",
+            "audience": action_request.get("audience"),
+            "namespace": action_request.get("context", {}).get("namespace"),
+        },
         "created_at": created_at,
         "principal": {
             "type": "agent",
