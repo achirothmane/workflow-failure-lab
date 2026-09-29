@@ -198,6 +198,7 @@ def build_ci_action_request(
     request: dict[str, Any] = {
         "contract_version": CONTRACT_VERSION,
         "kind": "ActionRequest",
+        "canonical_profile": CANONICAL_PROFILE_VERSION,
         "trace_id": trace_id,
         "producer": "workflow-failure-lab/ci-retry-gate",
         "audience": CI_AUDIENCE,
@@ -246,6 +247,8 @@ def _validate_assumption_state(
         raise ContractViolation("ASSUMPTION_TEMPORAL_PROFILE_INVALID")
     if artifact.get("context_profile") != CONTEXT_PROFILE_VERSION:
         raise ContractViolation("ASSUMPTION_CONTEXT_PROFILE_INVALID")
+    if artifact.get("canonical_profile") != CANONICAL_PROFILE_VERSION:
+        raise ContractViolation("ASSUMPTION_CANONICAL_PROFILE_INVALID")
     if artifact.get("trace_id") != action_request.get("trace_id"):
         raise ContractViolation("ASSUMPTION_TRACE_MISMATCH")
     if artifact.get("subject_ref") != action_request.get("id"):
@@ -330,6 +333,8 @@ def _validate_authority_grant(
         raise ContractViolation("AUTHORITY_TEMPORAL_PROFILE_INVALID")
     if artifact.get("context_profile") != CONTEXT_PROFILE_VERSION:
         raise ContractViolation("AUTHORITY_CONTEXT_PROFILE_INVALID")
+    if artifact.get("canonical_profile") != CANONICAL_PROFILE_VERSION:
+        raise ContractViolation("AUTHORITY_CANONICAL_PROFILE_INVALID")
     if artifact.get("trace_id") != action_request.get("trace_id"):
         raise ContractViolation("AUTHORITY_TRACE_MISMATCH")
     context = action_request.get("context")
@@ -478,6 +483,7 @@ def build_decision_artifact(
     artifact: dict[str, Any] = {
         "contract_version": CONTRACT_VERSION,
         "kind": DECISION_KIND,
+        "canonical_profile": CANONICAL_PROFILE_VERSION,
         "trace_id": action_request.get("trace_id"),
         "producer": "workflow-failure-lab/ci-retry-gate",
         "created_at": timestamp,
@@ -531,6 +537,10 @@ def ensure_decision_allows_request(
         raise ContractViolation("unsupported integration contract version")
     if decision_artifact.get("kind") != DECISION_KIND:
         raise ContractViolation("execution requires a Decision artifact")
+    if decision_artifact.get("canonical_profile") != CANONICAL_PROFILE_VERSION:
+        raise ContractViolation("DECISION_CANONICAL_PROFILE_INVALID")
+    if action_request.get("canonical_profile") != CANONICAL_PROFILE_VERSION:
+        raise ContractViolation("ACTION_CANONICAL_PROFILE_INVALID")
     if decision_artifact.get("decision") != "ALLOW":
         raise ContractViolation("execution requires ALLOW")
     if decision_artifact.get("request_ref") != action_request.get("id"):
@@ -606,6 +616,7 @@ def build_execution_receipt(
     receipt: dict[str, Any] = {
         "contract_version": CONTRACT_VERSION,
         "kind": RECEIPT_KIND,
+        "canonical_profile": CANONICAL_PROFILE_VERSION,
         "trace_id": action_request.get("trace_id"),
         "producer": "workflow-failure-lab/ci-retry-gate",
         "created_at": timestamp,
