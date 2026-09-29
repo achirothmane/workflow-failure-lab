@@ -53,6 +53,17 @@ Internally constructed Python artifacts use the same bounded canonical encoder.
 Aegis parses external EBA artifacts through the strict Go decoder before
 integrity and signed-reference checks.
 
+## Producer / consumer compatibility
+
+| Owner | Role | Current C05 responsibility |
+|---|---|---|
+| workflow-failure-lab | Python integration corpus + CI producer/consumer | Owns accepted/rejected vectors, strict Python raw parser, canonical ActionRequest/Decision/Receipt and CI profile artifacts. |
+| assumption-gate- | Python AssumptionState producer/validator | Emits and requires the current canonical profile; uses the same byte encoder for IDs/integrity. |
+| agent-action-guard | Python AuthorityGrant producer/validator | Emits and requires the current canonical profile; uses the same byte encoder for grant identity/integrity. |
+| token-governance-protocol | Python BudgetReservation producer/validator | Uses the same bounded byte encoder and requires the current profile on reservations. |
+| aegis-ege | Go external EBA consumer | Strictly parses raw JSON, rejects ambiguous forms, canonicalizes refs/integrity with the same accepted byte vectors. |
+| easl | deterministic epistemic evaluator | No canonical serialized artifact/hash format is currently promised, so C05 records an explicit exclusion rather than inventing one. |
+
 ## Migration
 
 New authorizing artifacts carry `canonical_profile =
