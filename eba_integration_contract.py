@@ -84,7 +84,7 @@ def build_ci_action_request(
     workflow_id: object,
     created_at: str | None = None,
 ) -> dict[str, Any]:
-    timestamp = validation_time
+    timestamp = created_at or _utc_now()
     scope = {
         "repository": repository,
         "run_id": int(run_id),
