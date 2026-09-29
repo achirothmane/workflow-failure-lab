@@ -191,6 +191,7 @@ def test_authority_scope_mismatch_fails_closed():
         ensure_decision_allows_request(
             decision,
             changed,
+            now=NOW,
             assumption_states=[assumption],
             authority_grant=authority,
         )
