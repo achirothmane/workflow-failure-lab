@@ -12,7 +12,7 @@ import urllib.error
 import urllib.request
 from urllib.parse import urlparse
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable
 
@@ -1507,9 +1507,15 @@ def main() -> int:
             outer_guard_applied = True
         else:
             try:
+                execution_time = (
+                    datetime.now(timezone.utc)
+                    .isoformat(timespec="seconds")
+                    .replace("+00:00", "Z")
+                )
                 ensure_decision_allows_request(
                     contract_decision,
                     action_request,
+                    now=execution_time,
                     assumption_states=[assumption_state],
                     authority_grant=authority_grant,
                 )
