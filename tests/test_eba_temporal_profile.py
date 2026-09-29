@@ -162,6 +162,55 @@ def test_future_checked_assumption_is_rejected():
         )
 
 
+
+
+def test_equivalent_timezone_offsets_share_the_same_boundary():
+    request = build_ci_action_request(
+        repository="achirothmane/workflow-failure-lab",
+        run_id=123,
+        run_attempt=1,
+        head_sha="abc123",
+        workflow_id=77,
+        created_at="2026-09-28T13:55:00+02:00",
+    )
+    source = _source()
+    assumption = build_ci_retry_assumption_state(
+        action_request=request,
+        evidence_decision=source,
+        evidence_sha256="b" * 64,
+        created_at="2026-09-28T13:55:00+02:00",
+    )
+    authority = build_ci_authority_grant(
+        action_request=request,
+        created_at="2026-09-28T13:55:00+02:00",
+        expires_at="2026-09-28T14:00:00+02:00",
+    )
+    decision = build_decision_artifact(
+        action_request=request,
+        evidence_decision=source,
+        evidence_sha256="b" * 64,
+        assumption_states=[assumption],
+        authority_grant=authority,
+        require_authority=True,
+        created_at="2026-09-28T11:55:00Z",
+    )
+    ensure_decision_allows_request(
+        decision,
+        request,
+        now="2026-09-28T11:59:59Z",
+        assumption_states=[assumption],
+        authority_grant=authority,
+    )
+    with pytest.raises(ContractViolation, match="AUTHORITY_EXPIRED"):
+        ensure_decision_allows_request(
+            decision,
+            request,
+            now="2026-09-28T12:00:00Z",
+            assumption_states=[assumption],
+            authority_grant=authority,
+        )
+
+
 def test_authority_expiry_is_finite_by_default():
     request = _request("2026-09-28T11:55:00Z")
     authority = build_ci_authority_grant(
