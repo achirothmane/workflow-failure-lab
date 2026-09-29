@@ -186,6 +186,8 @@ def _authority_scope_digest(action_request: dict[str, Any]) -> str:
 def _validate_authority_grant(
     artifact: dict[str, Any],
     action_request: dict[str, Any],
+    *,
+    now: str,
 ) -> None:
     if artifact.get("contract_version") != CONTRACT_VERSION:
         raise ContractViolation("AUTHORITY_CONTRACT_VERSION_INVALID")
@@ -193,6 +195,25 @@ def _validate_authority_grant(
         raise ContractViolation("AUTHORITY_KIND_INVALID")
     if artifact.get("revoked") is not False:
         raise ContractViolation("AUTHORITY_REVOKED")
+    if artifact.get("temporal_profile") not in {None, TEMPORAL_PROFILE_VERSION}:
+        raise ContractViolation("AUTHORITY_TEMPORAL_PROFILE_INVALID")
+
+    current = _parse_timestamp(now, field="evaluation_time")
+    not_before = _parse_timestamp(
+        artifact.get("not_before"),
+        field="authority_not_before",
+    )
+    expires_at = _parse_timestamp(
+        artifact.get("expires_at"),
+        field="authority_expires_at",
+    )
+    assert current is not None and not_before is not None and expires_at is not None
+    if expires_at <= not_before:
+        raise ContractViolation("AUTHORITY_WINDOW_INVALID")
+    if current < not_before:
+        raise ContractViolation("AUTHORITY_NOT_YET_VALID")
+    if current >= expires_at:
+        raise ContractViolation("AUTHORITY_EXPIRED")
 
     integrity = artifact.get("integrity")
     if not isinstance(integrity, dict) or integrity.get("algorithm") != "sha256":
