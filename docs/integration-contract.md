@@ -128,6 +128,17 @@ projection remain distinct semantics.
 The accepted/rejected contextual corpus is
 `conformance/eba-context-v1.json`.
 
+## Canonical representation
+
+Authorizing hashes and cross-language artifact references use
+`eba.canonical-json/v1`. Exact bytes, supported value/number/string domain,
+migration rules, and rejected ambiguous forms are defined in
+`docs/eba-canonical-json-profile.md` and
+`conformance/eba-canonical-json-v1.json`.
+
+The profile does not normalize domain strings such as timestamps; semantic
+equivalence remains owned by the relevant domain/profile.
+
 ## ExecutionReceipt
 
 A receipt is emitted for the final result of the gate invocation.
