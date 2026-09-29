@@ -163,6 +163,10 @@ def _validate_assumption_state(
         raise ContractViolation("ASSUMPTION_TRUST_ENVELOPE_MISSING")
     if trust.get("mode") != "trusted_in_process":
         raise ContractViolation("ASSUMPTION_TRUST_MODE_INVALID")
+    if artifact.get("producer") != "assumption-gate/ci-retry-profile":
+        raise ContractViolation("ASSUMPTION_PRODUCER_MISMATCH")
+    if trust.get("issuer") != artifact.get("producer"):
+        raise ContractViolation("ASSUMPTION_ISSUER_MISMATCH")
     if trust.get("audience") != action_request.get("audience"):
         raise ContractViolation("ASSUMPTION_AUDIENCE_MISMATCH")
     if trust.get("namespace") != context.get("namespace"):
@@ -239,6 +243,10 @@ def _validate_authority_grant(
         raise ContractViolation("AUTHORITY_TRUST_ENVELOPE_MISSING")
     if trust.get("mode") != "trusted_in_process":
         raise ContractViolation("AUTHORITY_TRUST_MODE_INVALID")
+    if artifact.get("producer") != "agent-action-guard/ci-retry-profile":
+        raise ContractViolation("AUTHORITY_PRODUCER_MISMATCH")
+    if trust.get("issuer") != artifact.get("issued_by"):
+        raise ContractViolation("AUTHORITY_ISSUER_MISMATCH")
     if trust.get("audience") != action_request.get("audience"):
         raise ContractViolation("AUTHORITY_AUDIENCE_MISMATCH")
     if trust.get("namespace") != context.get("namespace"):
