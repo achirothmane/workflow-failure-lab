@@ -425,13 +425,15 @@ def build_execution_receipt(
     assumption_states: list[dict[str, Any]] | tuple[dict[str, Any], ...] = (),
     authority_grant: dict[str, Any] | None = None,
     created_at: str | None = None,
+    admitted_at: str | None = None,
 ) -> dict[str, Any]:
     timestamp = created_at or _utc_now()
     if rerun_triggered:
+        boundary_time = admitted_at or timestamp
         ensure_decision_allows_request(
             decision_artifact,
             action_request,
-            now=timestamp,
+            now=boundary_time,
             assumption_states=assumption_states,
             authority_grant=authority_grant,
         )
@@ -445,6 +447,7 @@ def build_execution_receipt(
         "request_ref": action_request.get("id"),
         "decision_ref": decision_artifact.get("id"),
         "action_digest": action_digest(action_request),
+        "admitted_at": admitted_at if rerun_triggered else None,
         "started_at": timestamp,
         "finished_at": timestamp,
         "outcome": "SUCCEEDED" if rerun_triggered else "NOT_EXECUTED",
