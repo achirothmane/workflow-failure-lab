@@ -1,0 +1,47 @@
+{
+  "profile": "eba.canonical-json/v1",
+  "contract_version": "eba.integration/v0.1",
+  "domain": {
+    "root": "object",
+    "numbers": "integers only in [-9007199254740991, 9007199254740991]",
+    "strings": "Unicode scalar values",
+    "keys": "unique strings sorted lexicographically",
+    "escaping": "Go encoding/json-compatible string escaping",
+    "whitespace": "none"
+  },
+  "accepted": [
+    {
+      "id": "J01-key-order",
+      "value": {"b": 2, "a": 1},
+      "canonical_utf8": "{\"a\":1,\"b\":2}",
+      "sha256": "43258cff783fe7036d8a43033f830adfc60ec037382473548ac742b888292777"
+    },
+    {
+      "id": "J02-unicode-html",
+      "value": {"unicode": "café 😀", "html": "<&>", "separator": "x y z"},
+      "canonical_utf8": "{\"html\":\"\\u003c\\u0026\\u003e\",\"separator\":\"x\\u2028y\\u2029z\",\"unicode\":\"café 😀\"}",
+      "sha256": "7f2e599c014e92f6a70aad42b64deb3077b5489db77352a0d9898a283862761f"
+    },
+    {
+      "id": "J03-safe-integers",
+      "value": {"max": 9007199254740991, "min": -9007199254740991, "zero": 0},
+      "canonical_utf8": "{\"max\":9007199254740991,\"min\":-9007199254740991,\"zero\":0}",
+      "sha256": "b7b2401ddca2165824e98c61890c0aaec470258d3119dd265d02be9438bf47e6"
+    }
+  ],
+  "rejected_raw": [
+    {"id": "J10-duplicate-key", "raw": "{\"a\":1,\"a\":2}", "reason": "CANONICAL_DUPLICATE_KEY"},
+    {"id": "J11-fraction", "raw": "{\"n\":1.0}", "reason": "CANONICAL_NON_INTEGER_NUMBER"},
+    {"id": "J12-exponent", "raw": "{\"n\":1e0}", "reason": "CANONICAL_NON_INTEGER_NUMBER"},
+    {"id": "J13-negative-zero", "raw": "{\"n\":-0}", "reason": "CANONICAL_NEGATIVE_ZERO"},
+    {"id": "J14-too-large", "raw": "{\"n\":9007199254740992}", "reason": "CANONICAL_INTEGER_OUT_OF_RANGE"}
+  ],
+  "semantic_not_byte_equivalence": [
+    {
+      "id": "J20-time-offset-equivalence",
+      "a": "2026-09-28T12:00:00Z",
+      "b": "2026-09-28T14:00:00+02:00",
+      "note": "eba.temporal/v1 treats these as the same instant; canonical JSON does not rewrite timestamp strings."
+    }
+  ]
+}
