@@ -111,7 +111,7 @@ def test_missing_assumption_artifact_fails_execution_boundary():
     )
 
     with pytest.raises(ContractViolation, match="ASSUMPTION_REFERENCE_MISSING"):
-        ensure_decision_allows_request(decision, request)
+        ensure_decision_allows_request(decision, request, now=NOW)
 
 
 def test_tampered_assumption_fails_execution_boundary():
