@@ -109,6 +109,7 @@ def test_decision_contains_authority_ref_and_execution_enforces_it():
     ensure_decision_allows_request(
         decision,
         request,
+        now=NOW,
         assumption_states=[assumption],
         authority_grant=authority,
     )
@@ -133,6 +134,7 @@ def test_missing_authority_artifact_fails_execution_boundary():
         ensure_decision_allows_request(
             decision,
             request,
+            now=NOW,
             assumption_states=[assumption],
         )
 
@@ -158,6 +160,7 @@ def test_tampered_authority_fails_integrity():
         ensure_decision_allows_request(
             decision,
             request,
+            now=NOW,
             assumption_states=[assumption],
             authority_grant=tampered,
         )
