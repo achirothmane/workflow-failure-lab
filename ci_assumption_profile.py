@@ -4,8 +4,11 @@ import hashlib
 from typing import Any
 
 from eba_integration_contract import (
+    CI_AUDIENCE,
+    CONTEXT_PROFILE_VERSION,
     CONTRACT_VERSION,
     TEMPORAL_PROFILE_VERSION,
+    action_digest,
     canonical_json_bytes,
 )
 
@@ -74,8 +77,17 @@ def build_ci_retry_assumption_state(
         "contract_version": CONTRACT_VERSION,
         "kind": "AssumptionState",
         "temporal_profile": TEMPORAL_PROFILE_VERSION,
+        "context_profile": CONTEXT_PROFILE_VERSION,
         "trace_id": action_request.get("trace_id"),
+        "subject_ref": action_request.get("id"),
+        "action_digest": action_digest(action_request),
         "producer": "assumption-gate/ci-retry-profile",
+        "trust": {
+            "mode": "trusted_in_process",
+            "issuer": "assumption-gate/ci-retry-profile",
+            "audience": action_request.get("audience"),
+            "namespace": action_request.get("context", {}).get("namespace"),
+        },
         "created_at": created_at,
         "assumption_id": ASSUMPTION_ID,
         "proposition": ASSUMPTION_PROPOSITION,
