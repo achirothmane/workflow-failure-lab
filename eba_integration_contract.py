@@ -315,7 +315,7 @@ def build_decision_artifact(
             decision = "BLOCK"
             reason = f"AUTHORITY_INVALID: {exc}."
 
-    timestamp = created_at or _utc_now()
+    timestamp = validation_time
 
     artifact: dict[str, Any] = {
         "contract_version": CONTRACT_VERSION,
