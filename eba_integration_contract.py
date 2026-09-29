@@ -84,7 +84,7 @@ def build_ci_action_request(
     workflow_id: object,
     created_at: str | None = None,
 ) -> dict[str, Any]:
-    timestamp = created_at or _utc_now()
+    timestamp = validation_time
     scope = {
         "repository": repository,
         "run_id": int(run_id),
@@ -270,6 +270,8 @@ def build_decision_artifact(
     require_authority: bool = False,
     created_at: str | None = None,
 ) -> dict[str, Any]:
+    validation_time = created_at or _utc_now()
+    _parse_timestamp(validation_time, field="decision_created_at")
     decision = str(evidence_decision.get("decision") or "")
     if decision not in {"ALLOW", "BLOCK"}:
         raise ContractViolation(f"unsupported decision: {decision!r}")
@@ -297,7 +299,7 @@ def build_decision_artifact(
     if decision == "ALLOW":
         try:
             for assumption_state in assumption_states:
-                _validate_assumption_state(assumption_state)
+                _validate_assumption_state(assumption_state, now=validation_time)
         except ContractViolation as exc:
             decision = "BLOCK"
             reason = f"ASSUMPTION_INVALID: {exc}."
@@ -308,7 +310,7 @@ def build_decision_artifact(
 
     if decision == "ALLOW" and authority_grant is not None:
         try:
-            _validate_authority_grant(authority_grant, action_request)
+            _validate_authority_grant(authority_grant, action_request, now=validation_time)
         except ContractViolation as exc:
             decision = "BLOCK"
             reason = f"AUTHORITY_INVALID: {exc}."
@@ -362,6 +364,7 @@ def ensure_decision_allows_request(
     decision_artifact: dict[str, Any],
     action_request: dict[str, Any],
     *,
+    now: str,
     assumption_states: list[dict[str, Any]] | tuple[dict[str, Any], ...] = (),
     authority_grant: dict[str, Any] | None = None,
 ) -> None:
@@ -378,6 +381,18 @@ def ensure_decision_allows_request(
     if decision_artifact.get("action_digest") != expected:
         raise ContractViolation("ACTION_MUTATED_AFTER_DECISION")
 
+    current = _parse_timestamp(now, field="evaluation_time")
+    assert current is not None
+    if "valid_until" not in decision_artifact:
+        raise ContractViolation("DECISION_VALID_UNTIL_MISSING")
+    valid_until = _parse_timestamp(
+        decision_artifact.get("valid_until"),
+        field="decision_valid_until",
+        allow_none=True,
+    )
+    if valid_until is not None and current >= valid_until:
+        raise ContractViolation("DECISION_EXPIRED")
+
     basis = decision_artifact.get("basis")
     if not isinstance(basis, dict):
         raise ContractViolation("decision basis is missing")
@@ -391,7 +406,7 @@ def ensure_decision_allows_request(
     if missing:
         raise ContractViolation("ASSUMPTION_REFERENCE_MISSING")
     for ref in required_refs:
-        _validate_assumption_state(supplied[ref])
+        _validate_assumption_state(supplied[ref], now=now)
 
     authority_ref = basis.get("authority_ref")
     if authority_ref is not None:
@@ -399,7 +414,7 @@ def ensure_decision_allows_request(
             raise ContractViolation("AUTHORITY_REFERENCE_MISSING")
         if str(authority_grant.get("id")) != str(authority_ref):
             raise ContractViolation("AUTHORITY_REFERENCE_MISMATCH")
-        _validate_authority_grant(authority_grant, action_request)
+        _validate_authority_grant(authority_grant, action_request, now=now)
 
 
 def build_execution_receipt(
@@ -416,6 +431,7 @@ def build_execution_receipt(
         ensure_decision_allows_request(
             decision_artifact,
             action_request,
+            now=timestamp,
             assumption_states=assumption_states,
             authority_grant=authority_grant,
         )
