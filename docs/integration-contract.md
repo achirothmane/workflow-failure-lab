@@ -80,6 +80,26 @@ Immediately before calling GitHub's rerun endpoint, CI Retry Gate MUST have:
 
 A mismatch fails closed.
 
+
+
+## Temporal admissibility
+
+Authorizing use of `eba.integration/v0.1` now follows the versioned
+`eba.temporal/v1` profile. The accepted/rejected corpus lives at
+`conformance/eba-temporal-v1.json`; cross-owner applicability and exclusions
+are documented in `docs/eba-temporal-profile.md`.
+
+The execution boundary receives an explicit evaluation instant. Finite windows
+are half-open: `not_before <= now < expires_at`. Exact-expiry reuse fails
+closed. AuthorityGrant expiry is finite; malformed time shapes do not degrade to
+structural success. A state-bound AssumptionState may use explicit null
+wall-clock expiry only when its producing profile has not erased a finite
+required dependency.
+
+Historical artifacts remain readable but do not gain these authorization
+guarantees retroactively.
+
+
 ## ExecutionReceipt
 
 A receipt is emitted for the final result of the gate invocation.
