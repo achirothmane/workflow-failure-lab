@@ -116,6 +116,11 @@ def test_exact_local_context_is_accepted():
             "AUTHORITY_AUDIENCE_MISMATCH",
         ),
         (
+            "authority",
+            lambda a: a["trust"].update({"issuer": "policy:other"}),
+            "AUTHORITY_ISSUER_MISMATCH",
+        ),
+        (
             "assumption",
             lambda a: a.update({"trace_id": "tr_other"}),
             "ASSUMPTION_TRACE_MISMATCH",
