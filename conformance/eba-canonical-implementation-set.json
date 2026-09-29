@@ -12,25 +12,25 @@
     {
       "repository": "achirothmane/assumption-gate-",
       "pull_request": 4,
-      "revision": "40fd5e4d1c7b996e5de27e221e7003ec2f0b2863",
+      "revision": "435bc970c10dda83b786677ce9cc98ab9eac3799",
       "role": "AssumptionState producer and validator"
     },
     {
       "repository": "achirothmane/agent-action-guard",
       "pull_request": 13,
-      "revision": "2bc7b8c874eb9f407fde2bf031b4b458ba954827",
+      "revision": "5276336cec396a0ac0b77d45eb5b981b01d7d7ea",
       "role": "AuthorityGrant producer and validator"
     },
     {
       "repository": "achirothmane/token-governance-protocol",
       "pull_request": 4,
-      "revision": "e96f65d4378da3a914dbb4289f7ac90cd610b355",
+      "revision": "7b38fc9af5cf9934fec5842b8e195b9a2d3c2d4f",
       "role": "BudgetReservation producer and validator"
     },
     {
       "repository": "achirothmane/aegis-ege",
       "pull_request": 71,
-      "revision": "d24f40a47bcad34874f1ec81ae163554b7aeb1dc",
+      "revision": "f73524136514a3f93f37eab79ccf13476f782bcc",
       "role": "strict Go external EBA consumer"
     }
   ],
