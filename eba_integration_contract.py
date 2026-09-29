@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 CONTRACT_VERSION = "eba.integration/v0.1"
+TEMPORAL_PROFILE_VERSION = "eba.temporal/v1"
 DECISION_KIND = "Decision"
 RECEIPT_KIND = "ExecutionReceipt"
 ASSUMPTION_KIND = "AssumptionState"
@@ -20,6 +21,22 @@ class ContractViolation(RuntimeError):
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _parse_timestamp(value: Any, *, field: str, allow_none: bool = False) -> datetime | None:
+    if value is None:
+        if allow_none:
+            return None
+        raise ContractViolation(f"{field.upper()}_MISSING")
+    if not isinstance(value, str) or not value:
+        raise ContractViolation(f"{field.upper()}_INVALID")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ContractViolation(f"{field.upper()}_INVALID") from exc
+    if parsed.tzinfo is None:
+        raise ContractViolation(f"{field.upper()}_INVALID")
+    return parsed.astimezone(timezone.utc)
 
 
 def canonical_json_bytes(value: dict[str, Any]) -> bytes:
