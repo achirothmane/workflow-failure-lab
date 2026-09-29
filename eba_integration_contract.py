@@ -9,6 +9,8 @@ from typing import Any
 
 CONTRACT_VERSION = "eba.integration/v0.1"
 TEMPORAL_PROFILE_VERSION = "eba.temporal/v1"
+CONTEXT_PROFILE_VERSION = "eba.context/v1"
+CI_AUDIENCE = "workflow-failure-lab/ci-retry-gate"
 DECISION_KIND = "Decision"
 RECEIPT_KIND = "ExecutionReceipt"
 ASSUMPTION_KIND = "AssumptionState"
@@ -87,6 +89,7 @@ def build_ci_action_request(
     timestamp = created_at or _utc_now()
     scope = {
         "repository": repository,
+        "namespace": f"github-repository:{repository}",
         "run_id": int(run_id),
         "run_attempt": int(run_attempt),
         "head_sha": str(head_sha or ""),
@@ -100,6 +103,7 @@ def build_ci_action_request(
         "kind": "ActionRequest",
         "trace_id": trace_id,
         "producer": "workflow-failure-lab/ci-retry-gate",
+        "audience": CI_AUDIENCE,
         "created_at": timestamp,
         "principal": {
             "type": "github_action",
@@ -130,8 +134,10 @@ def _block_reason_code(reason: str) -> str:
 
 def _validate_assumption_state(
     artifact: dict[str, Any],
+    action_request: dict[str, Any],
     *,
     now: str,
+    expected_evidence_ref: str | None = None,
 ) -> None:
     if artifact.get("contract_version") != CONTRACT_VERSION:
         raise ContractViolation("ASSUMPTION_CONTRACT_VERSION_INVALID")
@@ -141,6 +147,34 @@ def _validate_assumption_state(
         raise ContractViolation(f"ASSUMPTION_NOT_VALID:{artifact.get('status')!r}")
     if artifact.get("temporal_profile") not in {None, TEMPORAL_PROFILE_VERSION}:
         raise ContractViolation("ASSUMPTION_TEMPORAL_PROFILE_INVALID")
+    if artifact.get("context_profile") != CONTEXT_PROFILE_VERSION:
+        raise ContractViolation("ASSUMPTION_CONTEXT_PROFILE_INVALID")
+    if artifact.get("trace_id") != action_request.get("trace_id"):
+        raise ContractViolation("ASSUMPTION_TRACE_MISMATCH")
+    if artifact.get("subject_ref") != action_request.get("id"):
+        raise ContractViolation("ASSUMPTION_SUBJECT_MISMATCH")
+    if artifact.get("action_digest") != action_digest(action_request):
+        raise ContractViolation("ASSUMPTION_ACTION_MISMATCH")
+    context = action_request.get("context")
+    if not isinstance(context, dict):
+        raise ContractViolation("ASSUMPTION_CONTEXT_INVALID")
+    trust = artifact.get("trust")
+    if not isinstance(trust, dict):
+        raise ContractViolation("ASSUMPTION_TRUST_ENVELOPE_MISSING")
+    if trust.get("mode") != "trusted_in_process":
+        raise ContractViolation("ASSUMPTION_TRUST_MODE_INVALID")
+    if artifact.get("producer") != "assumption-gate/ci-retry-profile":
+        raise ContractViolation("ASSUMPTION_PRODUCER_MISMATCH")
+    if trust.get("issuer") != artifact.get("producer"):
+        raise ContractViolation("ASSUMPTION_ISSUER_MISMATCH")
+    if trust.get("audience") != action_request.get("audience"):
+        raise ContractViolation("ASSUMPTION_AUDIENCE_MISMATCH")
+    if trust.get("namespace") != context.get("namespace"):
+        raise ContractViolation("ASSUMPTION_NAMESPACE_MISMATCH")
+    if expected_evidence_ref is not None:
+        refs = artifact.get("evidence_refs")
+        if not isinstance(refs, list) or refs != [expected_evidence_ref]:
+            raise ContractViolation("ASSUMPTION_EVIDENCE_BINDING_MISMATCH")
 
     current = _parse_timestamp(now, field="evaluation_time")
     checked_at = _parse_timestamp(artifact.get("checked_at"), field="assumption_checked_at")
@@ -197,6 +231,28 @@ def _validate_authority_grant(
         raise ContractViolation("AUTHORITY_REVOKED")
     if artifact.get("temporal_profile") not in {None, TEMPORAL_PROFILE_VERSION}:
         raise ContractViolation("AUTHORITY_TEMPORAL_PROFILE_INVALID")
+    if artifact.get("context_profile") != CONTEXT_PROFILE_VERSION:
+        raise ContractViolation("AUTHORITY_CONTEXT_PROFILE_INVALID")
+    if artifact.get("trace_id") != action_request.get("trace_id"):
+        raise ContractViolation("AUTHORITY_TRACE_MISMATCH")
+    context = action_request.get("context")
+    if not isinstance(context, dict):
+        raise ContractViolation("AUTHORITY_REQUEST_INVALID")
+    trust = artifact.get("trust")
+    if not isinstance(trust, dict):
+        raise ContractViolation("AUTHORITY_TRUST_ENVELOPE_MISSING")
+    if trust.get("mode") != "trusted_in_process":
+        raise ContractViolation("AUTHORITY_TRUST_MODE_INVALID")
+    if artifact.get("producer") != "agent-action-guard/ci-retry-profile":
+        raise ContractViolation("AUTHORITY_PRODUCER_MISMATCH")
+    if trust.get("issuer") != artifact.get("issued_by"):
+        raise ContractViolation("AUTHORITY_ISSUER_MISMATCH")
+    if trust.get("audience") != action_request.get("audience"):
+        raise ContractViolation("AUTHORITY_AUDIENCE_MISMATCH")
+    if trust.get("namespace") != context.get("namespace"):
+        raise ContractViolation("AUTHORITY_NAMESPACE_MISMATCH")
+    if artifact.get("subject_ref") != action_request.get("id"):
+        raise ContractViolation("AUTHORITY_SUBJECT_MISMATCH")
 
     current = _parse_timestamp(now, field="evaluation_time")
     not_before = _parse_timestamp(
@@ -299,7 +355,12 @@ def build_decision_artifact(
     if decision == "ALLOW":
         try:
             for assumption_state in assumption_states:
-                _validate_assumption_state(assumption_state, now=validation_time)
+                _validate_assumption_state(
+                    assumption_state,
+                    action_request,
+                    now=validation_time,
+                    expected_evidence_ref=f"sha256:{evidence_sha256}",
+                )
         except ContractViolation as exc:
             decision = "BLOCK"
             reason = f"ASSUMPTION_INVALID: {exc}."
@@ -406,7 +467,14 @@ def ensure_decision_allows_request(
     if missing:
         raise ContractViolation("ASSUMPTION_REFERENCE_MISSING")
     for ref in required_refs:
-        _validate_assumption_state(supplied[ref], now=now)
+        evidence_refs = basis.get("evidence_refs") or []
+        expected_evidence_ref = str(evidence_refs[0]) if len(evidence_refs) == 1 else None
+        _validate_assumption_state(
+            supplied[ref],
+            action_request,
+            now=now,
+            expected_evidence_ref=expected_evidence_ref,
+        )
 
     authority_ref = basis.get("authority_ref")
     if authority_ref is not None:

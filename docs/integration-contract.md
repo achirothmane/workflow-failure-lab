@@ -100,6 +100,34 @@ Historical artifacts remain readable but do not gain these authorization
 guarantees retroactively.
 
 
+## Contextual scope and trust
+
+Authorizing use of the CI profile also follows `eba.context/v1`.
+
+The ActionRequest binds a repository namespace
+(`github-repository:<owner/repo>`) and the fixed consumer audience
+`workflow-failure-lab/ci-retry-gate`. AssumptionState and AuthorityGrant
+must bind the same trace, subject ActionRequest, audience and namespace. The
+assumption additionally binds the exact EvidenceBundle reference.
+
+For this CI path the trust mode is explicitly `trusted_in_process`: the
+artifacts are constructed and consumed inside the same action process. Their
+SHA-256 integrity fields detect mutation; they are **not** external
+authentication. A serialized artifact arriving from an untrusted caller must
+not become authority merely because it can recompute its own hash.
+
+The Kubernetes/Aegis profile uses a different trust envelope:
+`authenticated_parent_binding`. Exact assumption/authority artifact digests,
+trace, audience and namespace are covered by the already authenticated signed
+execution Permit before the mutation boundary accepts them.
+
+A narrow AssumptionState projection is not a claim that assumption-gate has
+executed the full EASL dependency graph. EASL graph evaluation and profile
+projection remain distinct semantics.
+
+The accepted/rejected contextual corpus is
+`conformance/eba-context-v1.json`.
+
 ## ExecutionReceipt
 
 A receipt is emitted for the final result of the gate invocation.
