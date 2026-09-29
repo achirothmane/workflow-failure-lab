@@ -63,7 +63,7 @@ def test_allow_decision_authorizes_exact_request():
         evidence_sha256="f" * 64,
         created_at="2026-09-27T16:00:01Z",
     )
-    ensure_decision_allows_request(decision, request)
+    ensure_decision_allows_request(decision, request, now="2026-09-27T16:00:02Z")
     assert decision["decision"] == "ALLOW"
     assert decision["reason_codes"] == ["ALL_REQUIRED_GATES_SATISFIED"]
 
@@ -77,7 +77,7 @@ def test_block_decision_fails_closed():
         created_at="2026-09-27T16:00:01Z",
     )
     with pytest.raises(ContractViolation, match="ALLOW"):
-        ensure_decision_allows_request(decision, request)
+        ensure_decision_allows_request(decision, request, now="2026-09-27T16:00:02Z")
     assert decision["reason_codes"] == ["EVIDENCE_MISSING"]
 
 
@@ -134,4 +134,4 @@ def test_allow_with_mismatched_evidence_scope_becomes_block():
     assert decision["decision"] == "BLOCK"
     assert decision["reason_codes"] == ["CONTEXT_MISMATCH"]
     with pytest.raises(ContractViolation, match="ALLOW"):
-        ensure_decision_allows_request(decision, request)
+        ensure_decision_allows_request(decision, request, now="2026-09-27T16:00:02Z")
