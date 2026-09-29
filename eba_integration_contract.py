@@ -10,6 +10,8 @@ from typing import Any
 CONTRACT_VERSION = "eba.integration/v0.1"
 TEMPORAL_PROFILE_VERSION = "eba.temporal/v1"
 CONTEXT_PROFILE_VERSION = "eba.context/v1"
+CANONICAL_PROFILE_VERSION = "eba.canonical-json/v1"
+MAX_SAFE_INTEGER = 9007199254740991
 CI_AUDIENCE = "workflow-failure-lab/ci-retry-gate"
 DECISION_KIND = "Decision"
 RECEIPT_KIND = "ExecutionReceipt"
@@ -41,13 +43,108 @@ def _parse_timestamp(value: Any, *, field: str, allow_none: bool = False) -> dat
     return parsed.astimezone(timezone.utc)
 
 
+def _validate_canonical_value(value: Any, *, path: str = "$") -> None:
+    if value is None or isinstance(value, bool):
+        return
+    if isinstance(value, str):
+        if any(0xD800 <= ord(ch) <= 0xDFFF for ch in value):
+            raise ContractViolation(f"CANONICAL_STRING_INVALID:{path}")
+        return
+    if isinstance(value, int):
+        if abs(value) > MAX_SAFE_INTEGER:
+            raise ContractViolation(f"CANONICAL_INTEGER_OUT_OF_RANGE:{path}")
+        return
+    if isinstance(value, float):
+        raise ContractViolation(f"CANONICAL_NON_INTEGER_NUMBER:{path}")
+    if isinstance(value, list):
+        for index, item in enumerate(value):
+            _validate_canonical_value(item, path=f"{path}[{index}]")
+        return
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise ContractViolation(f"CANONICAL_OBJECT_KEY_INVALID:{path}")
+            _validate_canonical_value(key, path=f"{path}.<key>")
+            _validate_canonical_value(item, path=f"{path}.{key}")
+        return
+    raise ContractViolation(f"CANONICAL_TYPE_UNSUPPORTED:{path}")
+
+
+def _canonical_string(value: str) -> str:
+    _validate_canonical_value(value)
+    rendered = json.dumps(value, ensure_ascii=False)
+    return (
+        rendered
+        .replace("&", r"\u0026")
+        .replace("<", r"\u003c")
+        .replace(">", r"\u003e")
+        .replace("\u2028", r"\u2028")
+        .replace("\u2029", r"\u2029")
+    )
+
+
+def _canonical_text(value: Any) -> str:
+    _validate_canonical_value(value)
+    if value is None:
+        return "null"
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    if isinstance(value, str):
+        return _canonical_string(value)
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, list):
+        return "[" + ",".join(_canonical_text(item) for item in value) + "]"
+    if isinstance(value, dict):
+        parts = []
+        for key in sorted(value):
+            parts.append(_canonical_string(key) + ":" + _canonical_text(value[key]))
+        return "{" + ",".join(parts) + "}"
+    raise ContractViolation("CANONICAL_TYPE_UNSUPPORTED")
+
+
 def canonical_json_bytes(value: dict[str, Any]) -> bytes:
-    return json.dumps(
-        value,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-    ).encode("utf-8")
+    if not isinstance(value, dict):
+        raise ContractViolation("CANONICAL_ROOT_MUST_BE_OBJECT")
+    return _canonical_text(value).encode("utf-8")
+
+
+def strict_json_loads(raw: str | bytes | bytearray) -> Any:
+    def object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in out:
+                raise ContractViolation(f"CANONICAL_DUPLICATE_KEY:{key}")
+            out[key] = value
+        return out
+
+    def parse_int(token: str) -> int:
+        if token == "-0":
+            raise ContractViolation("CANONICAL_NEGATIVE_ZERO")
+        value = int(token, 10)
+        if abs(value) > MAX_SAFE_INTEGER:
+            raise ContractViolation("CANONICAL_INTEGER_OUT_OF_RANGE")
+        return value
+
+    def reject_number(token: str) -> Any:
+        raise ContractViolation(f"CANONICAL_NON_INTEGER_NUMBER:{token}")
+
+    try:
+        value = json.loads(
+            raw,
+            object_pairs_hook=object_pairs,
+            parse_int=parse_int,
+            parse_float=reject_number,
+            parse_constant=reject_number,
+        )
+    except ContractViolation:
+        raise
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise ContractViolation("CANONICAL_JSON_INVALID") from exc
+    _validate_canonical_value(value)
+    return value
 
 
 def _digest(value: dict[str, Any]) -> str:
@@ -101,6 +198,7 @@ def build_ci_action_request(
     request: dict[str, Any] = {
         "contract_version": CONTRACT_VERSION,
         "kind": "ActionRequest",
+        "canonical_profile": CANONICAL_PROFILE_VERSION,
         "trace_id": trace_id,
         "producer": "workflow-failure-lab/ci-retry-gate",
         "audience": CI_AUDIENCE,
@@ -149,6 +247,8 @@ def _validate_assumption_state(
         raise ContractViolation("ASSUMPTION_TEMPORAL_PROFILE_INVALID")
     if artifact.get("context_profile") != CONTEXT_PROFILE_VERSION:
         raise ContractViolation("ASSUMPTION_CONTEXT_PROFILE_INVALID")
+    if artifact.get("canonical_profile") != CANONICAL_PROFILE_VERSION:
+        raise ContractViolation("ASSUMPTION_CANONICAL_PROFILE_INVALID")
     if artifact.get("trace_id") != action_request.get("trace_id"):
         raise ContractViolation("ASSUMPTION_TRACE_MISMATCH")
     if artifact.get("subject_ref") != action_request.get("id"):
@@ -233,6 +333,8 @@ def _validate_authority_grant(
         raise ContractViolation("AUTHORITY_TEMPORAL_PROFILE_INVALID")
     if artifact.get("context_profile") != CONTEXT_PROFILE_VERSION:
         raise ContractViolation("AUTHORITY_CONTEXT_PROFILE_INVALID")
+    if artifact.get("canonical_profile") != CANONICAL_PROFILE_VERSION:
+        raise ContractViolation("AUTHORITY_CANONICAL_PROFILE_INVALID")
     if artifact.get("trace_id") != action_request.get("trace_id"):
         raise ContractViolation("AUTHORITY_TRACE_MISMATCH")
     context = action_request.get("context")
@@ -381,6 +483,7 @@ def build_decision_artifact(
     artifact: dict[str, Any] = {
         "contract_version": CONTRACT_VERSION,
         "kind": DECISION_KIND,
+        "canonical_profile": CANONICAL_PROFILE_VERSION,
         "trace_id": action_request.get("trace_id"),
         "producer": "workflow-failure-lab/ci-retry-gate",
         "created_at": timestamp,
@@ -434,6 +537,10 @@ def ensure_decision_allows_request(
         raise ContractViolation("unsupported integration contract version")
     if decision_artifact.get("kind") != DECISION_KIND:
         raise ContractViolation("execution requires a Decision artifact")
+    if decision_artifact.get("canonical_profile") != CANONICAL_PROFILE_VERSION:
+        raise ContractViolation("DECISION_CANONICAL_PROFILE_INVALID")
+    if action_request.get("canonical_profile") != CANONICAL_PROFILE_VERSION:
+        raise ContractViolation("ACTION_CANONICAL_PROFILE_INVALID")
     if decision_artifact.get("decision") != "ALLOW":
         raise ContractViolation("execution requires ALLOW")
     if decision_artifact.get("request_ref") != action_request.get("id"):
@@ -509,6 +616,7 @@ def build_execution_receipt(
     receipt: dict[str, Any] = {
         "contract_version": CONTRACT_VERSION,
         "kind": RECEIPT_KIND,
+        "canonical_profile": CANONICAL_PROFILE_VERSION,
         "trace_id": action_request.get("trace_id"),
         "producer": "workflow-failure-lab/ci-retry-gate",
         "created_at": timestamp,

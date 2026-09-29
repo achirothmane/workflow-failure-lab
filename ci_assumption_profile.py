@@ -5,6 +5,7 @@ from typing import Any
 
 from eba_integration_contract import (
     CI_AUDIENCE,
+    CANONICAL_PROFILE_VERSION,
     CONTEXT_PROFILE_VERSION,
     CONTRACT_VERSION,
     TEMPORAL_PROFILE_VERSION,
@@ -78,6 +79,7 @@ def build_ci_retry_assumption_state(
         "kind": "AssumptionState",
         "temporal_profile": TEMPORAL_PROFILE_VERSION,
         "context_profile": CONTEXT_PROFILE_VERSION,
+        "canonical_profile": CANONICAL_PROFILE_VERSION,
         "trace_id": action_request.get("trace_id"),
         "subject_ref": action_request.get("id"),
         "action_digest": action_digest(action_request),
