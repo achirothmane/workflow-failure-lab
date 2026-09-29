@@ -94,7 +94,7 @@ def test_mutation_after_decision_is_rejected():
     mutated["action"]["resource"] += "?other=true"
 
     with pytest.raises(ContractViolation):
-        ensure_decision_allows_request(decision, mutated)
+        ensure_decision_allows_request(decision, mutated, now="2026-09-27T16:00:02Z")
 
 
 def test_receipt_is_bound_to_decision_and_request():
