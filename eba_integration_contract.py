@@ -128,13 +128,35 @@ def _block_reason_code(reason: str) -> str:
     return "CI_RETRY_EVIDENCE_BLOCK"
 
 
-def _validate_assumption_state(artifact: dict[str, Any]) -> None:
+def _validate_assumption_state(
+    artifact: dict[str, Any],
+    *,
+    now: str,
+) -> None:
     if artifact.get("contract_version") != CONTRACT_VERSION:
         raise ContractViolation("ASSUMPTION_CONTRACT_VERSION_INVALID")
     if artifact.get("kind") != ASSUMPTION_KIND:
         raise ContractViolation("ASSUMPTION_KIND_INVALID")
     if artifact.get("status") != "VALID":
         raise ContractViolation(f"ASSUMPTION_NOT_VALID:{artifact.get('status')!r}")
+    if artifact.get("temporal_profile") not in {None, TEMPORAL_PROFILE_VERSION}:
+        raise ContractViolation("ASSUMPTION_TEMPORAL_PROFILE_INVALID")
+
+    current = _parse_timestamp(now, field="evaluation_time")
+    checked_at = _parse_timestamp(artifact.get("checked_at"), field="assumption_checked_at")
+    assert current is not None and checked_at is not None
+    if checked_at > current:
+        raise ContractViolation("ASSUMPTION_CHECKED_AT_FUTURE")
+
+    if "valid_until" not in artifact:
+        raise ContractViolation("ASSUMPTION_VALID_UNTIL_MISSING")
+    valid_until = _parse_timestamp(
+        artifact.get("valid_until"),
+        field="assumption_valid_until",
+        allow_none=True,
+    )
+    if valid_until is not None and current >= valid_until:
+        raise ContractViolation("ASSUMPTION_STALE")
 
     integrity = artifact.get("integrity")
     if not isinstance(integrity, dict) or integrity.get("algorithm") != "sha256":
@@ -144,7 +166,6 @@ def _validate_assumption_state(artifact: dict[str, Any]) -> None:
     unsigned.pop("integrity", None)
     if expected != _digest(unsigned):
         raise ContractViolation("ASSUMPTION_INTEGRITY_INVALID")
-
 
 def _authority_scope_digest(action_request: dict[str, Any]) -> str:
     principal = action_request.get("principal")
