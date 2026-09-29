@@ -1,0 +1,35 @@
+{
+  "profile": "eba.context/v1",
+  "status": "C04 implementation set; merge each owner only with green exact-head CI",
+  "source_vectors": "conformance/eba-context-v1.json",
+  "owners": [
+    {
+      "repository": "achirothmane/workflow-failure-lab",
+      "pull_request": 111,
+      "revision": "same commit as this manifest",
+      "role": "integration corpus and trusted in-process CI consumer"
+    },
+    {
+      "repository": "achirothmane/assumption-gate-",
+      "pull_request": 3,
+      "revision": "fe973e868117349d28d6a32a11543c3e4485ad9f",
+      "role": "narrow assumption projection with explicit local trust context"
+    },
+    {
+      "repository": "achirothmane/agent-action-guard",
+      "pull_request": 12,
+      "revision": "0b2556808aa0c63daa6a1529172fc76612c23ccb",
+      "role": "AuthorityGrant local contextual binding"
+    },
+    {
+      "repository": "achirothmane/aegis-ege",
+      "pull_request": 70,
+      "revision": "d8bb967035022c0b13823d30498730e41177b64c",
+      "role": "external authenticated parent binding at Kubernetes mutation boundary"
+    }
+  ],
+  "declared_difference": {
+    "assumption_gate_projection": "narrow profile projection",
+    "easl_graph_evaluation": "separate dependency-graph semantics; not claimed equivalent"
+  }
+}
