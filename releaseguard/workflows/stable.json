@@ -26,7 +26,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "parameters": {
-        "jsCode": "const input = $json.body || {};\nconst seq = Number(input.sequence || 0);\nconst fault = input.faultStable || 'none';\nif (fault === 'error' || (fault === 'partial' && seq % 4 === 0)) throw new Error('Intentional demo regression');\nif (fault === 'latency') await new Promise(resolve => setTimeout(resolve, 350));\nconst score = Math.min(100,Math.max(0,Number(input.score || 65)));\nconst result = {leadId: String(input.leadId || 'demo'),score,priority: score >= 70 ? 'HIGH' : 'NORMAL',engine:'stable'};\nif (fault === 'invalid') result.score = 'invalid-score';\nreturn [{json:{releaseguardVersion:'stable-v1',result}}];"
+        "jsCode": "const input = $json.body || {};\nconst seq = Number(input.sequence || 0);\nconst fault = input.faultStable || 'none';\nif (fault === 'error' || (fault === 'partial' && seq % 4 === 0)) throw new Error('Intentional demo regression');\nif (fault === 'latency') await new Promise(resolve => setTimeout(resolve, 350));\nconst score = Math.min(100,Math.max(0,Number(input.score || 65)));\nconst result = {leadId: String(input.leadId || 'demo'),score,priority: score >= 70 ? 'HIGH' : 'NORMAL',engine:'stable'};\nif (fault === 'invalid') result.score = 'invalid-score';\nif (fault === 'semantic') result.priority = score >= 70 ? 'NORMAL' : 'HIGH';\nreturn [{json:{releaseguardVersion:'stable-v1',result}}];"
       },
       "position": [
         320,

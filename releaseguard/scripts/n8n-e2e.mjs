@@ -14,7 +14,7 @@ async function call(path,{method='POST',data,headers={}}={}){
 }
 const config=(p={})=>({stable:{url:n8n+'/webhook/releaseguard-stable',version:'stable-v1'},candidate:{url:n8n+'/webhook/releaseguard-candidate',version:'candidate-v1'},fallbackMode:'read_only',
  outputSchema:JSON.parse(demoSchema()),policy:p});
-function demoSchema(){return JSON.stringify({type:'object',required:['leadId','score','priority','engine'],additionalProperties:false,properties:{leadId:{type:'string',minLength:1},score:{type:'number',minimum:0,maximum:100},priority:{type:'string',enum:['HIGH','NORMAL']},engine:{type:'string',enum:['stable','candidate']}}});}
+function demoSchema(){return JSON.stringify({allOf:[{"if":{"type":"object","required":["score"],"properties":{"score":{"type":"number","minimum":70}}},"then":{"type":"object","properties":{"priority":{"const":"HIGH"}}},"else":{"type":"object","properties":{"priority":{"const":"NORMAL"}}}}],type:'object',required:['leadId','score','priority','engine'],additionalProperties:false,properties:{leadId:{type:'string',minLength:1},score:{type:'number',minimum:0,maximum:100},priority:{type:'string',enum:['HIGH','NORMAL']},engine:{type:'string',enum:['stable','candidate']}}});}
 async function create(id,p={}){const x=await call('/v1/releases',{data:{id,config:config(p)}});assert.equal(x.status,201,JSON.stringify(x));}
 async function execute(id,key,payload){return call('/v1/execute/'+id,{headers:{authorization:'Bearer '+env.DATA_TOKEN,'x-request-id':key},data:payload});}
 function requestKey(id,pct,candidate=true,start=0,probe=false){for(let i=start;;i++){const key='e2e-'+i;if((secrets.bucket(id,key)<pct)===candidate&&(!probe||secrets.bucket(id,key,'probe')<10))return {key,next:i+1};}}
@@ -59,10 +59,18 @@ try{
  // Actual ingress → sidecar → Candidate → Stable fallback → actual ingress response.
  await create('demo');const selected=requestKey('demo',5).key;
  const r=await fetch(n8n+'/webhook/releaseguard',{method:'POST',headers:{'content-type':'application/json','x-releaseguard-client':creds[1].data.value,'x-request-id':selected},body:JSON.stringify({leadId:'LEAD-1042',score:81,faultCandidate:'invalid'})});
- const b=await r.json();assert.equal(r.status,200,JSON.stringify(b));assert.equal(b.servedBy,'stable');assert.equal(b.fallback,true);assert.equal(b.result.score,81);
+ const raw=await r.text();
+ if(!r.headers.get('content-type')?.includes('json'))throw Error('Gateway returned '+r.status+' '+r.headers.get('content-type')+' '+raw.slice(0,1800));
+ const b=JSON.parse(raw);assert.equal(r.status,200,JSON.stringify(b));assert.equal(b.servedBy,'stable');assert.equal(b.fallback,true);assert.equal(b.result.score,81);
  assert.equal((await snapshot('demo','REAL N8N INGRESS: invalid output → fallback → rollback')).status,'ROLLED_BACK');
  const next=await execute('demo','after-rollback',{leadId:'LEAD-1043',score:81});assert.equal(next.body.servedBy,'stable');
  console.log('PASS real n8n gateway, schema failure detection, request fallback, automatic rollback, next-request Stable routing');
+ await create('real-semantic');
+ const semanticKey=requestKey('real-semantic',5).key;
+ const semantic=await execute('real-semantic',semanticKey,{leadId:'SEM-1',score:81,faultCandidate:'semantic'});
+ assert.equal(semantic.body.servedBy,'stable');assert.equal(semantic.body.result.priority,'HIGH');
+ assert.equal((await snapshot('real-semantic','REAL N8N cross-field business invariant failure')).status,'ROLLED_BACK');
+ console.log('PASS real n8n business invariant: plausible but inconsistent output is rejected');
  // Full/partial failures and latency are produced inside the imported Candidate Code node.
  for(const fault of ['error','partial','latency']){
   const id='real-'+fault;await create(id,{earlyMin:fault==='partial'?8:4,earlyErrorRate:.20,maxP95Ms:250});
@@ -115,7 +123,8 @@ try{
   await page.screenshot({path:'evidence/03-real-n8n-gateway-canvas.png',fullPage:true});
   console.log('PASS actual browser captures: rollback, verified promotion, n8n gateway canvas');
  }finally{await browser.close();}
-}finally{
+}catch(e){console.error('N8N_RUNTIME_DIAGNOSTIC\n'+docker(['logs',container]).slice(-14000));throw e;}
+finally{
  await writeFile('evidence/n8n-runtime.log',docker(['logs',container]).replaceAll(env.UPSTREAM_TOKEN,'[redacted]').replaceAll(env.DATA_TOKEN,'[redacted]'));
  docker(['rm','-f',container]);
 }

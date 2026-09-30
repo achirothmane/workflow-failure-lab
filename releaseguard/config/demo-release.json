@@ -43,7 +43,39 @@
             "candidate"
           ]
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "type": "object",
+            "required": [
+              "score"
+            ],
+            "properties": {
+              "score": {
+                "type": "number",
+                "minimum": 70
+              }
+            }
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "priority": {
+                "const": "HIGH"
+              }
+            }
+          },
+          "else": {
+            "type": "object",
+            "properties": {
+              "priority": {
+                "const": "NORMAL"
+              }
+            }
+          }
+        }
+      ]
     },
     "policy": {}
   }

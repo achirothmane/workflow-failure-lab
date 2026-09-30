@@ -5,7 +5,7 @@ export const DEFAULT_POLICY = Object.freeze({
   healthyWindows: 2, freshBatch: 100, windowMs: 1800000,
   maxErrorRate: 0.02, maxErrorDelta: 0.02, maxInvalidRate: 0,
   maxP95Ms: 3000, maxLatencyRatio: 1.5, latencySlackMs: 100,
-  earlyMin: 20, earlyErrorRate: 0.10, maxStableErrorRate: 0.05,
+  earlyMin: 20, maxCandidateFailures: 5, earlyErrorRate: 0.10, maxStableErrorRate: 0.05,
   maxStableP95Ms: 5000, minCompleteness: 1, maxMetricAgeMs: 60000,
   requestTimeoutMs: 10000, leaseMs: 30000, baselineProbePct: 10
 });
@@ -15,7 +15,7 @@ export function policy(input = {}) {
   for (const k of Object.keys(input)) if (!(k in DEFAULT_POLICY)) throw Error('unknown policy: ' + k);
   const p = { ...DEFAULT_POLICY, ...input };
   const ints = ['minCandidate','minStable','minStageMs','healthyWindows','freshBatch',
-    'windowMs','maxP95Ms','latencySlackMs','earlyMin','maxStableP95Ms','maxMetricAgeMs',
+    'windowMs','maxP95Ms','latencySlackMs','earlyMin','maxCandidateFailures','maxStableP95Ms','maxMetricAgeMs',
     'requestTimeoutMs','leaseMs','baselineProbePct'];
   for (const k of ints) if (!Number.isSafeInteger(p[k]) || p[k] <= 0) throw Error('invalid ' + k);
   for (const k of ['maxErrorRate','maxErrorDelta','maxInvalidRate','earlyErrorRate',
@@ -63,6 +63,7 @@ export function decide({state, stable:s, candidate:c, now, p:input}) {
   // Failures can stop exposure before a full promotion sample is available.
   if (c.invalid > 0 && c.invalid/Math.max(1,c.settled) > p.maxInvalidRate)
     return out('ROLLBACK','CANDIDATE_OUTPUT_INVALID','STOP');
+  if (c.errors >= p.maxCandidateFailures) return out('ROLLBACK','CANDIDATE_FAILURE_BUDGET','STOP');
   if (c.settled >= p.earlyMin && c.errors/c.settled > p.earlyErrorRate)
     return out('ROLLBACK','CANDIDATE_ERROR_SPIKE','STOP');
   if (c.complete >= p.earlyMin && c.p95Ms > p.maxP95Ms)

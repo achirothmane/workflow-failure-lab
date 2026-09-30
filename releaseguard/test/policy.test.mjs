@@ -45,3 +45,5 @@ test('all single-corruption variants prevent promotion',()=>{
   for(const value of [NaN,Infinity,-1,'200',null])
    assert.notEqual(d({...good(),[key]:value}).decision,'PROMOTE');
 });
+
+test('failure budget bounds exposure even before a full sample',()=>assert.equal(d({...good(5),errors:5}).reason,'CANDIDATE_FAILURE_BUDGET'));

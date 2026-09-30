@@ -8,8 +8,8 @@ A webhook returning HTTP 200 can still be a broken release. ReleaseGuard validat
 
 - Importable Gateway, Stable, Candidate, and alert-receiver workflow JSON.
 - A small Node service, PostgreSQL schema, Docker Compose, and an operations dashboard.
-- Configurable stages, error budgets, relative/absolute p95 latency budgets, and JSON Schema output checks.
-- Minimum samples, 95% Wilson error-rate bounds, dwell time, and separate fresh confirmation batches.
+- Configurable stages, error budgets, relative/absolute p95 latency budgets, and JSON Schema and cross-field business output checks.
+- A per-stage failure budget, minimum samples, 95% Wilson error-rate bounds, dwell time, and separate fresh confirmation batches.
 - Atomic routing state + decision evidence + alert outbox; version and admission-revision fences.
 - Safe read-only fallback, encrypted idempotent response replay, deadline-based observation loss, and evaluator lease expiry.
 - Real HTTP/PostgreSQL adversarial tests and real n8n production-webhook tests. See [validation](docs/validation.md) for exactly what was executed.

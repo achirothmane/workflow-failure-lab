@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {Secrets,validateConfig,tokenEquals} from '../src/security.mjs';
+import {Secrets,validateConfig,tokenEquals,validator} from '../src/security.mjs';
 const schema={type:'object',required:['score'],properties:{score:{type:'number'}},additionalProperties:false};
 const config={stable:{url:'http://n8n:5678/webhook/stable',version:'v1'},candidate:{url:'http://n8n:5678/webhook/candidate',version:'v2'},fallbackMode:'read_only',outputSchema:schema};
 test('authenticated routing buckets are stable and spread traffic',()=>{
@@ -23,3 +23,8 @@ test('workflow arms must be separate, output checks mandatory and probes safe',(
  assert.ok(validateConfig(config,'http://n8n:5678'));
 });
 test('unsafe schema extensions are rejected',()=>assert.throws(()=>validateConfig({...config,outputSchema:{type:'object',properties:{x:{$ref:'http://evil/schema'}}}},'http://n8n:5678')));
+
+test('cross-field business invariant rejects structurally plausible but wrong priority',()=>{
+ const c=validateConfig({...config,outputSchema:{type:'object',required:['score','priority'],properties:{score:{type:'number'},priority:{enum:['HIGH','NORMAL']}},allOf:[{if:{type:'object',properties:{score:{type:'number',minimum:70}},required:['score']},then:{type:'object',properties:{priority:{const:'HIGH'}}},else:{type:'object',properties:{priority:{const:'NORMAL'}}}}]}},'http://n8n:5678');
+ const check=validator(c.outputSchema);assert.ok(check({score:80,priority:'HIGH'}));assert.ok(!check({score:80,priority:'NORMAL'}));
+});
