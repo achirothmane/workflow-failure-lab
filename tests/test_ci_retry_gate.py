@@ -1,4 +1,5 @@
 import http.client
+from pathlib import Path
 
 import ci_retry_gate
 from ci_retry_gate import AMBIGUOUS, CAUSAL, FAILURE_STEP_AMBIGUOUS, FAILURE_STEP_CONFIRMED, NON_CAUSAL, PROVENANCE_CONFIRMED, PROVENANCE_MISMATCH, PROVENANCE_UNAVAILABLE, TRANSIENT_CATEGORIES, GitHubAPI, assess_failure_step_provenance, assess_job, causal_evidence_role, classify_log, detect_side_effect_risk, revalidate_rerun_subject_binding
@@ -56,6 +57,41 @@ def test_network_transient_high_confidence():
     """)
     assert result.category == "DEPENDENCY_NETWORK"
     assert result.confidence == "high"
+
+
+def test_geophires_526_runner_shutdown_is_not_sufficient_for_auto_rerun():
+    # Ground truth: NatLabRockies/GEOPHIRES-X#526 was closed after an
+    # in-repository lru_cache maxsize reduction fixed the py39 failures.
+    # The terminal GitHub runner shutdown line is therefore not sufficient
+    # evidence that runner infrastructure was the root cause.
+    log = (
+        Path(__file__).parent
+        / "fixtures"
+        / "geophires_x_526_runner_shutdown.log"
+    ).read_text(encoding="utf-8")
+    job = fake_job(
+        "py39 (ubuntu)",
+        [
+            failed_step(
+                "test",
+                start="2026-09-25T15:09:11Z",
+                end="2026-09-25T15:46:07Z",
+            )
+        ],
+        start="2026-09-25T15:08:55Z",
+        end="2026-09-25T15:46:07Z",
+    )
+
+    assessment = assess_job(job, log)
+    safe, reason = rerun_decision(
+        evidence_bundle(assessment, run_attempt=1),
+        max_attempts=2,
+    )
+
+    assert assessment.category == "RUNNER_INFRA"
+    assert assessment.confidence != "high"
+    assert safe is False
+    assert "high-confidence transient" in reason
 
 
 def test_single_read_tcp_connection_reset_is_high_confidence():
