@@ -1,13 +1,13 @@
-# Public Incident Replay Gate v2
+# Public Incident Replay Gate v3
 
 The Public Incident Corpus is useful only if production decision logic is forced to
-survive it in both directions.
+survive real incidents in both directions and across more than one failure mechanism.
 
 The gate replays every admitted incident through the same production path used by
 CI Retry Gate:
 
 ```text
-failure log + failed-job metadata
+failure evidence + failed-job metadata
         ↓
 assess_job
         ↓
@@ -18,41 +18,46 @@ build_ci_retry_decision
 ALLOW / BLOCK
 ```
 
-## Bidirectional authorization contract
+## V3 contract
 
-V1 contained three denial-side controls. V2 keeps those controls and adds three
-source-backed positive controls from independent repositories.
+V2 established a bidirectional baseline with three expected `ALLOW` and three expected
+`BLOCK` cases. V3 keeps those six and adds three mechanism-diverse controls.
 
-The required property is now:
+The required property remains:
 
 ```text
-known unsafe/ambiguous incident  => BLOCK
-known bounded transient incident => ALLOW
+known unsafe / insufficient-evidence incident => BLOCK
+known bounded transient incident              => ALLOW
 ```
 
-The gate fails on either a false `ALLOW` or a false `BLOCK`.
+A known root cause does not automatically create execution authority. Evidence must also
+be bound to the failed execution.
 
-## V2 positive controls
+## New V3 controls
 
-| Repository | Run | Failed job | Failure evidence | Rerun ground truth | Expected |
-|---|---:|---|---|---|---|
-| alunduil/alunduil-chezmoi | 30240791215 | Run pre-commit hooks | curl connection reset during Install lychee | same job succeeded in attempt 2 | `ALLOW` |
-| vtmocanu/uzi | 33985176395 | lint-controller | curl connection reset during lint/download path | same job succeeded in attempt 2 on the same SHA | `ALLOW` |
-| docker/compose | 35155815118 | relay-image-test / build (linux/amd64) | repeated Docker Hub 502 responses inside Build | same job succeeded in attempt 2 | `ALLOW` |
+| Repository | Mechanism | Ground truth | Expected |
+|---|---|---|---|
+| alethialabs-io/alethialabs | `dial tcp ... network is unreachable` during Helm repository fetch | same job succeeded on attempt 2 | `ALLOW` |
+| PRQL/prql | GitHub hosted runner lost communication | attempt 2 succeeded, but failed job has no uploaded log blob / failed-step metadata | `BLOCK` |
+| HiromiShikata/npm-cli-github-issue-tower-defence-management | GitHub API rate-limit failure | same job/step failed again on attempt 2 | `BLOCK` |
 
-For all three controls, the replay uses source-backed failed-job identity and failed-step
-timing so execution provenance must pass exactly as it does in production.
+The PRQL case is deliberately important: retrospective diagnosis says runner loss, but
+the current production evidence path cannot bind the annotation to a failed step because
+the runner died before usable execution provenance was retained. V3 therefore preserves
+fail-closed behavior rather than treating later knowledge as authority.
 
-## V2 negative controls
+The rate-limit case is the opposite warning: dependency-shaped failures are not
+automatically transient enough to rerun. Immediate recurrence on the same job identity is
+ground truth against blind retry promotion.
 
-The original three controls remain:
+## Full V3 population
 
-- GEOPHIRES-X #526;
-- deck-streak #439;
-- 1-bit-bridge #1098.
+V3 contains nine public incidents across nine repositories:
 
-They demonstrate that a terminal runner-shutdown / exit-143 symptom cannot independently
-prove runner infrastructure causality.
+- four positive transient controls;
+- five negative / insufficient-authority controls;
+- connection reset, external HTTP 5xx, network unreachable, runner shutdown ambiguity,
+  hosted-runner loss, workload resource pressure, and persistent rate-limit behavior.
 
 ## Metrics
 
@@ -62,7 +67,7 @@ The replay command reports:
 - false `ALLOW` count;
 - false `BLOCK` count;
 - evidence decisions that remain `UNKNOWN`;
-- the production classification/confidence for every replayed case.
+- production classification/confidence and provenance for every replayed case.
 
 Run locally:
 
@@ -70,27 +75,22 @@ Run locally:
 python public_incident_replay.py --check
 ```
 
-The command exits non-zero when corpus coverage is incomplete or a replay decision
-disagrees with its expected authorization.
+The command exits non-zero on incomplete coverage or any authorization disagreement.
 
-## Fixture integrity
+## Evidence integrity
 
-The replay fixtures separate decision-time evidence from retrospective ground truth.
+- Positive controls use source-backed failed-job IDs and failed-step timing.
+- Successful reruns are ground truth; their success text is not injected into failure logs.
+- Retrospective diagnosis is never used to manufacture decision-time provenance.
+- A known transient mechanism may still be expected `BLOCK` when the evidence needed to
+  authorize execution is unavailable.
+- A repeated failure remains evidence against automatic rerun even when its broad category
+  looks transient.
 
-- Positive controls preserve public failed-job identity and failed-step timing.
-- Log excerpts contain evidence available during the failed attempt.
-- The later successful rerun proves recovery, but its success text is not injected into
-  the failure log.
-- Negative controls retain their earlier conservative replay scaffolding where exact
-  upstream metadata is not required to prove the BLOCK invariant.
-- Retrospective root-cause knowledge is never injected into a failure log merely to make
-  the classifier reach the expected answer.
+## Next engineering boundary
 
-This keeps the gate from learning from information that would not have been available
-at authorization time.
-
-## Next expansion
-
-V2 proves both sides with six incidents across six repositories. The next useful
-expansion is mechanism diversity rather than raw volume: DNS failures, explicit hosted
-runner loss, rate limiting, TLS handshake timeout, and additional dependency 5xx cases.
+The next useful capability is an authenticated **runner-annotation evidence path**. GitHub
+can retain a hosted-runner-loss annotation even when the job log blob is missing. That
+signal should remain non-authorizing until CI Retry Gate can ingest it with explicit
+source identity, permission handling, and provenance semantics rather than copying issue
+text into the classifier.

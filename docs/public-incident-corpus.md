@@ -7,38 +7,63 @@ Each incident records:
 
 - the observed failure signal;
 - the later-supported cause family;
-- the remediation family that resolved or contained the failure;
+- the remediation family;
 - the classifier implication;
 - the expected production authorization decision;
-- when available, the failed workflow run/job and successful rerun job identity.
+- when available, failed workflow/job identity and successful or recurrent rerun identity.
 
-It deliberately does **not** copy repository-specific fixes into the product. What
-transfers into CI Retry Gate is the causal and authorization lesson.
+The corpus is an authorization regression contract, not a collection of anecdotes.
 
-## V1 — denial-side counterexamples
+## V1 — terminal-symptom counterexamples
 
-The initial three cases are runner-shutdown counterexamples. They establish:
+Three runner-shutdown cases establish:
 
-`runner shutdown / exit 143 alone => no high-confidence RUNNER_INFRA`
+`runner shutdown / exit 143 alone => no high-confidence RUNNER_INFRA authority`
 
-and therefore remain expected `BLOCK` controls.
+All remain expected `BLOCK`.
 
-## V2 — bidirectional corpus
+## V2 — bidirectional controls
 
 V2 adds three independent expected-`ALLOW` controls:
 
-- alunduil/alunduil-chezmoi — curl connection reset, same job recovered on attempt 2;
-- vtmocanu/uzi — curl connection reset, same job recovered on attempt 2;
-- docker/compose — repeated registry 502, same build job recovered on attempt 2.
+- alunduil/alunduil-chezmoi — curl connection reset;
+- vtmocanu/uzi — prefixed curl connection reset;
+- docker/compose — explicit external registry 502.
 
-These controls are intentionally cases the current production gate should understand
-without a research-only classifier override.
+Each recovered on a later attempt and carries decision-time failed-step provenance.
+
+## V3 — mechanism and evidence diversity
+
+V3 adds:
+
+- alethialabs-io/alethialabs — `network is unreachable`, expected `ALLOW`;
+- PRQL/prql — confirmed hosted-runner loss with later recovery but missing decision-time
+  step/log provenance, expected `BLOCK`;
+- HiromiShikata/npm-cli-github-issue-tower-defence-management — API rate-limit failure
+  recurring on the next attempt, expected `BLOCK`.
+
+This separates three concepts that must not be collapsed:
+
+```text
+failure category != root cause != execution authority
+```
+
+A later root-cause diagnosis is useful research evidence. It does not retroactively make
+missing decision-time provenance sufficient to authorize an action.
 
 ## Admission rule
 
-A new case enters the corpus only when a public source provides enough evidence to bind
-the visible failure symptom to a later diagnosis, remediation, or ground-truth outcome.
-Expected `ALLOW` cases additionally require a bounded retry-safe failed job, confirmed
-execution provenance, and an observable successful rerun of the same job identity.
+A case enters only when a public source provides enough evidence to bind the visible
+failure to a later diagnosis, remediation, or observable outcome.
 
-The corpus is a regression contract, not a collection of anecdotes.
+Expected `ALLOW` cases additionally require:
+
+- a bounded retry-safe failed job;
+- high-confidence transient evidence;
+- confirmed execution provenance;
+- no side-effect risk;
+- observable successful rerun of the same job identity.
+
+Expected `BLOCK` cases may capture either a known unsafe cause or a known transient
+cause whose authorization evidence is insufficient. Recurrent failed reruns are recorded
+explicitly where available.
