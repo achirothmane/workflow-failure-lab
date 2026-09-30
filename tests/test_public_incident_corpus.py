@@ -44,7 +44,7 @@ def test_v3_mechanism_diversity_is_preserved():
     }
 
 
-def test_v4_promotes_only_prql_runner_loss_authority_contract():
+def test_v4_keeps_authority_decisions_while_improving_prql_provenance_contract():
     v3 = {case.case_id: case for case in PUBLIC_INCIDENT_CORPUS_V3}
     v4 = {case.case_id: case for case in PUBLIC_INCIDENT_CORPUS_V4}
 
@@ -53,9 +53,11 @@ def test_v4_promotes_only_prql_runner_loss_authority_contract():
         for case_id in v4
         if v4[case_id].expected_decision != v3[case_id].expected_decision
     ]
-    assert changed == ["prql-hosted-runner-loss-2026-08-26"]
-    assert v3[changed[0]].expected_decision == "BLOCK"
-    assert v4[changed[0]].expected_decision == "ALLOW"
+    assert changed == []
+
+    prql = v4["prql-hosted-runner-loss-2026-08-26"]
+    assert prql.expected_decision == "BLOCK"
+    assert "does not override an independent side-effect boundary" in prql.classifier_implication
 
 
 def test_v4_positive_controls_have_observable_recovery():
@@ -64,8 +66,8 @@ def test_v4_positive_controls_have_observable_recovery():
         if case.expected_decision == "ALLOW"
     ]
 
-    assert len(positive) == 5
-    assert len({case.repository for case in positive}) == 5
+    assert len(positive) == 4
+    assert len({case.repository for case in positive}) == 4
     for case in positive:
         assert case.ground_truth_run_id is not None
         assert case.failed_job_id is not None
