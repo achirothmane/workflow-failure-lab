@@ -1,0 +1,188 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/achirothmane/workflow-failure-lab/experiments/d00/measurement.schema.json",
+  "title": "D00 comparator observation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "record_id",
+    "case_id",
+    "protocol_version",
+    "domain",
+    "arm",
+    "source_kind",
+    "task_semantics_ref",
+    "safety_standard_ref",
+    "authority_scope_ref",
+    "account_ref",
+    "started_at",
+    "ended_at",
+    "elapsed_seconds",
+    "active_seconds",
+    "waiting_seconds",
+    "provider_latency_seconds",
+    "installation_active_seconds",
+    "maintenance_active_seconds",
+    "exception_active_seconds",
+    "recovery_active_seconds",
+    "touches",
+    "outcome",
+    "closure_disposition",
+    "included",
+    "exclusion_reason",
+    "sequence_position",
+    "crossover_group",
+    "order_constraint",
+    "secret_scan",
+    "redaction_version",
+    "notes_code"
+  ],
+  "properties": {
+    "record_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "case_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "protocol_version": {
+      "const": "d00-comparator/v1"
+    },
+    "domain": {
+      "type": "string",
+      "minLength": 1
+    },
+    "arm": {
+      "enum": [
+        "native",
+        "governed"
+      ]
+    },
+    "source_kind": {
+      "enum": [
+        "synthetic_dry_run",
+        "historical_estimate",
+        "observed_native",
+        "observed_governed"
+      ]
+    },
+    "task_semantics_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "safety_standard_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "authority_scope_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "account_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "repository": {
+      "type": "string"
+    },
+    "workflow_ref": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "head_sha": {
+      "type": "string"
+    },
+    "run_attempt": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "ended_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "elapsed_seconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "active_seconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "waiting_seconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "provider_latency_seconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "installation_active_seconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "maintenance_active_seconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "exception_active_seconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "recovery_active_seconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "touches": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "outcome": {
+      "enum": [
+        "completed",
+        "blocked",
+        "failed",
+        "unknown"
+      ]
+    },
+    "closure_disposition": {
+      "type": "string",
+      "minLength": 1
+    },
+    "included": {
+      "type": "boolean"
+    },
+    "exclusion_reason": {
+      "type": "string"
+    },
+    "sequence_position": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "crossover_group": {
+      "type": "string",
+      "minLength": 1
+    },
+    "order_constraint": {
+      "type": "string"
+    },
+    "secret_scan": {
+      "const": "pass"
+    },
+    "redaction_version": {
+      "const": "d00-redaction/v1"
+    },
+    "notes_code": {
+      "type": "string"
+    }
+  }
+}
