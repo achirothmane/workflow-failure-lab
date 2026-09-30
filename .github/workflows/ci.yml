@@ -9,6 +9,7 @@ on:
 permissions:
   contents: read
   actions: read
+  checks: read
 
 jobs:
   test:
@@ -198,6 +199,11 @@ jobs:
         run: |
           test "${{ steps.doctor.outputs.ready }}" = "true"
           test "${{ steps.doctor.outputs.blocked-checks }}" = "0"
+          test "${{ steps.doctor.outputs.warnings }}" = "0"
+          case ",${{ steps.doctor.outputs.required-permissions }}," in
+            *,checks: read,*) ;;
+            *) exit 1 ;;
+          esac
           case ",${{ steps.doctor.outputs.detected-frameworks }}," in
             *,pytest,jest,vitest,*) ;;
             *) exit 1 ;;
