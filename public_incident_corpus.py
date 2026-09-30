@@ -112,6 +112,61 @@ DOCKER_COMPOSE_REGISTRY_502 = PublicIncident(
 )
 
 
+ALETHIALABS_NETWORK_UNREACHABLE = PublicIncident(
+    case_id="alethialabs-helm-network-unreachable-2026-08-26",
+    repository="alethialabs-io/alethialabs",
+    source_url="https://github.com/alethialabs-io/alethialabs/issues/2754",
+    observed_signal="dial tcp ... connect: network is unreachable while fetching a Helm repository",
+    actual_cause_family="TRANSIENT_DEPENDENCY_NETWORK",
+    remediation_family="BOUNDED_RERUN_AFTER_NETWORK_UNREACHABLE",
+    classifier_implication=(
+        "A timestamped dial-tcp network-unreachable error inside the failed fetch/render "
+        "step is direct dependency-network evidence when the same job later succeeds."
+    ),
+    expected_decision="ALLOW",
+    ground_truth_run_id=32938269387,
+    failed_job_id=98083760153,
+    successful_rerun_job_id=98086599142,
+)
+
+
+PRQL_HOSTED_RUNNER_LOSS = PublicIncident(
+    case_id="prql-hosted-runner-loss-2026-08-26",
+    repository="PRQL/prql",
+    source_url="https://github.com/PRQL/prql/issues/6236",
+    observed_signal="The hosted runner lost communication with the server",
+    actual_cause_family="HOSTED_RUNNER_LOSS",
+    remediation_family="RERUN_FAILED_JOB",
+    classifier_implication=(
+        "A later diagnosis may identify runner loss, but automatic authority still requires "
+        "decision-time evidence bound to the failed execution. Missing logs/step provenance "
+        "must fail closed until an authenticated annotation evidence path exists."
+    ),
+    expected_decision="BLOCK",
+    ground_truth_run_id=32960945674,
+    failed_job_id=98152972844,
+    successful_rerun_job_id=98168778451,
+)
+
+
+HIROMI_RATE_LIMIT_RECURRENCE = PublicIncident(
+    case_id="hiromi-github-rate-limit-recurrence-2026-09-26",
+    repository="HiromiShikata/npm-cli-github-issue-tower-defence-management",
+    source_url="https://github.com/HiromiShikata/npm-cli-github-issue-tower-defence-management/issues/2768",
+    observed_signal="GitHub API rate limit error in the failing Find associated pull request step",
+    actual_cause_family="PERSISTENT_DEPENDENCY_RATE_LIMIT",
+    remediation_family="FIX_RATE_LIMIT_ERROR_HANDLING",
+    classifier_implication=(
+        "A dependency-shaped rate-limit failure is not automatically retry-safe when the same "
+        "job fails again on the next attempt with the same signature."
+    ),
+    expected_decision="BLOCK",
+    ground_truth_run_id=36248287482,
+    failed_job_id=108421448279,
+    successful_rerun_job_id=None,
+)
+
+
 PUBLIC_INCIDENT_CORPUS_V1 = (
     GEOPHIRES_526,
     DECK_STREAK_439,
@@ -123,4 +178,11 @@ PUBLIC_INCIDENT_CORPUS_V2 = PUBLIC_INCIDENT_CORPUS_V1 + (
     ALUNDUIL_CURL_RESET,
     UZI_CURL_RESET,
     DOCKER_COMPOSE_REGISTRY_502,
+)
+
+
+PUBLIC_INCIDENT_CORPUS_V3 = PUBLIC_INCIDENT_CORPUS_V2 + (
+    ALETHIALABS_NETWORK_UNREACHABLE,
+    PRQL_HOSTED_RUNNER_LOSS,
+    HIROMI_RATE_LIMIT_RECURRENCE,
 )
