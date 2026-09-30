@@ -27,7 +27,7 @@ const creds=[
  {id:'rgdatacred01',name:'ReleaseGuard data',type:'httpHeaderAuth',data:{name:'Authorization',value:'Bearer '+env.DATA_TOKEN}},
  {id:'rgalertcred01',name:'ReleaseGuard alerts',type:'httpHeaderAuth',data:{name:'x-releaseguard-alert',value:env.ALERT_TOKEN}}
 ];
-await writeFile('tmp/n8n/credentials.json',JSON.stringify(creds),{mode:0o600});
+await writeFile('tmp/n8n/credentials.json',JSON.stringify(creds),{mode:0o644});
 const workflows=[];
 for(const name of ['stable','candidate','gateway','alerts']){
  const w=JSON.parse(await readFile('workflows/'+name+'.json','utf8'));
@@ -43,7 +43,7 @@ for(const name of ['stable','candidate','gateway','alerts']){
 }
 await writeFile('tmp/n8n/workflows.json',JSON.stringify(workflows));
 const container='releaseguard-n8n-e2e';
-docker(['run','-d','--name',container,'--add-host','host.docker.internal:host-gateway','-p','5678:5678',
+docker(['run','-d','--name',container,'--add-host','host.docker.internal:host-gateway','-p','127.0.0.1:5678:5678',
  '-e','N8N_DIAGNOSTICS_ENABLED=false','-e','N8N_PERSONALIZATION_ENABLED=false','-e','N8N_SECURE_COOKIE=false',
  '-e','N8N_ENCRYPTION_KEY=rg-test-only-persistent-key-'+'x'.repeat(32),
  '-v','rg-n8n-e2e:/home/node/.n8n','-v',process.cwd()+'/tmp/n8n:/fixtures:ro',

@@ -3,8 +3,6 @@ on:
   push:
     branches: [releaseguard-build-20260930]
     paths: ["releaseguard/**", ".github/workflows/releaseguard-ci.yml"]
-  pull_request:
-    paths: ["releaseguard/**", ".github/workflows/releaseguard-ci.yml"]
 permissions:
   contents: read
 jobs:
