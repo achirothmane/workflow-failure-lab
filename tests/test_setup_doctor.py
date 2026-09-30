@@ -379,3 +379,41 @@ def test_working_directory_cannot_escape_workspace(tmp_path):
 
     with pytest.raises(ValueError):
         _safe_workdir(workspace, "../outside")
+
+
+def test_checks_read_status_is_explicit_in_report(tmp_path):
+    root = baseline_repo(tmp_path)
+
+    passing = inspect_setup(
+        root,
+        requested_frameworks="pytest",
+        junit_prefix="junit-results",
+        ownership_routing=False,
+        ownership_map=".github/flaky-ownership.json",
+        quarantine_lifecycle=False,
+        quarantine_manifest=".github/flaky-quarantine.json",
+        quarantine_max_days=14,
+        triage_comment=False,
+        issue_lifecycle=False,
+        rerun_mode="none",
+        api=FakeAPI(),
+        repo="o/r",
+    )
+    warned = inspect_setup(
+        root,
+        requested_frameworks="pytest",
+        junit_prefix="junit-results",
+        ownership_routing=False,
+        ownership_map=".github/flaky-ownership.json",
+        quarantine_lifecycle=False,
+        quarantine_manifest=".github/flaky-quarantine.json",
+        quarantine_max_days=14,
+        triage_comment=False,
+        issue_lifecycle=False,
+        rerun_mode="none",
+        api=FakeAPI(fail_checks=True),
+        repo="o/r",
+    )
+
+    assert status_map(passing)["GitHub Checks read access"] == PASS
+    assert status_map(warned)["GitHub Checks read access"] == WARN
