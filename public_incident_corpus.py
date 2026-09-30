@@ -16,6 +16,7 @@ class PublicIncident:
     ground_truth_run_id: int | None = None
     failed_job_id: int | None = None
     successful_rerun_job_id: int | None = None
+    recurrent_rerun_job_id: int | None = None
 
 
 GEOPHIRES_526 = PublicIncident(
@@ -164,6 +165,7 @@ HIROMI_RATE_LIMIT_RECURRENCE = PublicIncident(
     ground_truth_run_id=36248287482,
     failed_job_id=108421448279,
     successful_rerun_job_id=None,
+    recurrent_rerun_job_id=108422710231,
 )
 
 
