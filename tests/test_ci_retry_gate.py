@@ -922,9 +922,9 @@ def test_github_api_check_annotation_endpoints_and_pagination(monkeypatch):
         seen.append((method, path))
         if path == "/repos/acme/repo/check-runs/42":
             return {"id": 42}
-        if "page=1" in path:
+        if path.endswith("&page=1"):
             return [{"annotation_level": "notice", "message": str(i)} for i in range(100)]
-        if "page=2" in path:
+        if path.endswith("&page=2"):
             return [{"annotation_level": "failure", "message": "runner signal"}]
         raise AssertionError(path)
 
