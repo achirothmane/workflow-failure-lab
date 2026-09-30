@@ -194,10 +194,11 @@ PRQL_HOSTED_RUNNER_LOSS_AUTHENTICATED = replace(
     PRQL_HOSTED_RUNNER_LOSS,
     classifier_implication=(
         "When the job log is unavailable, an authenticated GitHub Actions check-run "
-        "failure annotation can supply the missing job-bound runner-loss evidence if "
-        "check-run id, job name, head SHA, conclusion, and app identity all bind exactly."
+        "failure annotation can supply missing job-bound runner-loss provenance if "
+        "check-run id, job name, head SHA, conclusion, and app identity all bind exactly. "
+        "That evidence does not override an independent side-effect boundary."
     ),
-    expected_decision="ALLOW",
+    expected_decision="BLOCK",
 )
 
 
