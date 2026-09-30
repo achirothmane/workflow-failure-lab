@@ -75,6 +75,9 @@ outputs:
   required-permissions:
     description: 'Comma-separated recommended GitHub workflow permissions for the requested feature set.'
     value: ${{ steps.doctor.outputs.required-permissions }}
+  checks-read-access:
+    description: 'PASS, WARN, or UNVERIFIED result for the GitHub Checks read-access preflight.'
+    value: ${{ steps.doctor.outputs.checks-read-access }}
 
 runs:
   using: 'composite'
