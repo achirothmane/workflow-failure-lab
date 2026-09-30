@@ -57,7 +57,7 @@ def test_known_block_cases_remain_blocked():
         if result.expected_decision == EXPECTED_BLOCK
     ]
 
-    assert len(blocked) == 4
+    assert len(blocked) == 5
     assert all(result.actual_decision == EXPECTED_BLOCK for result in blocked)
 
 
@@ -80,13 +80,12 @@ def test_v4_positive_controls_are_allowed():
         if result.expected_decision == EXPECTED_ALLOW
     ]
 
-    assert len(allowed) == 5
+    assert len(allowed) == 4
     assert {result.repository for result in allowed} == {
         "alunduil/alunduil-chezmoi",
         "vtmocanu/uzi",
         "docker/compose",
         "alethialabs-io/alethialabs",
-        "PRQL/prql",
     }
     for result in allowed:
         assert result.actual_decision == EXPECTED_ALLOW
@@ -114,7 +113,7 @@ def test_log_positive_controls_use_real_failed_step_metadata():
         assert failed_steps[0]["name"] == fixture.failed_step_name
 
 
-def test_prql_runner_loss_is_promoted_only_by_bound_check_annotation():
+def test_prql_runner_loss_annotation_confirms_provenance_but_side_effect_still_blocks():
     summary = run_public_incident_replay()
     result = next(
         item for item in summary.results
@@ -131,7 +130,8 @@ def test_prql_runner_loss_is_promoted_only_by_bound_check_annotation():
     assert result.category == "RUNNER_INFRA"
     assert result.confidence == "high"
     assert result.provenance_status == "CONFIRMED"
-    assert result.actual_decision == EXPECTED_ALLOW
+    assert result.evidence_status == "CONTRADICTED"
+    assert result.actual_decision == EXPECTED_BLOCK
 
 
 def test_v3_prql_contract_remains_fail_closed_before_annotation_path():
