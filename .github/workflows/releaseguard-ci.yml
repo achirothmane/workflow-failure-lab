@@ -28,7 +28,7 @@ jobs:
       DATA_TOKEN: rg-test-only-data-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
       UPSTREAM_TOKEN: rg-test-only-upstream-cccccccccccccccccccccccccccc
       ALERT_TOKEN: rg-test-only-alert-dddddddddddddddddddddddddddddddd
-      RESPONSE_KEY_HEX: ababababababababababababababababababababababababababababababababab
+      RESPONSE_KEY_HEX: "abababababababababababababababababababababababababababababababab"
       ALLOWED_UPSTREAM_ORIGIN: http://127.0.0.1:5678
       ALERT_URL: http://127.0.0.1:5678/webhook/releaseguard-alerts
     defaults:
