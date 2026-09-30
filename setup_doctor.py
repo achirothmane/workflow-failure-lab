@@ -696,6 +696,15 @@ def main() -> int:
     _write_output("warnings", str(report.warnings))
     _write_output("detected-frameworks", ",".join(report.detected_frameworks))
     _write_output("required-permissions", ",".join(report.required_permissions))
+    checks_read = next(
+        (
+            item.status
+            for item in report.checks
+            if item.name == "GitHub Checks read access"
+        ),
+        "UNVERIFIED",
+    )
+    _write_output("checks-read-access", checks_read)
 
     for check in report.checks:
         if check.status == BLOCKED:
