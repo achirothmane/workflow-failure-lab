@@ -160,16 +160,27 @@ _CATEGORY_RULES: dict[str, tuple[tuple[int, re.Pattern[str]], ...]] = {
     ),
 }
 
+# A runner shutdown line is a terminal symptom, not independent proof that
+# infrastructure caused the failure. Workload/resource behavior can surface as
+# the same SIGTERM/exit-143 shutdown sequence, so this signal alone must never
+# promote a retry to high confidence.
+_RUNNER_TERMINAL_SYMPTOM_RULES = tuple(
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in [
+        r"the runner has received a shutdown signal",
+        r"process completed with exit code 143",
+    ]
+)
+
 # These signatures are intentionally narrower than the scoring rules above.
 # A single occurrence may be enough for high confidence only when it looks like
-# an operational failure emitted by a network/client stack, rather than prose,
-# documentation, a source fixture, or a generic timeout word.
+# independent operational evidence emitted by the runner/network substrate,
+# rather than prose, documentation, a source fixture, or a terminal symptom.
 _HIGH_SPECIFICITY_TRANSIENT_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
     "RUNNER_INFRA": tuple(
         re.compile(pattern, re.IGNORECASE)
         for pattern in [
             r"lost communication with the server",
-            r"the runner has received a shutdown signal",
             r"hosted runner .* (shutdown|unavailable|failed)",
         ]
     ),
@@ -301,6 +312,7 @@ def classify_log(log_text: str) -> Classification:
     strong_transient_evidence: dict[str, list[str]] = {
         name: [] for name in _HIGH_SPECIFICITY_TRANSIENT_RULES
     }
+    runner_terminal_symptom = False
 
     seen_lines: set[str] = set()
     fields_redacted: set[str] = set()
@@ -312,6 +324,9 @@ def classify_log(log_text: str) -> Classification:
         if not line or role == NON_CAUSAL or line in seen_lines:
             continue
         seen_lines.add(line)
+
+        if any(pattern.search(line) for pattern in _RUNNER_TERMINAL_SYMPTOM_RULES):
+            runner_terminal_symptom = True
 
         for category, rules in _CATEGORY_RULES.items():
             for weight, pattern in rules:
@@ -362,6 +377,13 @@ def classify_log(log_text: str) -> Classification:
         and second_score <= 2
     ):
         confidence = "high"
+
+    if (
+        top_category == "RUNNER_INFRA"
+        and runner_terminal_symptom
+        and not strong_transient_evidence.get("RUNNER_INFRA")
+    ):
+        confidence = "medium" if top_score >= 4 else "low"
 
     if top_category == "CODE_REGRESSION" and top_score < 7:
         confidence = "medium" if top_score >= 4 else "low"

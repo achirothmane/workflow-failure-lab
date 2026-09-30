@@ -1,0 +1,5 @@
+2026-09-25T15:09:11.8683548Z ##[group]Run tox -e py39 -v
+2026-09-25T15:46:07.1326164Z tests/test_pre_commit_config.py::PreCommitConfigTestCase::test_pre_commit_exclude_pattern PASSED [100%]
+2026-09-25T15:46:07.2362061Z ##[error]The runner has received a shutdown signal. This can happen when the runner service is stopped, or a manually started runner is canceled.
+2026-09-25T15:46:07.2364052Z ##[error]Process completed with exit code 143.
+2026-09-25T15:46:07.3089751Z Cleaning up orphan processes
