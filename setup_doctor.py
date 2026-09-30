@@ -247,7 +247,7 @@ def build_recommended_yaml(
         "",
         "steps:",
         "  - uses: actions/checkout@v4",
-        "  - uses: othy19904-eng/workflow-failure-lab@v1",
+        "  - uses: achirothmane/workflow-failure-lab@v1",
         "    with:",
         "      github-token: ${{ github.token }}",
         "      comment-on-pr: 'false'",
