@@ -112,6 +112,13 @@ try{
   }finally{await store.pool.query('DROP TRIGGER rg_reject ON rg_releases');await store.pool.query('DROP FUNCTION rg_test_reject_rollback()');}
   const recovery=await guard.rollback('failedrollback');assert.equal(recovery.after.status,'ROLLED_BACK');await record('failedrollback','failed commit and recovery');
  });
+ await test('automatic rollback raises admission fence before the safety mutation is confirmed',async()=>{
+  await create('autofence');await seed('autofence','candidate',1,{invalid:1});
+  const original=store.evaluate.bind(store);let sawFence=false;
+  store.evaluate=async(id,callback)=>original(id,d=>{callback(d);sawFence=guard.admissionPaused.has(id);});
+  try{const d=await guard.evaluate('autofence');assert.equal(d.decision,'ROLLBACK');assert.equal(sawFence,true);assert.equal(guard.admissionPaused.has('autofence'),false);}
+  finally{store.evaluate=original;}
+ });
  await test('delayed rollback immediately fences this single process before database commit',async()=>{
   await create('delayed');const c=await store.pool.connect();await c.query('BEGIN');await c.query("SELECT id FROM rg_releases WHERE id='delayed' FOR UPDATE");
   const pending=guard.rollback('delayed');const before=calls.candidate;

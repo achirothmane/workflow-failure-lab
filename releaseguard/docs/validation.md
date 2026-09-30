@@ -28,6 +28,7 @@ The first 25 policy cases were also executed in the conversation's JavaScript ru
 | Rollback delayed | PostgreSQL row lock delays commit → admission denied immediately, confirmed state after commit |
 | Plausible but semantically inconsistent output | Declared cross-field priority/score invariant → reject and rollback |
 | Concurrent evaluators | Eight concurrent evaluations on one eligible epoch → exactly one stage advancement |
+| Safety commit window | Admission pause is raised before a rollback/safety mutation; cancelled tickets are not false successes |
 | Old ticket | Reserved Candidate ticket after rollback → dispatch fence denies it |
 | Duplicate request | Same logical request concurrently / replayed → one execution, encrypted response replay |
 | Lease expires | Expired admission lease → Stable routing |
@@ -49,3 +50,5 @@ No sustained throughput, multi-day soak, database failover, multi-process HA, re
 Screenshots are generated only after the real n8n functional cases succeed. Preserve failures and fix the cause; do not weaken CI checks to obtain green results.
 
 The real integration exposed a startup distinction in n8n 2.41.4: `/healthz` can return 200 before published webhooks are registered. The harness now waits on `/healthz/readiness`, which the n8n implementation marks only after initialization completes. This was fixed instead of retrying arbitrary failed business requests.
+
+The live n8n run also rejected literal string response codes in the exported Respond to Webhook nodes. The exports now use integer 200, and import checks guard that type. The dynamic Gateway response expression remains numeric.

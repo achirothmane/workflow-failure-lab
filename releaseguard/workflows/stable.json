@@ -42,7 +42,7 @@
         "respondWith": "json",
         "responseBody": "={{ $json }}",
         "options": {
-          "responseCode": "200"
+          "responseCode": 200
         }
       },
       "position": [

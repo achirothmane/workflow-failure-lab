@@ -8,7 +8,7 @@ for(const file of await readdir(new URL('../workflows/',import.meta.url))){
  for(const [name,c] of Object.entries(w.connections)){
   assert.ok(names.has(name));for(const branch of c.main)for(const t of branch)assert.ok(names.has(t.node));
  }
- for(const n of w.nodes){assert.ok(n.type.startsWith('n8n-nodes-base.'));assert.ok(!n.credentials,'template must contain no credential bindings');}
+ for(const n of w.nodes){if(n.type.endsWith('.respondToWebhook')){const code=n.parameters.options?.responseCode;assert.ok(typeof code==='number'||typeof code==='string'&&code.startsWith('={{'),'response codes must be integers or numeric expressions');}assert.ok(n.type.startsWith('n8n-nodes-base.'));assert.ok(!n.credentials,'template must contain no credential bindings');}
  assert.ok(w.nodes.some(n=>n.type.endsWith('.stickyNote')));
  console.log('PASS import structure, credential hygiene, node connectivity: '+file);
 }

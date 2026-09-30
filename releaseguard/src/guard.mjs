@@ -4,14 +4,15 @@ import { transport as defaultTransport } from './transport.mjs';
 export class ReleaseGuard {
  constructor({store,secrets,upstreamToken,transport=defaultTransport,log=console.error}) {
   this.store=store;this.secrets=secrets;this.upstreamToken=upstreamToken;this.transport=transport;
-  this.log=log;this.owner=randomUUID();this.blocked=new Map();this.inflight=new Map();
+  this.log=log;this.owner=randomUUID();this.blocked=new Map();this.admissionPaused=new Set();this.inflight=new Map();
  }
  trip(id,reason){this.blocked.set(id,{reason,at:Date.now()});this.abort(id);this.log(JSON.stringify({event:'RELEASEGUARD_FAIL_CLOSED',releaseId:id,reason,at:Date.now()}));}
  abort(id){for(const x of this.inflight.values())if(x.releaseId===id&&x.arm==='candidate')x.controller.abort();}
  async evaluate(id) {
   if(this.blocked.has(id))return {decision:'HOLD',reason:'LOCAL_SAFETY_FENCE',routingConfirmed:'DENIED'};
-  try {const d=await this.store.evaluate(id);if(['STOP','PAUSE'].includes(d.action))this.abort(id);return d;}
+  try {const d=await this.store.evaluate(id,()=>this.admissionPaused.add(id));if(['STOP','PAUSE'].includes(d.action))this.abort(id);return d;}
   catch {this.trip(id,'EVALUATION_OR_ROLLBACK_COMMIT_FAILED');return {decision:'HOLD',reason:'ROLLBACK_UNCONFIRMED',routingConfirmed:'DENIED'};}
+  finally {this.admissionPaused.delete(id);}
  }
  async rollback(id) {
   this.trip(id,'OPERATOR_STOP_PENDING');
@@ -19,8 +20,9 @@ export class ReleaseGuard {
   catch {return {decision:'HOLD',reason:'ROLLBACK_UNCONFIRMED',routingConfirmed:'DENIED'};}
  }
  async attempt(ticket,payload,config) {
-  if(ticket.arm==='candidate'&&this.blocked.has(ticket.releaseId))return {cancelled:true};
+  if(ticket.arm==='candidate'&&(this.blocked.has(ticket.releaseId)||this.admissionPaused.has(ticket.releaseId))){await this.store.cancel(ticket);return {cancelled:true};}
   const allowed=await this.store.fence(ticket);if(!allowed)return {cancelled:true};
+  if(ticket.arm==='candidate'&&(this.blocked.has(ticket.releaseId)||this.admissionPaused.has(ticket.releaseId))){await this.store.cancel(ticket);return {cancelled:true};}
   const controller=new AbortController();this.inflight.set(ticket.id,{releaseId:ticket.releaseId,arm:ticket.arm,controller});
   try {
    const outcome=await this.transport({endpoint:config[ticket.arm],payload,requestId:ticket.requestId,

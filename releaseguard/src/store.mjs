@@ -84,11 +84,12 @@ export class Store {
   return this.tx(async c=>{
    const r=await this.row(c,ticket.releaseId);const st=stateOf(r);
    const eligible=ticket.arm==='stable'||(['RUNNING','COMPLETED'].includes(r.status)&&r.revision===ticket.revision&&st.leaseUntil>Number(r.now_ms));
-   if(!eligible){ await c.query('DELETE FROM rg_attempts WHERE id=$1 AND dispatched=false',[ticket.id]);return false; }
+   if(!eligible){ await c.query("UPDATE rg_attempts SET dispatched=false,settled=true,finished_at=clock_timestamp(),reason='ADMISSION_REVOKED' WHERE id=$1 AND dispatched=false",[ticket.id]);return false; }
    const {rowCount}=await c.query('UPDATE rg_attempts SET dispatched=true,started_at=clock_timestamp() WHERE id=$1 AND dispatched=false AND settled=false',[ticket.id]);
    return rowCount===1;
   });
  }
+ async cancel(ticket) { await this.pool.query("UPDATE rg_attempts SET dispatched=false,settled=true,finished_at=clock_timestamp(),reason='ADMISSION_REVOKED' WHERE id=$1 AND settled=false",[ticket.id]); }
  async fallback(ticket) {
   return this.tx(async c=>{
    const r=await this.row(c,ticket.releaseId);
@@ -119,10 +120,11 @@ export class Store {
   for(const x of rows)m[x.arm]={started:x.started,settled:x.settled,complete:x.complete,errors:x.errors,invalid:x.invalid,p95Ms:x.p95_ms===null?null:Number(x.p95_ms),lastAt:x.last_at===null?null:Number(x.last_at)};
   return m;
  }
- async evaluate(id) {
+ async evaluate(id,onSafetyChange=()=>{}) {
   return this.tx(async c=>{
    const r=await this.row(c,id);const before=stateOf(r);const m=await this.metrics(c,r);
    const d=decide({state:before,...m,now:Number(r.now_ms),p:r.config.policy});
+   if(['STOP','PAUSE'].includes(d.action))onSafetyChange(d);
    if(d.action==='STOP'||d.action==='PAUSE') {
     r.status=d.action==='STOP'?'ROLLED_BACK':'PAUSED';r.revision++;r.healthy_windows=0;
    } else if(d.action==='ADVANCE') {

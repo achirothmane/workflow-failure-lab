@@ -22,7 +22,7 @@ Every admission reads persisted state. If the evaluator lease expires, Candidate
 
 Rollback changes service routing. It does not issue a separate n8n deployment API mutation. This removes one common source of “rollback requested but the old Candidate is still accepting new ingress” uncertainty.
 
-The remaining fault is a failed/delayed PostgreSQL commit. The service marks an in-memory safety fence immediately on an operator stop and on evaluator/state failures, aborts its in-flight Candidate fetches, and denies subsequent requests until a confirmed operator rollback resolves the incident.
+The remaining fault is a failed/delayed PostgreSQL commit. When a safety decision is made, an admission pause is raised before its state mutation, so new Candidate tickets cannot cross the commit-confirmation window. Undispatched revoked tickets are retained as cancelled and excluded from observations. The service marks an in-memory safety fence immediately on an operator stop and on evaluator/state failures, aborts its in-flight Candidate fetches, and denies subsequent requests until a confirmed operator rollback resolves the incident.
 
 v0.1 enforces a single controller via a dedicated PostgreSQL advisory-lock connection. A second process is rejected. This makes the scope of a local emergency fence explicit. In-flight n8n work already admitted can continue despite an HTTP abort; read-only scope is therefore essential. Distributed fencing/HA are future engineering work.
 
