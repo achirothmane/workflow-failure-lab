@@ -394,11 +394,13 @@ _PRQL_V3_FIXTURE = next(
 
 _PRQL_V4_FIXTURE = replace(
     _PRQL_V3_FIXTURE,
-    expected_decision=EXPECTED_ALLOW,
+    expected_decision=EXPECTED_BLOCK,
     fixture_basis=(
         "PRQL #6236 records the hosted-runner-loss annotation and successful attempt-2 "
         "rerun. V4 replays the annotation through an exact GitHub Actions check-run "
-        "binding rather than injecting retrospective issue text into the ordinary log path."
+        "binding rather than injecting retrospective issue text into the ordinary log path. "
+        "The job remains BLOCK because its release-shaped identity crosses the existing "
+        "side-effect boundary."
     ),
     source_job={
         **(_PRQL_V3_FIXTURE.source_job or {}),
