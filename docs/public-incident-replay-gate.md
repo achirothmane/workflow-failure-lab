@@ -1,9 +1,9 @@
-# Public Incident Replay Gate v1
+# Public Incident Replay Gate v2
 
 The Public Incident Corpus is useful only if production decision logic is forced to
-survive it.
+survive it in both directions.
 
-This gate replays every admitted V1 incident through the same production path used by
+The gate replays every admitted incident through the same production path used by
 CI Retry Gate:
 
 ```text
@@ -18,24 +18,41 @@ build_ci_retry_decision
 ALLOW / BLOCK
 ```
 
-## What it prevents
+## Bidirectional authorization contract
 
-A classifier rule may look locally better while reintroducing a known dangerous
-authorization error. The replay gate turns public incidents into permanent regression
-constraints.
+V1 contained three denial-side controls. V2 keeps those controls and adds three
+source-backed positive controls from independent repositories.
 
-For the initial corpus, all three incidents are **BLOCK** controls. Each publicly
-documented case ended with a runner-shutdown symptom that was later associated with
-workload/resource behavior rather than independently proven runner infrastructure.
-
-The safety property is:
+The required property is now:
 
 ```text
-known BLOCK incident
-    ⇒ production replay must not return ALLOW
+known unsafe/ambiguous incident  => BLOCK
+known bounded transient incident => ALLOW
 ```
 
-Any false `ALLOW` fails the gate.
+The gate fails on either a false `ALLOW` or a false `BLOCK`.
+
+## V2 positive controls
+
+| Repository | Run | Failed job | Failure evidence | Rerun ground truth | Expected |
+|---|---:|---|---|---|---|
+| alunduil/alunduil-chezmoi | 30240791215 | Run pre-commit hooks | curl connection reset during Install lychee | same job succeeded in attempt 2 | `ALLOW` |
+| vtmocanu/uzi | 33985176395 | lint-controller | curl connection reset during lint/download path | same job succeeded in attempt 2 on the same SHA | `ALLOW` |
+| docker/compose | 35155815118 | relay-image-test / build (linux/amd64) | repeated Docker Hub 502 responses inside Build | same job succeeded in attempt 2 | `ALLOW` |
+
+For all three controls, the replay uses source-backed failed-job identity and failed-step
+timing so execution provenance must pass exactly as it does in production.
+
+## V2 negative controls
+
+The original three controls remain:
+
+- GEOPHIRES-X #526;
+- deck-streak #439;
+- 1-bit-bridge #1098.
+
+They demonstrate that a terminal runner-shutdown / exit-143 symptom cannot independently
+prove runner infrastructure causality.
 
 ## Metrics
 
@@ -58,25 +75,22 @@ disagrees with its expected authorization.
 
 ## Fixture integrity
 
-The replay fixtures deliberately separate source-backed incident evidence from local
-execution scaffolding.
+The replay fixtures separate decision-time evidence from retrospective ground truth.
 
-- Log excerpts and their interpretation are tied to the public incident source.
-- Synthetic job IDs/timestamps used only to exercise the deterministic gate are not
-  claimed to be upstream GitHub metadata.
-- Retrospective root-cause knowledge is **not injected into the failure log** merely to
-  make the classifier succeed.
+- Positive controls preserve public failed-job identity and failed-step timing.
+- Log excerpts contain evidence available during the failed attempt.
+- The later successful rerun proves recovery, but its success text is not injected into
+  the failure log.
+- Negative controls retain their earlier conservative replay scaffolding where exact
+  upstream metadata is not required to prove the BLOCK invariant.
+- Retrospective root-cause knowledge is never injected into a failure log merely to make
+  the classifier reach the expected answer.
 
-This avoids training the gate on information that would not have been available at the
-decision point.
+This keeps the gate from learning from information that would not have been available
+at authorization time.
 
-## Current limitation
+## Next expansion
 
-V1 is denial-side coverage: the three admitted incidents are expected `BLOCK` cases.
-The implementation already tracks false `BLOCK`, but that metric becomes meaningful
-only after source-backed positive controls with an expected `ALLOW` decision are
-admitted.
-
-The next corpus expansion should therefore add independently validated transient
-recoveries as positive controls, while retaining the existing authority and provenance
-requirements.
+V2 proves both sides with six incidents across six repositories. The next useful
+expansion is mechanism diversity rather than raw volume: DNS failures, explicit hosted
+runner loss, rate limiting, TLS handshake timeout, and additional dependency 5xx cases.
