@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from ci_retry_gate import assess_job
 from evidence_gate import build_ci_retry_decision
 from evidence_producer import produce_ci_evidence_bundle
-from public_incident_corpus import PUBLIC_INCIDENT_CORPUS_V2, PublicIncident
+from public_incident_corpus import PUBLIC_INCIDENT_CORPUS_V3, PublicIncident
 
 
 EXPECTED_ALLOW = "ALLOW"
@@ -290,8 +290,102 @@ PUBLIC_INCIDENT_REPLAY_FIXTURES_V2 = PUBLIC_INCIDENT_REPLAY_FIXTURES_V1 + (
 )
 
 
+PUBLIC_INCIDENT_REPLAY_FIXTURES_V3 = PUBLIC_INCIDENT_REPLAY_FIXTURES_V2 + (
+    PublicIncidentReplayFixture(
+        case_id="alethialabs-helm-network-unreachable-2026-08-26",
+        log_excerpt=(
+            "2026-08-26T06:28:35.9287308Z       Error: looks like "
+            "\"https://grafana.github.io/helm-charts\" is not a valid chart repository "
+            "or cannot be reached: Get \"https://grafana.github.io/helm-charts/index.yaml\": "
+            "dial tcp [2606:50c0:8001::153]:443: connect: network is unreachable\n"
+            "2026-08-26T06:28:35.9355157Z ##[error]Process completed with exit code 1.\n"
+        ),
+        job_name="Add-on charts render (helm template · pinned charts)",
+        failed_step_name="Every add-on renders with its pinned chart and its own defaults",
+        expected_decision=EXPECTED_ALLOW,
+        fixture_basis=(
+            "GitHub run 32938269387 attempt 1 failed on an IPv6 network-unreachable "
+            "dependency fetch; attempt 2 reran the same job successfully."
+        ),
+        source_job={
+            "id": 98083760153,
+            "name": "Add-on charts render (helm template · pinned charts)",
+            "conclusion": "failure",
+            "started_at": "2026-08-26T06:28:01Z",
+            "completed_at": "2026-08-26T06:28:38Z",
+            "steps": [
+                {
+                    "name": "Every add-on renders with its pinned chart and its own defaults",
+                    "conclusion": "failure",
+                    "started_at": "2026-08-26T06:28:08Z",
+                    "completed_at": "2026-08-26T06:28:35Z",
+                }
+            ],
+        },
+        head_sha="449485655f06168e8968e812a71db20e913d0859",
+    ),
+    PublicIncidentReplayFixture(
+        case_id="prql-hosted-runner-loss-2026-08-26",
+        log_excerpt=(
+            "The hosted runner lost communication with the server. Anything in your "
+            "workflow that terminates the runner process, starves it for CPU/Memory, "
+            "or blocks its network access can cause this error.\n"
+        ),
+        job_name="nightly / nightly-release / build-prqlc-c (macos-15, aarch64-apple-darwin)",
+        failed_step_name="",
+        expected_decision=EXPECTED_BLOCK,
+        fixture_basis=(
+            "PRQL #6236 records the GitHub hosted-runner-loss annotation and a successful "
+            "attempt-2 rerun, but the failed job uploaded no log blob and exposes no failed "
+            "step metadata. V3 intentionally preserves fail-closed authority."
+        ),
+        source_job={
+            "id": 98152972844,
+            "name": "nightly / nightly-release / build-prqlc-c (macos-15, aarch64-apple-darwin)",
+            "conclusion": "failure",
+            "started_at": "2026-08-26T11:07:03Z",
+            "completed_at": "2026-08-26T11:55:03Z",
+            "steps": [],
+        },
+        head_sha="d63e9573daa23943ab666d26a4fe34da8f4deae6",
+    ),
+    PublicIncidentReplayFixture(
+        case_id="hiromi-github-rate-limit-recurrence-2026-09-26",
+        log_excerpt=(
+            "2026-09-26T14:25:15.9912973Z ##[error]Unable to process file command "
+            "'output' successfully.\n"
+            "2026-09-26T14:25:15.9921300Z ##[error]Invalid format "
+            "'\\t\"message\": \"API rate limit exceeded for user ID 6440811.\"'\n"
+        ),
+        job_name="test",
+        failed_step_name="Find associated pull request",
+        expected_decision=EXPECTED_BLOCK,
+        fixture_basis=(
+            "GitHub run 36248287482 attempt 1 failed after the test suite passed; attempt 2 "
+            "failed again in the same job and same step with the same API-rate-limit shape."
+        ),
+        source_job={
+            "id": 108421448279,
+            "name": "test",
+            "conclusion": "failure",
+            "started_at": "2026-09-26T14:22:32Z",
+            "completed_at": "2026-09-26T14:25:19Z",
+            "steps": [
+                {
+                    "name": "Find associated pull request",
+                    "conclusion": "failure",
+                    "started_at": "2026-09-26T14:25:15Z",
+                    "completed_at": "2026-09-26T14:25:15Z",
+                }
+            ],
+        },
+        head_sha="ca2b96f441fc0aeb1514557d5cefa9ccbe4b1efc",
+    ),
+)
+
+
 def _incident_index() -> dict[str, PublicIncident]:
-    return {incident.case_id: incident for incident in PUBLIC_INCIDENT_CORPUS_V2}
+    return {incident.case_id: incident for incident in PUBLIC_INCIDENT_CORPUS_V3}
 
 
 def _replay_job(fixture: PublicIncidentReplayFixture, ordinal: int) -> dict:
@@ -362,9 +456,9 @@ def replay_public_incident(
 def run_public_incident_replay() -> PublicIncidentReplaySummary:
     results = tuple(
         replay_public_incident(fixture, ordinal=index)
-        for index, fixture in enumerate(PUBLIC_INCIDENT_REPLAY_FIXTURES_V2, start=1)
+        for index, fixture in enumerate(PUBLIC_INCIDENT_REPLAY_FIXTURES_V3, start=1)
     )
-    corpus_ids = {incident.case_id for incident in PUBLIC_INCIDENT_CORPUS_V2}
+    corpus_ids = {incident.case_id for incident in PUBLIC_INCIDENT_CORPUS_V3}
     replay_ids = {result.case_id for result in results}
     missing = tuple(sorted(corpus_ids - replay_ids))
     return PublicIncidentReplaySummary(
@@ -376,7 +470,7 @@ def run_public_incident_replay() -> PublicIncidentReplaySummary:
 
 def render_public_incident_replay(summary: PublicIncidentReplaySummary) -> str:
     lines = [
-        "Public Incident Replay Gate v2",
+        "Public Incident Replay Gate v3",
         f"cases: {summary.replayed_cases}/{summary.corpus_size}",
         f"coverage: {summary.coverage:.0%}",
         f"false ALLOW: {summary.false_allows}",
