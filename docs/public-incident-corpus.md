@@ -1,69 +1,70 @@
 # Public incident corpus
 
-This corpus converts resolved public CI incidents into machine-readable ground truth for
-CI Retry Gate research and regression work.
+This corpus converts resolved public CI incidents into machine-readable authorization
+ground truth for CI Retry Gate.
 
-Each incident records:
+Each incident records the observed signal, later-supported cause family, remediation
+family, classifier implication, expected production decision, and available failed/rerun
+identity.
 
-- the observed failure signal;
-- the later-supported cause family;
-- the remediation family;
-- the classifier implication;
-- the expected production authorization decision;
-- when available, failed workflow/job identity and successful or recurrent rerun identity.
+The corpus is a regression contract, not a collection of anecdotes.
 
-The corpus is an authorization regression contract, not a collection of anecdotes.
+## Versioned evidence growth
 
-## V1 — terminal-symptom counterexamples
+### V1
 
-Three runner-shutdown cases establish:
+Three runner-shutdown counterexamples establish that terminal
+`shutdown + exit 143` is not independent proof of runner infrastructure. All are
+`BLOCK`.
 
-`runner shutdown / exit 143 alone => no high-confidence RUNNER_INFRA authority`
+### V2
 
-All remain expected `BLOCK`.
+Three independent positive controls add connection-reset and explicit external HTTP 502
+recoveries. The corpus becomes bidirectional.
 
-## V2 — bidirectional controls
+### V3
 
-V2 adds three independent expected-`ALLOW` controls:
+Three mechanism-diverse controls add:
 
-- alunduil/alunduil-chezmoi — curl connection reset;
-- vtmocanu/uzi — prefixed curl connection reset;
-- docker/compose — explicit external registry 502.
+- dependency `network is unreachable` -> `ALLOW`;
+- hosted-runner loss with missing decision-time provenance -> `BLOCK`;
+- recurring GitHub API rate-limit failure -> `BLOCK`.
 
-Each recovered on a later attempt and carries decision-time failed-step provenance.
-
-## V3 — mechanism and evidence diversity
-
-V3 adds:
-
-- alethialabs-io/alethialabs — `network is unreachable`, expected `ALLOW`;
-- PRQL/prql — confirmed hosted-runner loss with later recovery but missing decision-time
-  step/log provenance, expected `BLOCK`;
-- HiromiShikata/npm-cli-github-issue-tower-defence-management — API rate-limit failure
-  recurring on the next attempt, expected `BLOCK`.
-
-This separates three concepts that must not be collapsed:
+This establishes:
 
 ```text
 failure category != root cause != execution authority
 ```
 
-A later root-cause diagnosis is useful research evidence. It does not retroactively make
-missing decision-time provenance sufficient to authorize an action.
+### V4
+
+V4 adds a new admissible evidence source rather than a new anecdote.
+
+For the PRQL hosted-runner-loss incident, GitHub's surviving check annotation can now be
+consumed through an authenticated, exactly bound Checks path. That improves the incident
+from unavailable provenance to confirmed runner-loss provenance.
+
+The expected production decision remains `BLOCK`, because the failed job independently
+crosses the existing release-shaped side-effect boundary.
+
+The versioning therefore proves both properties at once:
+
+```text
+missing provenance can become confirmed
+and authority can still remain denied
+```
 
 ## Admission rule
 
-A case enters only when a public source provides enough evidence to bind the visible
-failure to a later diagnosis, remediation, or observable outcome.
+Expected `ALLOW` controls require a bounded retry-safe job, high-confidence transient
+signal, confirmed execution provenance, no side-effect risk, and observable recovery of
+the same job identity.
 
-Expected `ALLOW` cases additionally require:
+Execution provenance may currently be established by either:
 
-- a bounded retry-safe failed job;
-- high-confidence transient evidence;
-- confirmed execution provenance;
-- no side-effect risk;
-- observable successful rerun of the same job identity.
+1. timestamped causal log evidence inside the failed-step window; or
+2. the authenticated runner-loss annotation fallback, exactly bound to the GitHub
+   Actions check run for the failed job/head.
 
-Expected `BLOCK` cases may capture either a known unsafe cause or a known transient
-cause whose authorization evidence is insufficient. Recurrent failed reruns are recorded
-explicitly where available.
+Expected `BLOCK` controls include unsafe causes, insufficient authority evidence,
+independent side-effect boundaries, and observed immediate recurrence.

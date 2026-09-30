@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
-from ci_retry_gate import assess_job
+from ci_retry_gate import assess_authenticated_runner_annotations, assess_job
 from evidence_gate import build_ci_retry_decision
 from evidence_producer import produce_ci_evidence_bundle
-from public_incident_corpus import PUBLIC_INCIDENT_CORPUS_V3, PublicIncident
+from public_incident_corpus import PUBLIC_INCIDENT_CORPUS_V3, PUBLIC_INCIDENT_CORPUS_V4, PublicIncident
 
 
 EXPECTED_ALLOW = "ALLOW"
@@ -23,6 +23,8 @@ class PublicIncidentReplayFixture:
     fixture_basis: str
     source_job: dict | None = None
     head_sha: str = ""
+    check_run: dict | None = None
+    check_annotations: tuple[dict, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -384,8 +386,62 @@ PUBLIC_INCIDENT_REPLAY_FIXTURES_V3 = PUBLIC_INCIDENT_REPLAY_FIXTURES_V2 + (
 )
 
 
+_PRQL_V3_FIXTURE = next(
+    fixture
+    for fixture in PUBLIC_INCIDENT_REPLAY_FIXTURES_V3
+    if fixture.case_id == "prql-hosted-runner-loss-2026-08-26"
+)
+
+_PRQL_V4_FIXTURE = replace(
+    _PRQL_V3_FIXTURE,
+    expected_decision=EXPECTED_BLOCK,
+    fixture_basis=(
+        "PRQL #6236 records the hosted-runner-loss annotation and successful attempt-2 "
+        "rerun. V4 replays the annotation through an exact GitHub Actions check-run "
+        "binding rather than injecting retrospective issue text into the ordinary log path. "
+        "The job remains BLOCK because its release-shaped identity crosses the existing "
+        "side-effect boundary."
+    ),
+    source_job={
+        **(_PRQL_V3_FIXTURE.source_job or {}),
+        "head_sha": "d63e9573daa23943ab666d26a4fe34da8f4deae6",
+        "check_run_url": (
+            "https://api.github.com/repos/PRQL/prql/check-runs/98152972844"
+        ),
+    },
+    check_run={
+        "id": 98152972844,
+        "name": (
+            "nightly / nightly-release / build-prqlc-c "
+            "(macos-15, aarch64-apple-darwin)"
+        ),
+        "status": "completed",
+        "conclusion": "failure",
+        "head_sha": "d63e9573daa23943ab666d26a4fe34da8f4deae6",
+        "app": {"slug": "github-actions"},
+    },
+    check_annotations=(
+        {
+            "annotation_level": "failure",
+            "message": (
+                "The hosted runner lost communication with the server. Anything in your "
+                "workflow that terminates the runner process, starves it for CPU/Memory, "
+                "or blocks its network access can cause this error."
+            ),
+        },
+    ),
+)
+
+PUBLIC_INCIDENT_REPLAY_FIXTURES_V4 = tuple(
+    _PRQL_V4_FIXTURE
+    if fixture.case_id == _PRQL_V4_FIXTURE.case_id
+    else fixture
+    for fixture in PUBLIC_INCIDENT_REPLAY_FIXTURES_V3
+)
+
+
 def _incident_index() -> dict[str, PublicIncident]:
-    return {incident.case_id: incident for incident in PUBLIC_INCIDENT_CORPUS_V3}
+    return {incident.case_id: incident for incident in PUBLIC_INCIDENT_CORPUS_V4}
 
 
 def _replay_job(fixture: PublicIncidentReplayFixture, ordinal: int) -> dict:
@@ -424,7 +480,18 @@ def replay_public_incident(
         raise ValueError(f"Replay fixture references unknown case_id={fixture.case_id!r}")
 
     job = _replay_job(fixture, ordinal)
-    assessment = assess_job(job, fixture.log_excerpt)
+    if fixture.check_run is not None:
+        assessment = assess_authenticated_runner_annotations(
+            job,
+            fixture.check_run,
+            fixture.check_annotations,
+        )
+        if assessment is None:
+            raise ValueError(
+                f"Authenticated annotation replay did not produce evidence for {fixture.case_id}"
+            )
+    else:
+        assessment = assess_job(job, fixture.log_excerpt)
     run_id = incident.ground_truth_run_id or (800_000 + ordinal)
     bundle = produce_ci_evidence_bundle(
         repo=incident.repository,
@@ -456,9 +523,9 @@ def replay_public_incident(
 def run_public_incident_replay() -> PublicIncidentReplaySummary:
     results = tuple(
         replay_public_incident(fixture, ordinal=index)
-        for index, fixture in enumerate(PUBLIC_INCIDENT_REPLAY_FIXTURES_V3, start=1)
+        for index, fixture in enumerate(PUBLIC_INCIDENT_REPLAY_FIXTURES_V4, start=1)
     )
-    corpus_ids = {incident.case_id for incident in PUBLIC_INCIDENT_CORPUS_V3}
+    corpus_ids = {incident.case_id for incident in PUBLIC_INCIDENT_CORPUS_V4}
     replay_ids = {result.case_id for result in results}
     missing = tuple(sorted(corpus_ids - replay_ids))
     return PublicIncidentReplaySummary(
@@ -470,7 +537,7 @@ def run_public_incident_replay() -> PublicIncidentReplaySummary:
 
 def render_public_incident_replay(summary: PublicIncidentReplaySummary) -> str:
     lines = [
-        "Public Incident Replay Gate v3",
+        "Public Incident Replay Gate v4",
         f"cases: {summary.replayed_cases}/{summary.corpus_size}",
         f"coverage: {summary.coverage:.0%}",
         f"false ALLOW: {summary.false_allows}",

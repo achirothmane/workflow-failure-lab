@@ -2,7 +2,7 @@ import http.client
 from pathlib import Path
 
 import ci_retry_gate
-from ci_retry_gate import AMBIGUOUS, CAUSAL, FAILURE_STEP_AMBIGUOUS, FAILURE_STEP_CONFIRMED, NON_CAUSAL, PROVENANCE_CONFIRMED, PROVENANCE_MISMATCH, PROVENANCE_UNAVAILABLE, TRANSIENT_CATEGORIES, GitHubAPI, assess_failure_step_provenance, assess_job, causal_evidence_role, classify_log, detect_side_effect_risk, revalidate_rerun_subject_binding
+from ci_retry_gate import AMBIGUOUS, CAUSAL, FAILURE_STEP_AMBIGUOUS, FAILURE_STEP_CONFIRMED, FAILURE_STEP_UNAVAILABLE, NON_CAUSAL, PROVENANCE_CONFIRMED, PROVENANCE_MISMATCH, PROVENANCE_UNAVAILABLE, TRANSIENT_CATEGORIES, GitHubAPI, assess_authenticated_runner_annotations, assess_failed_jobs, assess_failure_step_provenance, assess_job, causal_evidence_role, classify_log, detect_side_effect_risk, revalidate_rerun_subject_binding
 from evidence_gate import decide_ci_retry as rerun_decision
 from evidence_producer import produce_ci_evidence_bundle
 
@@ -731,3 +731,213 @@ def test_unanchored_502_prose_does_not_become_high_confidence():
     )
 
     assert result.confidence != "high"
+
+
+def _runner_loss_job(name="unit-tests"):
+    return {
+        "id": 98152972844,
+        "name": name,
+        "conclusion": "failure",
+        "status": "completed",
+        "head_sha": "d63e9573daa23943ab666d26a4fe34da8f4deae6",
+        "check_run_url": "https://api.github.com/repos/PRQL/prql/check-runs/98152972844",
+        "started_at": "2026-08-26T11:07:03Z",
+        "completed_at": "2026-08-26T11:55:03Z",
+        "steps": [],
+    }
+
+
+def _runner_loss_check_run(name="unit-tests", **overrides):
+    value = {
+        "id": 98152972844,
+        "name": name,
+        "status": "completed",
+        "conclusion": "failure",
+        "head_sha": "d63e9573daa23943ab666d26a4fe34da8f4deae6",
+        "app": {"slug": "github-actions"},
+    }
+    value.update(overrides)
+    return value
+
+
+def _runner_loss_annotations():
+    return [
+        {
+            "annotation_level": "failure",
+            "message": (
+                "The hosted runner lost communication with the server. Anything in your "
+                "workflow that terminates the runner process, starves it for CPU/Memory, "
+                "or blocks its network access can cause this error."
+            ),
+        }
+    ]
+
+
+def test_authenticated_runner_annotation_binds_exact_job_check_and_head():
+    assessment = assess_authenticated_runner_annotations(
+        _runner_loss_job(),
+        _runner_loss_check_run(),
+        _runner_loss_annotations(),
+    )
+
+    assert assessment is not None
+    assert assessment.category == "RUNNER_INFRA"
+    assert assessment.confidence == "high"
+    assert assessment.provenance_status == PROVENANCE_CONFIRMED
+    assert assessment.failure_step_status == FAILURE_STEP_UNAVAILABLE
+    assert any(
+        "source: authenticated GitHub Checks annotation" == item
+        for item in assessment.provenance_evidence
+    )
+
+    safe, reason = rerun_decision(
+        evidence_bundle(assessment, run_attempt=1),
+        max_attempts=2,
+    )
+    assert safe is True
+    assert "high-confidence transient" in reason
+
+
+def test_prql_runner_loss_annotation_does_not_override_side_effect_boundary():
+    name = "nightly / nightly-release / build-prqlc-c (macos-15, aarch64-apple-darwin)"
+    assessment = assess_authenticated_runner_annotations(
+        _runner_loss_job(name=name),
+        _runner_loss_check_run(name=name),
+        _runner_loss_annotations(),
+    )
+
+    assert assessment is not None
+    assert assessment.provenance_status == PROVENANCE_CONFIRMED
+    assert assessment.side_effect_risk is True
+
+    safe, reason = rerun_decision(
+        evidence_bundle(assessment, run_attempt=1),
+        max_attempts=2,
+    )
+    assert safe is False
+    assert "side-effect" in reason
+
+
+def test_authenticated_runner_annotation_rejects_non_github_actions_check():
+    assessment = assess_authenticated_runner_annotations(
+        _runner_loss_job(),
+        _runner_loss_check_run(app={"slug": "third-party-ci"}),
+        _runner_loss_annotations(),
+    )
+    assert assessment is None
+
+
+def test_authenticated_runner_annotation_rejects_head_sha_mismatch():
+    assessment = assess_authenticated_runner_annotations(
+        _runner_loss_job(),
+        _runner_loss_check_run(head_sha="different"),
+        _runner_loss_annotations(),
+    )
+    assert assessment is None
+
+
+def test_authenticated_runner_annotation_requires_failure_level_and_exact_signal():
+    warning = [{"annotation_level": "warning", "message": _runner_loss_annotations()[0]["message"]}]
+    prose = [{
+        "annotation_level": "failure",
+        "message": "Documentation says the hosted runner lost communication with the server.",
+    }]
+
+    assert assess_authenticated_runner_annotations(
+        _runner_loss_job(), _runner_loss_check_run(), warning
+    ) is None
+    assert assess_authenticated_runner_annotations(
+        _runner_loss_job(), _runner_loss_check_run(), prose
+    ) is None
+
+
+class _RunnerAnnotationAPI:
+    def __init__(self, *, token="token", annotation_error=None):
+        self.token = token
+        self.annotation_error = annotation_error
+
+    def get_job_logs(self, repo, job_id):
+        raise RuntimeError("BlobNotFound: job log was never uploaded")
+
+    def get_check_run(self, repo, check_run_id):
+        if self.annotation_error is not None:
+            raise RuntimeError(self.annotation_error)
+        return _runner_loss_check_run()
+
+    def get_check_run_annotations(self, repo, check_run_id):
+        return _runner_loss_annotations()
+
+
+def test_assess_failed_jobs_uses_authenticated_annotation_when_log_is_missing():
+    assessments = assess_failed_jobs(
+        _RunnerAnnotationAPI(),
+        "PRQL/prql",
+        [_runner_loss_job()],
+    )
+
+    assert len(assessments) == 1
+    assessment = assessments[0]
+    assert assessment.category == "RUNNER_INFRA"
+    assert assessment.confidence == "high"
+    assert assessment.provenance_status == PROVENANCE_CONFIRMED
+
+    safe, _reason = rerun_decision(
+        evidence_bundle(assessment, run_attempt=1),
+        max_attempts=2,
+    )
+    assert safe is True
+
+
+def test_assess_failed_jobs_fails_closed_without_authenticated_token():
+    assessments = assess_failed_jobs(
+        _RunnerAnnotationAPI(token=""),
+        "PRQL/prql",
+        [_runner_loss_job()],
+    )
+
+    assessment = assessments[0]
+    assert assessment.category == "EVIDENCE_UNAVAILABLE"
+    assert assessment.provenance_status == PROVENANCE_UNAVAILABLE
+    assert any("requires a GitHub token" in item for item in assessment.evidence)
+
+
+def test_assess_failed_jobs_fails_closed_when_checks_permission_is_unavailable():
+    assessments = assess_failed_jobs(
+        _RunnerAnnotationAPI(annotation_error="GitHub API GET check-run failed with HTTP 403"),
+        "PRQL/prql",
+        [_runner_loss_job()],
+    )
+
+    assessment = assessments[0]
+    assert assessment.category == "EVIDENCE_UNAVAILABLE"
+    assert assessment.provenance_status == PROVENANCE_UNAVAILABLE
+    assert any("HTTP 403" in item for item in assessment.evidence)
+
+
+def test_github_api_check_annotation_endpoints_and_pagination(monkeypatch):
+    api = GitHubAPI("token")
+    seen = []
+
+    def fake_request(method, path, payload=None, accept="application/vnd.github+json"):
+        seen.append((method, path))
+        if path == "/repos/acme/repo/check-runs/42":
+            return {"id": 42}
+        if path.endswith("&page=1"):
+            return [{"annotation_level": "notice", "message": str(i)} for i in range(100)]
+        if path.endswith("&page=2"):
+            return [{"annotation_level": "failure", "message": "runner signal"}]
+        raise AssertionError(path)
+
+    monkeypatch.setattr(api, "request", fake_request)
+
+    check_run = api.get_check_run("acme/repo", 42)
+    annotations = api.get_check_run_annotations("acme/repo", 42)
+
+    assert check_run == {"id": 42}
+    assert len(annotations) == 101
+    assert annotations[-1]["message"] == "runner signal"
+    assert seen == [
+        ("GET", "/repos/acme/repo/check-runs/42"),
+        ("GET", "/repos/acme/repo/check-runs/42/annotations?per_page=100&page=1"),
+        ("GET", "/repos/acme/repo/check-runs/42/annotations?per_page=100&page=2"),
+    ]

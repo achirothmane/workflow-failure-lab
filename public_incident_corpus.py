@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 
 @dataclass(frozen=True, slots=True)
@@ -187,4 +187,24 @@ PUBLIC_INCIDENT_CORPUS_V3 = PUBLIC_INCIDENT_CORPUS_V2 + (
     ALETHIALABS_NETWORK_UNREACHABLE,
     PRQL_HOSTED_RUNNER_LOSS,
     HIROMI_RATE_LIMIT_RECURRENCE,
+)
+
+
+PRQL_HOSTED_RUNNER_LOSS_AUTHENTICATED = replace(
+    PRQL_HOSTED_RUNNER_LOSS,
+    classifier_implication=(
+        "When the job log is unavailable, an authenticated GitHub Actions check-run "
+        "failure annotation can supply missing job-bound runner-loss provenance if "
+        "check-run id, job name, head SHA, conclusion, and app identity all bind exactly. "
+        "That evidence does not override an independent side-effect boundary."
+    ),
+    expected_decision="BLOCK",
+)
+
+
+PUBLIC_INCIDENT_CORPUS_V4 = tuple(
+    PRQL_HOSTED_RUNNER_LOSS_AUTHENTICATED
+    if incident.case_id == PRQL_HOSTED_RUNNER_LOSS.case_id
+    else incident
+    for incident in PUBLIC_INCIDENT_CORPUS_V3
 )

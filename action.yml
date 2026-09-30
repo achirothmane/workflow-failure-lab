@@ -5,7 +5,7 @@ author: 'achirothmane'
 
 inputs:
   github-token:
-    description: 'GitHub token. actions:read is required; actions:write is required only when a rerun mode is enabled.'
+    description: 'GitHub token. actions:read is required; checks:read enables authenticated runner-loss annotation fallback when job logs are missing; actions:write is required only when a rerun mode is enabled.'
     required: true
   run-id:
     description: 'Workflow run ID to inspect. Defaults to github.event.workflow_run.id.'
