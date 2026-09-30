@@ -363,6 +363,8 @@ def test_recommended_yaml_matches_requested_features():
     assert "quarantine-lifecycle: 'true'" in text
     assert "flaky-triage-comment: 'true'" in text
     assert "flaky-issue-lifecycle: 'true'" in text
+    assert "achirothmane/workflow-failure-lab@v1" in text
+    assert "othy19904-eng/workflow-failure-lab@v1" not in text
     assert "actions: write" in text
     assert "checks: read" in text
 
