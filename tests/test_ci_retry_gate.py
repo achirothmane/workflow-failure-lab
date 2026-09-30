@@ -687,3 +687,47 @@ def test_rerun_subject_binding_blocks_when_failed_job_set_changes():
 
     assert valid is False
     assert "failed_job_set" in reason
+
+
+def test_prefixed_curl_transport_failure_is_high_confidence_transient():
+    result = classify_log(
+        "2026-09-05T18:48:22.9603575Z [lint:controller] curl: (35) "
+        "Recv failure: Connection reset by peer\n"
+        "2026-09-05T18:48:22.9659229Z ##[error]Process completed with exit code 201.\n"
+    )
+
+    assert result.category == "DEPENDENCY_NETWORK"
+    assert result.confidence == "high"
+
+
+def test_prefixed_curl_example_in_shell_comment_remains_non_causal():
+    result = classify_log(
+        "# [lint:controller] curl: (35) Recv failure: Connection reset by peer\n"
+    )
+
+    assert result.category == "UNKNOWN"
+    assert result.confidence == "low"
+
+
+def test_explicit_external_registry_502_is_high_confidence_transient():
+    result = classify_log(
+        "2026-09-16T22:05:31.3692870Z ERROR: failed to solve: unexpected status "
+        "from HEAD request to https://registry-1.docker.io/v2/docker/buildkit-syft-scanner/"
+        "manifests/1.11.0: 502 Bad Gateway\n"
+        "2026-09-16T22:05:31.4659302Z ##[error]buildx bake failed with: ERROR: "
+        "failed to solve: unexpected status from HEAD request to "
+        "https://registry-1.docker.io/v2/docker/buildkit-syft-scanner/manifests/1.11.0: "
+        "502 Bad Gateway\n"
+    )
+
+    assert result.category == "DEPENDENCY_NETWORK"
+    assert result.confidence == "high"
+
+
+def test_unanchored_502_prose_does_not_become_high_confidence():
+    result = classify_log(
+        "documentation: unexpected status from HEAD request to "
+        "https://registry.example/v2/example: 502 Bad Gateway\n"
+    )
+
+    assert result.confidence != "high"
