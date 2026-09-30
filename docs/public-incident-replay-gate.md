@@ -23,7 +23,7 @@ evidence.
 
 ## Authorization boundary
 
-A check annotation can contribute retry authority only when all of the following hold:
+A check annotation can contribute retry evidence only when all of the following hold:
 
 - the job log could not be acquired;
 - an authenticated GitHub token is present;
@@ -34,28 +34,35 @@ A check annotation can contribute retry authority only when all of the following
 - both job and check run are completed failures;
 - the check run belongs to the `github-actions` app;
 - the annotation level is `failure`;
-- the annotation begins with GitHub's runner-loss message;
-- the job does not cross a side-effect boundary;
-- the retry-attempt policy still permits another execution.
+- the annotation begins with GitHub's runner-loss message.
 
-A missing or unreadable Checks endpoint, binding mismatch, non-GitHub Actions check,
-warning-level annotation, or merely similar prose remains fail-closed.
+That can establish `RUNNER_INFRA/high` with `CONFIRMED` execution provenance. It
+does **not** bypass independent authority gates such as side-effect detection or the
+maximum-attempt policy.
 
 ## V4 public ground truth
 
 The PRQL control from V3 is intentionally versioned:
 
-- V3: runner loss was known retrospectively, but missing decision-time provenance meant
-  expected `BLOCK`.
-- V4: the same incident is replayed with the surviving GitHub Actions check annotation
-  bound to the exact job/check/head, so it becomes expected `ALLOW`.
+- V3: runner loss was known retrospectively, but decision-time provenance was unavailable.
+- V4: the surviving GitHub Actions check annotation now establishes exact job/check/head
+  provenance.
+- Final authorization still remains `BLOCK` because the job identity contains a
+  release-shaped side-effect boundary.
+
+This is the intended separation:
+
+```text
+better evidence can improve provenance
+without granting execution authority
+```
 
 The other eight public incidents keep their prior decisions.
 
 V4 therefore contains nine incidents across nine repositories:
 
-- five expected `ALLOW`;
-- four expected `BLOCK`.
+- four expected `ALLOW`;
+- five expected `BLOCK`.
 
 The corpus still requires:
 
@@ -72,8 +79,8 @@ not prove whether the runner process died because of infrastructure, CPU/memory
 starvation, or network isolation.
 
 CI Retry Gate uses that exact signal only for the already-supported bounded
-`RUNNER_INFRA` retry class. It does not rewrite the retrospective cause family and does
-not weaken the side-effect or attempt gates.
+`RUNNER_INFRA` class. It does not rewrite the retrospective cause family and does not
+weaken side-effect protection.
 
 ## Permission behavior
 
