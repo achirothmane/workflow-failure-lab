@@ -733,10 +733,10 @@ def test_unanchored_502_prose_does_not_become_high_confidence():
     assert result.confidence != "high"
 
 
-def _runner_loss_job():
+def _runner_loss_job(name="unit-tests"):
     return {
         "id": 98152972844,
-        "name": "nightly / nightly-release / build-prqlc-c (macos-15, aarch64-apple-darwin)",
+        "name": name,
         "conclusion": "failure",
         "status": "completed",
         "head_sha": "d63e9573daa23943ab666d26a4fe34da8f4deae6",
@@ -747,10 +747,10 @@ def _runner_loss_job():
     }
 
 
-def _runner_loss_check_run(**overrides):
+def _runner_loss_check_run(name="unit-tests", **overrides):
     value = {
         "id": 98152972844,
-        "name": "nightly / nightly-release / build-prqlc-c (macos-15, aarch64-apple-darwin)",
+        "name": name,
         "status": "completed",
         "conclusion": "failure",
         "head_sha": "d63e9573daa23943ab666d26a4fe34da8f4deae6",
@@ -796,6 +796,26 @@ def test_authenticated_runner_annotation_binds_exact_job_check_and_head():
     )
     assert safe is True
     assert "high-confidence transient" in reason
+
+
+def test_prql_runner_loss_annotation_does_not_override_side_effect_boundary():
+    name = "nightly / nightly-release / build-prqlc-c (macos-15, aarch64-apple-darwin)"
+    assessment = assess_authenticated_runner_annotations(
+        _runner_loss_job(name=name),
+        _runner_loss_check_run(name=name),
+        _runner_loss_annotations(),
+    )
+
+    assert assessment is not None
+    assert assessment.provenance_status == PROVENANCE_CONFIRMED
+    assert assessment.side_effect_risk is True
+
+    safe, reason = rerun_decision(
+        evidence_bundle(assessment, run_attempt=1),
+        max_attempts=2,
+    )
+    assert safe is False
+    assert "side-effect" in reason
 
 
 def test_authenticated_runner_annotation_rejects_non_github_actions_check():
