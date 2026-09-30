@@ -142,6 +142,10 @@ PUBLIC_INCIDENT_REPLAY_FIXTURES_V1 = (
             "1-bit-bridge PR #1098; later reproduction identified input-driven OOM."
         ),
     ),
+)
+
+
+PUBLIC_INCIDENT_REPLAY_FIXTURES_V2 = PUBLIC_INCIDENT_REPLAY_FIXTURES_V1 + (
     PublicIncidentReplayFixture(
         case_id="alunduil-chezmoi-curl-reset-2026-07-27",
         log_excerpt=(
@@ -282,12 +286,8 @@ PUBLIC_INCIDENT_REPLAY_FIXTURES_V1 = (
             ],
         },
         head_sha="ab98eda5d81444d0e64ae6eddb1ebf43a26c3e06",
-    )
-
+    ),
 )
-
-
-PUBLIC_INCIDENT_REPLAY_FIXTURES_V2 = PUBLIC_INCIDENT_REPLAY_FIXTURES_V1
 
 
 def _incident_index() -> dict[str, PublicIncident]:
