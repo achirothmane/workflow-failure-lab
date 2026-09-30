@@ -94,6 +94,28 @@ def test_geophires_526_runner_shutdown_is_not_sufficient_for_auto_rerun():
     assert "high-confidence transient" in reason
 
 
+def test_runner_shutdown_exit_143_alone_is_not_high_confidence():
+    result = classify_log(
+        "2026-09-25T15:46:07.2362061Z ##[error]The runner has received a shutdown signal. "
+        "This can happen when the runner service is stopped, or a manually started runner is canceled.\n"
+        "2026-09-25T15:46:07.2364052Z ##[error]Process completed with exit code 143.\n"
+    )
+
+    assert result.category == "RUNNER_INFRA"
+    assert result.confidence != "high"
+
+
+def test_independent_runner_failure_can_still_raise_shutdown_to_high_confidence():
+    result = classify_log(
+        "2026-09-25T15:46:06.9000000Z ##[error]Lost communication with the server.\n"
+        "2026-09-25T15:46:07.2362061Z ##[error]The runner has received a shutdown signal.\n"
+        "2026-09-25T15:46:07.2364052Z ##[error]Process completed with exit code 143.\n"
+    )
+
+    assert result.category == "RUNNER_INFRA"
+    assert result.confidence == "high"
+
+
 def test_single_read_tcp_connection_reset_is_high_confidence():
     result = classify_log(
         "read tcp 10.1.1.37:36338->13.226.53.57:443: read: connection reset by peer\n"
