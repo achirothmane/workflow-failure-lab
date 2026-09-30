@@ -38,15 +38,21 @@ failure category != root cause != execution authority
 
 ### V4
 
-V4 does not add an anecdote. It adds a new admissible evidence source.
+V4 adds a new admissible evidence source rather than a new anecdote.
 
-The PRQL hosted-runner-loss incident remains the same ground-truth event, but GitHub's
-surviving check annotation is now consumed through an authenticated, exactly bound
-Checks path. That changes only this case from V3 `BLOCK` to V4 `ALLOW`.
+For the PRQL hosted-runner-loss incident, GitHub's surviving check annotation can now be
+consumed through an authenticated, exactly bound Checks path. That improves the incident
+from unavailable provenance to confirmed runner-loss provenance.
 
-The versioning is deliberate: V3 proves the system failed closed before the evidence
-source existed; V4 proves the new source closes that gap without changing the other
-eight decisions.
+The expected production decision remains `BLOCK`, because the failed job independently
+crosses the existing release-shaped side-effect boundary.
+
+The versioning therefore proves both properties at once:
+
+```text
+missing provenance can become confirmed
+and authority can still remain denied
+```
 
 ## Admission rule
 
@@ -60,5 +66,5 @@ Execution provenance may currently be established by either:
 2. the authenticated runner-loss annotation fallback, exactly bound to the GitHub
    Actions check run for the failed job/head.
 
-Expected `BLOCK` controls include unsafe causes, insufficient authority evidence, and
-observed immediate recurrence.
+Expected `BLOCK` controls include unsafe causes, insufficient authority evidence,
+independent side-effect boundaries, and observed immediate recurrence.
