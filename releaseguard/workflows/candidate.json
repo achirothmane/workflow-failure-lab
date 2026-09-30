@@ -1,0 +1,105 @@
+{
+  "id": "rg-candidate",
+  "name": "ReleaseGuard — candidate lead enrichment",
+  "nodes": [
+    {
+      "id": "rg-candidate-hook",
+      "name": "Incoming request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "releaseguard-candidate",
+        "responseMode": "responseNode",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "position": [
+        0,
+        100
+      ],
+      "webhookId": "rg-candidate-hook"
+    },
+    {
+      "id": "rg-candidate-logic",
+      "name": "Enrich lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "jsCode": "const input = $json.body || {};\nconst seq = Number(input.sequence || 0);\nconst fault = input.faultCandidate || 'none';\nif (fault === 'error' || (fault === 'partial' && seq % 4 === 0)) throw new Error('Intentional demo regression');\nif (fault === 'latency') await new Promise(resolve => setTimeout(resolve, 350));\nconst score = Math.min(100,Math.max(0,Number(input.score || 65)));\nconst result = {leadId: String(input.leadId || 'demo'),score,priority: score >= 70 ? 'HIGH' : 'NORMAL',engine:'candidate'};\nif (fault === 'invalid') result.score = 'invalid-score';\nreturn [{json:{releaseguardVersion:'candidate-v1',result}}];"
+      },
+      "position": [
+        320,
+        100
+      ]
+    },
+    {
+      "id": "rg-candidate-response",
+      "name": "Return response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": "200"
+        }
+      },
+      "position": [
+        660,
+        100
+      ]
+    },
+    {
+      "id": "rg-candidate-note",
+      "name": "Read me",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "parameters": {
+        "content": "## CANDIDATE — frozen read-only workflow\nThis demo prepares lead data and creates no external writes. Replace the transformation with your read-only enrichment/classification. Keep the response envelope and output contract.\nConfigure Header Auth: x-releaseguard-upstream = UPSTREAM_TOKEN. Publish this workflow.\nDemo fault fields are intentional test controls; remove them from your real workflow. Keep stable-v1 / candidate-v1 fixed during this release. Clone a new workflow for the next candidate.",
+        "height": 300,
+        "width": 800
+      },
+      "position": [
+        -40,
+        -280
+      ]
+    }
+  ],
+  "connections": {
+    "Incoming request": {
+      "main": [
+        [
+          {
+            "node": "Enrich lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enrich lead": {
+      "main": [
+        [
+          {
+            "node": "Return response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all",
+    "executionTimeout": 30
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

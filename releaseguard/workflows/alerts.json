@@ -1,0 +1,105 @@
+{
+  "id": "rg-alerts",
+  "name": "ReleaseGuard — operational decision alerts",
+  "nodes": [
+    {
+      "id": "rg-alert-hook",
+      "name": "Receive decision alert",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "releaseguard-alerts",
+        "responseMode": "responseNode",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "position": [
+        0,
+        100
+      ],
+      "webhookId": "rg-alert-hook"
+    },
+    {
+      "id": "rg-alert-format",
+      "name": "Format operational alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "jsCode": "const a = $json.body || {};\nif (!a.releaseId || !a.eventId || !['HOLD','ROLLBACK'].includes(a.decision)) throw new Error('Invalid alert envelope');\nreturn [{json:{eventId:a.eventId,severity:a.decision === 'ROLLBACK' ? 'critical' : 'warning',\n summary:a.decision + ' | ' + a.releaseId + ' | ' + a.reason,\n candidateAdmission:a.routingConfirmed,revision:a.after && a.after.revision,\n evidenceHash:a.hash,metrics:a.evidence || {},nextAction:a.decision === 'ROLLBACK' ?\n 'Inspect Candidate. Traffic is Stable-only only when routingConfirmed says STABLE_ONLY.' :\n 'Read the reason. Evidence holds collect samples; safety holds stop Candidate.'}}];"
+      },
+      "position": [
+        320,
+        100
+      ]
+    },
+    {
+      "id": "rg-alert-response",
+      "name": "Return response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": "200"
+        }
+      },
+      "position": [
+        660,
+        100
+      ]
+    },
+    {
+      "id": "rg-alert-note",
+      "name": "Read me",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "parameters": {
+        "content": "## Clear alerts with retryable delivery\nConfigure Header Auth: x-releaseguard-alert = ALERT_TOKEN. The controller uses a transactional outbox, retries failures, and sends eventId for deduplication.\nThis receiver demonstrates validated alert formatting. Add your Slack/Teams/email node after Format operational alert and before Return response. Deduplicate eventId at your sink. ReleaseGuard considers a 2xx response accepted by this receiver, not read by a person.\nCI uses only this local receiver; no messages are sent to external people.",
+        "height": 300,
+        "width": 800
+      },
+      "position": [
+        -40,
+        -280
+      ]
+    }
+  ],
+  "connections": {
+    "Receive decision alert": {
+      "main": [
+        [
+          {
+            "node": "Format operational alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format operational alert": {
+      "main": [
+        [
+          {
+            "node": "Return response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all",
+    "executionTimeout": 30
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

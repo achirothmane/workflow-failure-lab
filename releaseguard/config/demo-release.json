@@ -1,0 +1,50 @@
+{
+  "id": "demo",
+  "config": {
+    "stable": {
+      "url": "http://n8n:5678/webhook/releaseguard-stable",
+      "version": "stable-v1"
+    },
+    "candidate": {
+      "url": "http://n8n:5678/webhook/releaseguard-candidate",
+      "version": "candidate-v1"
+    },
+    "fallbackMode": "read_only",
+    "outputSchema": {
+      "type": "object",
+      "required": [
+        "leadId",
+        "score",
+        "priority",
+        "engine"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "leadId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "priority": {
+          "type": "string",
+          "enum": [
+            "HIGH",
+            "NORMAL"
+          ]
+        },
+        "engine": {
+          "type": "string",
+          "enum": [
+            "stable",
+            "candidate"
+          ]
+        }
+      }
+    },
+    "policy": {}
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "releaseguard-n8n",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Measured canary releases for synchronous n8n workflows",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/server.mjs",
+    "test": "node --test test/*.test.mjs",
+    "test:integration": "node --test test/integration/*.test.mjs",
+    "test:n8n": "node scripts/n8n-e2e.mjs",
+    "check": "node scripts/check-workflows.mjs"
+  },
+  "dependencies": {
+    "ajv": "8.17.1",
+    "pg": "8.16.3"
+  },
+  "license": "MIT"
+}

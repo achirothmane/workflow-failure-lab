@@ -1,0 +1,178 @@
+{
+  "id": "rg-gateway",
+  "name": "ReleaseGuard — safely canary lead enrichment",
+  "nodes": [
+    {
+      "id": "rg-gateway-hook",
+      "name": "Receive lead",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "releaseguard",
+        "responseMode": "responseNode",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "position": [
+        0,
+        100
+      ],
+      "webhookId": "rg-gateway-hook"
+    },
+    {
+      "id": "rg-normalize",
+      "name": "Validate and identify request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "jsCode": "const body = $json.body || {};\nconst headers = $json.headers || {};\nif (typeof body !== 'object' || Array.isArray(body) || !body.leadId) throw new Error('leadId is required');\nconst requestId = headers['x-request-id'] || ('n8n-' + $execution.id);\nif (!/^[A-Za-z0-9._-]{1,120}$/.test(requestId)) throw new Error('Invalid x-request-id');\nreturn [{json:{payload:body,requestId,releaseId:'demo',guardBase:'http://releaseguard:8080'}}];"
+      },
+      "position": [
+        280,
+        100
+      ]
+    },
+    {
+      "id": "rg-dispatch",
+      "name": "Execute guarded release",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.guardBase + '/v1/execute/' + $json.releaseId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-request-id",
+              "value": "={{ $json.requestId }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.payload }}",
+        "options": {
+          "timeout": 25000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "position": [
+        570,
+        100
+      ]
+    },
+    {
+      "id": "rg-audit",
+      "name": "Expose serving evidence",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "jsCode": "const body = $json.body || {error:'GUARD_RESPONSE_MISSING'};\nreturn [{json:{status:$json.statusCode || 503,body}}];"
+      },
+      "position": [
+        870,
+        100
+      ]
+    },
+    {
+      "id": "rg-gateway-response",
+      "name": "Return guarded result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.body }}",
+        "options": {
+          "responseCode": "={{ $json.status }}"
+        }
+      },
+      "position": [
+        1150,
+        100
+      ]
+    },
+    {
+      "id": "rg-gateway-note",
+      "name": "Read me",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "parameters": {
+        "content": "## ReleaseGuard ingress\nSetup: Header Auth on Receive lead uses x-releaseguard-client. Execute guarded release uses Authorization: Bearer DATA_TOKEN. Set guardBase and releaseId in Validate and identify request.\nStable/Candidate must remain read-only. Perform CRM writes only after this ingress returns a validated result. The client should reuse x-request-id when retrying the same payload.\nThe sidecar is required: it owns the atomic rollout state, measures actual upstream responses, validates outputs, fences stale admissions, and persists decisions. Never bypass this endpoint for guarded traffic.",
+        "height": 300,
+        "width": 800
+      },
+      "position": [
+        -20,
+        -280
+      ]
+    }
+  ],
+  "connections": {
+    "Receive lead": {
+      "main": [
+        [
+          {
+            "node": "Validate and identify request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate and identify request": {
+      "main": [
+        [
+          {
+            "node": "Execute guarded release",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute guarded release": {
+      "main": [
+        [
+          {
+            "node": "Expose serving evidence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Expose serving evidence": {
+      "main": [
+        [
+          {
+            "node": "Return guarded result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all",
+    "executionTimeout": 30
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

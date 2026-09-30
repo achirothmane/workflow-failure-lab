@@ -1,0 +1,44 @@
+services:
+  postgres:
+    image: postgres:16-bookworm
+    environment:
+      POSTGRES_USER: releaseguard
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?configure .env}
+      POSTGRES_DB: releaseguard
+    volumes:
+      - rg-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U releaseguard"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  releaseguard:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://releaseguard:${POSTGRES_PASSWORD}@postgres:5432/releaseguard
+      ADMIN_TOKEN: ${ADMIN_TOKEN:?configure .env}
+      DATA_TOKEN: ${DATA_TOKEN:?configure .env}
+      RESPONSE_KEY_HEX: ${RESPONSE_KEY_HEX:?configure .env}
+      UPSTREAM_TOKEN: ${UPSTREAM_TOKEN:?configure .env}
+      ALLOWED_UPSTREAM_ORIGIN: http://n8n:5678
+      ALERT_URL: http://n8n:5678/webhook/releaseguard-alerts
+      ALERT_TOKEN: ${ALERT_TOKEN:?configure .env}
+    ports: ["127.0.0.1:8080:8080"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:2.41.4
+    ports: ["127.0.0.1:5678:5678"]
+    environment:
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?configure .env}
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+      N8N_SECURE_COOKIE: "false"
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+    volumes: ["rg-n8n:/home/node/.n8n"]
+    restart: unless-stopped
+volumes:
+  rg-db:
+  rg-n8n:
