@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from ci_retry_gate import assess_job
 from evidence_gate import build_ci_retry_decision
 from evidence_producer import produce_ci_evidence_bundle
-from public_incident_corpus import PUBLIC_INCIDENT_CORPUS_V1, PublicIncident
+from public_incident_corpus import PUBLIC_INCIDENT_CORPUS_V2, PublicIncident
 
 
 EXPECTED_ALLOW = "ALLOW"
@@ -21,6 +21,8 @@ class PublicIncidentReplayFixture:
     failed_step_name: str
     expected_decision: str
     fixture_basis: str
+    source_job: dict | None = None
+    head_sha: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,14 +142,162 @@ PUBLIC_INCIDENT_REPLAY_FIXTURES_V1 = (
             "1-bit-bridge PR #1098; later reproduction identified input-driven OOM."
         ),
     ),
+    PublicIncidentReplayFixture(
+        case_id="alunduil-chezmoi-curl-reset-2026-07-27",
+        log_excerpt=(
+            "2026-07-27T05:48:24.4625815Z curl: (35) Recv failure: Connection reset by peer\n"
+            "2026-07-27T05:48:24.4664017Z ##[error]Process completed with exit code 35.\n"
+        ),
+        job_name="Run pre-commit hooks",
+        failed_step_name="Install lychee",
+        expected_decision=EXPECTED_ALLOW,
+        fixture_basis=(
+            "GitHub run 30240791215 attempt 1 failed during the lychee download; "
+            "attempt 2 reran the same job successfully on the same workflow run."
+        ),
+        source_job={
+            "id": 89897364311,
+            "name": "Run pre-commit hooks",
+            "conclusion": "failure",
+            "started_at": "2026-07-27T05:48:19Z",
+            "completed_at": "2026-07-27T05:48:26Z",
+            "steps": [
+                {"name": "Set up job", "conclusion": "success"},
+                {"name": "Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803", "conclusion": "success"},
+                {"name": "Run actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1", "conclusion": "success"},
+                {
+                    "name": "Install lychee",
+                    "conclusion": "failure",
+                    "started_at": "2026-07-27T05:48:24Z",
+                    "completed_at": "2026-07-27T05:48:24Z",
+                },
+                {"name": "Run pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd", "conclusion": "skipped"},
+                {"name": "Post Run actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1", "conclusion": "skipped"},
+                {"name": "Post Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803", "conclusion": "success"},
+                {"name": "Complete job", "conclusion": "success"},
+            ],
+        },
+        head_sha="b39e831f09dc65b59d7c81a1b55daa54ddb2af37",
+    ),
+    PublicIncidentReplayFixture(
+        case_id="uzi-curl-reset-2026-09-05",
+        log_excerpt=(
+            "2026-09-05T18:48:22.9603575Z [lint:controller] curl: (35) "
+            "Recv failure: Connection reset by peer\n"
+            "2026-09-05T18:48:22.9640664Z ##[error]exit status 2\n"
+            "2026-09-05T18:48:22.9659229Z ##[error]Process completed with exit code 201.\n"
+        ),
+        job_name="lint-controller",
+        failed_step_name="lint + deadcode + vulncheck",
+        expected_decision=EXPECTED_ALLOW,
+        fixture_basis=(
+            "GitHub run 33985176395 attempt 1 failed on a curl connection reset; "
+            "attempt 2 reran the same job successfully on the same SHA."
+        ),
+        source_job={
+            "id": 101357253123,
+            "name": "lint-controller",
+            "conclusion": "failure",
+            "started_at": "2026-09-05T18:48:04Z",
+            "completed_at": "2026-09-05T18:48:25Z",
+            "steps": [
+                {"name": "Set up job", "conclusion": "success"},
+                {"name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1", "conclusion": "success"},
+                {"name": "Run actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e", "conclusion": "success"},
+                {"name": "Run ./.github/actions/setup-task", "conclusion": "success"},
+                {"name": "go mod download", "conclusion": "success"},
+                {"name": "Fetch origin/main for the ratchet", "conclusion": "success"},
+                {
+                    "name": "lint + deadcode + vulncheck",
+                    "conclusion": "failure",
+                    "started_at": "2026-09-05T18:48:22Z",
+                    "completed_at": "2026-09-05T18:48:22Z",
+                },
+                {"name": "Post Run actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e", "conclusion": "skipped"},
+                {"name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1", "conclusion": "success"},
+                {"name": "Complete job", "conclusion": "success"},
+            ],
+        },
+        head_sha="65a181eef66cfa27e611c2504b78beae0c8d4efe",
+    ),
+    PublicIncidentReplayFixture(
+        case_id="docker-compose-registry-502-2026-09-16",
+        log_excerpt=(
+            "2026-09-16T22:05:31.0016382Z #7 ERROR: unexpected status from HEAD request "
+            "to https://registry-1.docker.io/v2/docker/buildkit-syft-scanner/manifests/1.11.0: "
+            "502 Bad Gateway\n"
+            "2026-09-16T22:05:31.3692870Z ERROR: failed to solve: unexpected status from "
+            "HEAD request to https://registry-1.docker.io/v2/docker/buildkit-syft-scanner/"
+            "manifests/1.11.0: 502 Bad Gateway\n"
+            "2026-09-16T22:05:31.4659302Z ##[error]buildx bake failed with: ERROR: "
+            "failed to solve: unexpected status from HEAD request to "
+            "https://registry-1.docker.io/v2/docker/buildkit-syft-scanner/manifests/1.11.0: "
+            "502 Bad Gateway\n"
+        ),
+        job_name="relay-image-test / build (0, linux/amd64, ubuntu-24.04)",
+        failed_step_name="Build",
+        expected_decision=EXPECTED_ALLOW,
+        fixture_basis=(
+            "GitHub run 35155815118 attempt 1 failed on repeated Docker Hub 502 responses; "
+            "attempt 2 reran the same build job successfully."
+        ),
+        source_job={
+            "id": 104994979798,
+            "name": "relay-image-test / build (0, linux/amd64, ubuntu-24.04)",
+            "conclusion": "failure",
+            "started_at": "2026-09-16T22:05:09Z",
+            "completed_at": "2026-09-16T22:05:34Z",
+            "steps": [
+                {"name": "Set up job", "conclusion": "success"},
+                {"name": "Require GitHub-hosted Linux runner", "conclusion": "success"},
+                {"name": "Install dependencies", "conclusion": "success"},
+                {"name": "Docker meta", "conclusion": "success"},
+                {"name": "Set up QEMU", "conclusion": "skipped"},
+                {"name": "Set GitHub runtime outputs", "conclusion": "success"},
+                {"name": "Set up Docker Buildx", "conclusion": "success"},
+                {"name": "Install Cosign", "conclusion": "success"},
+                {"name": "Prepare", "conclusion": "success"},
+                {"name": "Configure AWS credentials", "conclusion": "skipped"},
+                {"name": "Login to Amazon ECR", "conclusion": "skipped"},
+                {"name": "Authenticate to Google Cloud", "conclusion": "skipped"},
+                {"name": "Login to Google Artifact Registry", "conclusion": "skipped"},
+                {"name": "Login to Docker Hub with OIDC", "conclusion": "skipped"},
+                {"name": "Login to registry", "conclusion": "skipped"},
+                {
+                    "name": "Build",
+                    "conclusion": "failure",
+                    "started_at": "2026-09-16T22:05:28Z",
+                    "completed_at": "2026-09-16T22:05:31Z",
+                },
+                {"name": "Get image digest", "conclusion": "skipped"},
+                {"name": "Login to registry for signing", "conclusion": "skipped"},
+                {"name": "Signing attestation manifests", "conclusion": "skipped"},
+                {"name": "Signing local artifacts", "conclusion": "skipped"},
+                {"name": "List local output", "conclusion": "skipped"},
+                {"name": "Upload artifact", "conclusion": "skipped"},
+                {"name": "Set result output", "conclusion": "skipped"},
+                {"name": "Post Build", "conclusion": "success"},
+                {"name": "Post Set up Docker Buildx", "conclusion": "success"},
+                {"name": "Complete job", "conclusion": "success"},
+            ],
+        },
+        head_sha="ab98eda5d81444d0e64ae6eddb1ebf43a26c3e06",
+    )
+
 )
 
 
+PUBLIC_INCIDENT_REPLAY_FIXTURES_V2 = PUBLIC_INCIDENT_REPLAY_FIXTURES_V1
+
+
 def _incident_index() -> dict[str, PublicIncident]:
-    return {incident.case_id: incident for incident in PUBLIC_INCIDENT_CORPUS_V1}
+    return {incident.case_id: incident for incident in PUBLIC_INCIDENT_CORPUS_V2}
 
 
 def _replay_job(fixture: PublicIncidentReplayFixture, ordinal: int) -> dict:
+    if fixture.source_job is not None:
+        return fixture.source_job
+
     # The job shell is deterministic replay scaffolding, not claimed upstream
     # metadata. Source-backed information is kept in the fixture log/basis.
     start_minute = 10 + ordinal
@@ -181,11 +331,11 @@ def replay_public_incident(
 
     job = _replay_job(fixture, ordinal)
     assessment = assess_job(job, fixture.log_excerpt)
-    run_id = 800_000 + ordinal
+    run_id = incident.ground_truth_run_id or (800_000 + ordinal)
     bundle = produce_ci_evidence_bundle(
         repo=incident.repository,
         run={
-            "head_sha": f"public-incident-replay-{ordinal}",
+            "head_sha": fixture.head_sha or f"public-incident-replay-{ordinal}",
             "workflow_id": 700_000 + ordinal,
             "updated_at": "2026-09-30T00:00:00Z",
         },
@@ -212,9 +362,9 @@ def replay_public_incident(
 def run_public_incident_replay() -> PublicIncidentReplaySummary:
     results = tuple(
         replay_public_incident(fixture, ordinal=index)
-        for index, fixture in enumerate(PUBLIC_INCIDENT_REPLAY_FIXTURES_V1, start=1)
+        for index, fixture in enumerate(PUBLIC_INCIDENT_REPLAY_FIXTURES_V2, start=1)
     )
-    corpus_ids = {incident.case_id for incident in PUBLIC_INCIDENT_CORPUS_V1}
+    corpus_ids = {incident.case_id for incident in PUBLIC_INCIDENT_CORPUS_V2}
     replay_ids = {result.case_id for result in results}
     missing = tuple(sorted(corpus_ids - replay_ids))
     return PublicIncidentReplaySummary(
@@ -226,7 +376,7 @@ def run_public_incident_replay() -> PublicIncidentReplaySummary:
 
 def render_public_incident_replay(summary: PublicIncidentReplaySummary) -> str:
     lines = [
-        "Public Incident Replay Gate v1",
+        "Public Incident Replay Gate v2",
         f"cases: {summary.replayed_cases}/{summary.corpus_size}",
         f"coverage: {summary.coverage:.0%}",
         f"false ALLOW: {summary.false_allows}",
