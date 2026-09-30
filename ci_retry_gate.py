@@ -1357,7 +1357,8 @@ def assess_failed_jobs(api: "GitHubAPI", repo: str, failed_jobs: Iterable[dict])
             error_text = redact(str(exc))
             annotation_note = "Authenticated check annotation fallback was not available."
             check_run_id = _check_run_id_from_job(job)
-            if api.token and check_run_id is not None:
+            api_token = str(getattr(api, "token", "") or "")
+            if api_token and check_run_id is not None:
                 try:
                     check_run = api.get_check_run(repo, check_run_id)
                     annotations = api.get_check_run_annotations(repo, check_run_id)
@@ -1384,7 +1385,7 @@ def assess_failed_jobs(api: "GitHubAPI", repo: str, failed_jobs: Iterable[dict])
                         "Authenticated check annotations contained no eligible "
                         "job-bound runner-loss signal."
                     )
-            elif not api.token:
+            elif not api_token:
                 annotation_note = (
                     "Authenticated check annotation fallback requires a GitHub token."
                 )
