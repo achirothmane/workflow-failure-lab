@@ -76,6 +76,19 @@ _RUNNER_TIMESTAMP_CAPTURE_RE = re.compile(
     r"^(?P<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)\s+"
 )
 
+
+# This path is used only when the ordinary job-log evidence is unavailable.
+# Keep the accepted message narrow: GitHub Actions emits this annotation when
+# the job's runner stops communicating with the service. The annotation is not
+# treated as root-cause proof; it is an exact job/check-run-bound transient
+# signal and still remains subject to side-effect and attempt gates.
+_RUNNER_LOSS_CHECK_ANNOTATION_RE = re.compile(
+    r"^The (?:hosted|self-hosted) runner"
+    r"(?:\s*:\s*[^\r\n.]{1,160})?"
+    r" lost communication with the server\.",
+    re.IGNORECASE,
+)
+
 _NON_CAUSAL_LOG_PATTERNS = tuple(
     re.compile(pattern, re.IGNORECASE)
     for pattern in [
@@ -587,6 +600,130 @@ def assess_execution_provenance(
     )
 
 
+def _check_run_id_from_job(job: dict) -> int | None:
+    raw_url = str(job.get("check_run_url") or "").strip()
+    if not raw_url:
+        return None
+    try:
+        path = urlparse(raw_url).path
+    except ValueError:
+        return None
+    match = re.search(r"/repos/[^/]+/[^/]+/check-runs/(?P<id>\d+)$", path)
+    if not match:
+        return None
+    try:
+        return int(match.group("id"))
+    except ValueError:
+        return None
+
+
+def assess_authenticated_runner_annotations(
+    job: dict,
+    check_run: dict,
+    annotations: Iterable[dict],
+) -> JobAssessment | None:
+    """Build retry evidence from a GitHub Actions check annotation.
+
+    This is deliberately a fallback for missing job logs, not a parallel source
+    that can override ordinary step-bound log evidence. Authorization requires
+    an exact binding between the workflow job and the GitHub Actions check run:
+    check-run id, job name, head SHA, conclusion, and app identity.
+    """
+    job_id = int(job.get("id") or 0)
+    check_run_id = _check_run_id_from_job(job)
+    if job_id <= 0 or check_run_id is None:
+        return None
+
+    try:
+        observed_check_id = int(check_run.get("id") or 0)
+    except (TypeError, ValueError):
+        return None
+    if observed_check_id != check_run_id:
+        return None
+
+    job_name = str(job.get("name") or "")
+    if not job_name or str(check_run.get("name") or "") != job_name:
+        return None
+
+    job_head_sha = str(job.get("head_sha") or "").strip()
+    check_head_sha = str(check_run.get("head_sha") or "").strip()
+    if not job_head_sha or not check_head_sha or check_head_sha != job_head_sha:
+        return None
+
+    job_conclusion = str(job.get("conclusion") or "").lower()
+    check_conclusion = str(check_run.get("conclusion") or "").lower()
+    if (
+        job_conclusion not in FAILURE_CONCLUSIONS
+        or check_conclusion != job_conclusion
+        or str(check_run.get("status") or "").lower() != "completed"
+    ):
+        return None
+
+    app = check_run.get("app")
+    if not isinstance(app, dict) or str(app.get("slug") or "").lower() != "github-actions":
+        return None
+
+    messages: list[str] = []
+    fields_redacted: set[str] = set()
+    for annotation in annotations:
+        if not isinstance(annotation, dict):
+            continue
+        if str(annotation.get("annotation_level") or "").lower() != "failure":
+            continue
+        raw_message = str(annotation.get("message") or "").strip()
+        if not _RUNNER_LOSS_CHECK_ANNOTATION_RE.search(raw_message):
+            continue
+        redacted_message, matched_fields = redact_with_provenance(raw_message)
+        fields_redacted.update(matched_fields)
+        cleaned = _useful_line(redacted_message)
+        if cleaned and cleaned not in messages:
+            messages.append(cleaned)
+
+    if not messages:
+        return None
+
+    classification = classify_log("\n".join(messages))
+    if (
+        classification.category != "RUNNER_INFRA"
+        or classification.confidence != "high"
+    ):
+        return None
+
+    failure_step = assess_failure_step_provenance(job)
+    side_effect_risk, side_effect_evidence = detect_side_effect_risk(job)
+    proof = (
+        "source: authenticated GitHub Checks annotation",
+        f"check_run_id: {check_run_id}",
+        "check app: github-actions",
+        f"head_sha matched: {job_head_sha}",
+        f"signal: {messages[0]}",
+    )
+    return JobAssessment(
+        job_id=job_id,
+        name=job_name,
+        category=classification.category,
+        confidence=classification.confidence,
+        evidence=classification.evidence,
+        provenance_status=PROVENANCE_CONFIRMED,
+        provenance_step="",
+        provenance_command="",
+        provenance_evidence=proof,
+        failure_step_status=failure_step.status,
+        failure_step=failure_step.step_name,
+        failure_step_evidence=failure_step.evidence,
+        side_effect_risk=side_effect_risk,
+        side_effect_evidence=side_effect_evidence,
+        duration_minutes=job_duration_minutes(job),
+        masking_fields_redacted=tuple(
+            sorted(
+                fields_redacted
+                | set(classification.fields_redacted)
+                | set(_metadata_redacted_fields(job))
+            )
+        ),
+    )
+
+
 def assess_job(job: dict, log_text: str) -> JobAssessment:
     classification = classify_log(log_text)
     provenance = assess_execution_provenance(job, log_text, classification)
@@ -1035,6 +1172,37 @@ class GitHubAPI:
         )
         return list(data.get("jobs") or [])
 
+    def get_check_run(self, repo: str, check_run_id: int) -> dict:
+        data = self.request("GET", f"/repos/{repo}/check-runs/{check_run_id}")
+        if not isinstance(data, dict):
+            raise RuntimeError("GitHub Checks API returned a non-object check run")
+        return data
+
+    def get_check_run_annotations(
+        self,
+        repo: str,
+        check_run_id: int,
+        *,
+        max_pages: int = 5,
+    ) -> list[dict]:
+        annotations: list[dict] = []
+        for page in range(1, max_pages + 1):
+            data = self.request(
+                "GET",
+                f"/repos/{repo}/check-runs/{check_run_id}/annotations"
+                f"?per_page=100&page={page}",
+            )
+            if not isinstance(data, list):
+                raise RuntimeError(
+                    "GitHub Checks API returned a non-array annotation response"
+                )
+            annotations.extend(item for item in data if isinstance(item, dict))
+            if len(data) < 100:
+                return annotations
+        raise RuntimeError(
+            "GitHub Checks annotation pagination budget exhausted before completion"
+        )
+
     def get_job_logs(self, repo: str, job_id: int) -> str:
         # Job logs are a text/archive response (and may redirect to GitHub's blob
         # storage), not a JSON resource. Reading them through request() can
@@ -1182,11 +1350,53 @@ def assess_failed_jobs(api: "GitHubAPI", repo: str, failed_jobs: Iterable[dict])
         try:
             logs = api.get_job_logs(repo, job_id)
         except RuntimeError as exc:
+            # A runner can die before its log blob is finalized. In that narrow
+            # case GitHub may still retain a failure annotation on the Actions
+            # check run. Use it only through an authenticated token and only
+            # when the check run is exactly bound to this job/head.
+            error_text = redact(str(exc))
+            annotation_note = "Authenticated check annotation fallback was not available."
+            check_run_id = _check_run_id_from_job(job)
+            if api.token and check_run_id is not None:
+                try:
+                    check_run = api.get_check_run(repo, check_run_id)
+                    annotations = api.get_check_run_annotations(repo, check_run_id)
+                except RuntimeError as annotation_exc:
+                    annotation_note = (
+                        "Authenticated check annotation acquisition failed: "
+                        f"{redact(str(annotation_exc))}"
+                    )
+                else:
+                    annotation_assessment = assess_authenticated_runner_annotations(
+                        job,
+                        check_run,
+                        annotations,
+                    )
+                    if annotation_assessment is not None:
+                        if _bool_env("CI_RETRY_GATE_LOG_DIAGNOSTICS", False):
+                            print(
+                                "::notice::using authenticated check annotation fallback "
+                                f"job_id={job_id} check_run_id={check_run_id}"
+                            )
+                        assessments.append(annotation_assessment)
+                        continue
+                    annotation_note = (
+                        "Authenticated check annotations contained no eligible "
+                        "job-bound runner-loss signal."
+                    )
+            elif not api.token:
+                annotation_note = (
+                    "Authenticated check annotation fallback requires a GitHub token."
+                )
+            elif check_run_id is None:
+                annotation_note = (
+                    "Workflow job metadata did not contain a valid check_run_url."
+                )
+
             # Evidence acquisition failure is not an ordinary UNKNOWN
             # classification. Keep it explicit so downstream authorization can
             # distinguish "log inspected, no signature found" from "the log
             # could not be inspected at all".
-            error_text = redact(str(exc))
             if _bool_env("CI_RETRY_GATE_LOG_DIAGNOSTICS", False):
                 print(
                     "::warning::job-log acquisition failed "
@@ -1200,11 +1410,14 @@ def assess_failed_jobs(api: "GitHubAPI", repo: str, failed_jobs: Iterable[dict])
                     name=str(job.get("name") or f"job-{job_id}"),
                     category="EVIDENCE_UNAVAILABLE",
                     confidence="none",
-                    evidence=(f"Job log acquisition failed: {error_text}",),
+                    evidence=(
+                        f"Job log acquisition failed: {error_text}",
+                        annotation_note,
+                    ),
                     provenance_status=PROVENANCE_UNAVAILABLE,
                     provenance_step="",
                     provenance_command="",
-                    provenance_evidence=("Execution log was unavailable.",),
+                    provenance_evidence=("Execution evidence was unavailable.",),
                     failure_step_status=failure_step.status,
                     failure_step=failure_step.step_name,
                     failure_step_evidence=failure_step.evidence,

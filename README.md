@@ -135,6 +135,7 @@ on:
 
 permissions:
   actions: read
+  checks: read
 
 jobs:
   retry-gate:
@@ -159,7 +160,7 @@ If the zero-install proof was useful and you want to reproduce the analysis from
 3. Paste the numeric run ID from any failed GitHub Actions run in the same repository. If that run was rerun and you want to inspect an earlier attempt, also enter its attempt number.
 4. Open the completed trial and read the job summary.
 
-The trial is intentionally read-only: it grants only `actions: read` and `contents: read`, disables both rerun modes, and keeps PR comments off. A specific `run-attempt` can be selected for rerun-heavy cases; historical-attempt mode cannot trigger a rerun. The summary shows the authorization decision, evidence status, whether the failure qualified for rerun, failed jobs assessed, observed failed-job runtime, and a next action.
+The trial is intentionally read-only: it grants `actions: read`, `checks: read`, and `contents: read`, disables both rerun modes, and keeps PR comments off. `checks: read` lets the gate recover GitHub's runner-loss annotation when a dead runner never uploaded its job log; missing Checks access still fails closed. A specific `run-attempt` can be selected for rerun-heavy cases; historical-attempt mode cannot trigger a rerun. The summary shows the authorization decision, evidence status, whether the failure qualified for rerun, failed jobs assessed, observed failed-job runtime, and a next action.
 
 A useful first activation is simple: **within 15 minutes, the user can point the gate at a real past failure and decide whether the evidence changed or shortened the investigation.**
 
@@ -220,6 +221,8 @@ The action classifies failed jobs into:
 - `UNKNOWN`
 
 A high-confidence transient classification is still **not enough** by itself to authorize a rerun. Production rerun authority also requires confirmed execution provenance, no side-effect boundary, and remaining retry attempts.
+
+When a runner disappears before GitHub finalizes its log blob, CI Retry Gate can use one narrow fallback: a failure annotation from the exact GitHub Actions check run. The fallback requires `checks: read` and exact check-run/job/head binding; annotation access failure or any binding mismatch remains `BLOCK`. See [Authenticated runner annotation evidence](docs/authenticated-runner-annotation-evidence.md).
 
 Example fail-closed outcome:
 
@@ -929,6 +932,7 @@ on:
 
 permissions:
   actions: read
+  checks: read
   contents: read
 
 jobs:
@@ -950,6 +954,7 @@ Selective safe rerun:
 ```yaml
 permissions:
   actions: write
+  checks: read
   contents: read
 
 jobs:

@@ -1,96 +1,94 @@
-# Public Incident Replay Gate v3
+# Public Incident Replay Gate v4
 
-The Public Incident Corpus is useful only if production decision logic is forced to
-survive real incidents in both directions and across more than one failure mechanism.
+V4 keeps the mechanism-diverse V3 corpus and closes one evidence-availability gap:
+GitHub can retain a failure annotation for a runner that disappeared even when the job log
+blob was never uploaded.
 
-The gate replays every admitted incident through the same production path used by
-CI Retry Gate:
-
-```text
-failure evidence + failed-job metadata
-        ↓
-assess_job
-        ↓
-EvidenceBundle
-        ↓
-build_ci_retry_decision
-        ↓
-ALLOW / BLOCK
-```
-
-## V3 contract
-
-V2 established a bidirectional baseline with three expected `ALLOW` and three expected
-`BLOCK` cases. V3 keeps those six and adds three mechanism-diverse controls.
-
-The required property remains:
+The production decision path is now:
 
 ```text
-known unsafe / insufficient-evidence incident => BLOCK
-known bounded transient incident              => ALLOW
+job log available
+    -> ordinary step-bound log provenance
+
+job log unavailable
+    -> authenticated GitHub Checks lookup
+    -> exact job/check-run/head/app binding
+    -> exact runner-loss failure annotation
+    -> EvidenceBundle
+    -> ALLOW / BLOCK
 ```
 
-A known root cause does not automatically create execution authority. Evidence must also
-be bound to the failed execution.
+The annotation path is a fallback. It does not compete with or override ordinary log
+evidence.
 
-## New V3 controls
+## Authorization boundary
 
-| Repository | Mechanism | Ground truth | Expected |
-|---|---|---|---|
-| alethialabs-io/alethialabs | `dial tcp ... network is unreachable` during Helm repository fetch | same job succeeded on attempt 2 | `ALLOW` |
-| PRQL/prql | GitHub hosted runner lost communication | attempt 2 succeeded, but failed job has no uploaded log blob / failed-step metadata | `BLOCK` |
-| HiromiShikata/npm-cli-github-issue-tower-defence-management | GitHub API rate-limit failure | same job/step failed again on attempt 2 | `BLOCK` |
+A check annotation can contribute retry authority only when all of the following hold:
 
-The PRQL case is deliberately important: retrospective diagnosis says runner loss, but
-the current production evidence path cannot bind the annotation to a failed step because
-the runner died before usable execution provenance was retained. V3 therefore preserves
-fail-closed behavior rather than treating later knowledge as authority.
+- the job log could not be acquired;
+- an authenticated GitHub token is present;
+- the workflow job contains a valid `check_run_url`;
+- the fetched check-run id equals that URL's id;
+- check-run name equals the workflow job name;
+- check-run head SHA equals the workflow job head SHA;
+- both job and check run are completed failures;
+- the check run belongs to the `github-actions` app;
+- the annotation level is `failure`;
+- the annotation begins with GitHub's runner-loss message;
+- the job does not cross a side-effect boundary;
+- the retry-attempt policy still permits another execution.
 
-The rate-limit case is the opposite warning: dependency-shaped failures are not
-automatically transient enough to rerun. Immediate recurrence on the same job identity is
-ground truth against blind retry promotion.
+A missing or unreadable Checks endpoint, binding mismatch, non-GitHub Actions check,
+warning-level annotation, or merely similar prose remains fail-closed.
 
-## Full V3 population
+## V4 public ground truth
 
-V3 contains nine public incidents across nine repositories:
+The PRQL control from V3 is intentionally versioned:
 
-- four positive transient controls;
-- five negative / insufficient-authority controls;
-- connection reset, external HTTP 5xx, network unreachable, runner shutdown ambiguity,
-  hosted-runner loss, workload resource pressure, and persistent rate-limit behavior.
+- V3: runner loss was known retrospectively, but missing decision-time provenance meant
+  expected `BLOCK`.
+- V4: the same incident is replayed with the surviving GitHub Actions check annotation
+  bound to the exact job/check/head, so it becomes expected `ALLOW`.
 
-## Metrics
+The other eight public incidents keep their prior decisions.
 
-The replay command reports:
+V4 therefore contains nine incidents across nine repositories:
 
-- corpus coverage;
-- false `ALLOW` count;
-- false `BLOCK` count;
-- evidence decisions that remain `UNKNOWN`;
-- production classification/confidence and provenance for every replayed case.
+- five expected `ALLOW`;
+- four expected `BLOCK`.
 
-Run locally:
+The corpus still requires:
+
+```text
+false ALLOW = 0
+false BLOCK = 0
+coverage = 100%
+```
+
+## Why the annotation is not treated as root-cause proof
+
+"The hosted runner lost communication" describes the control plane's observation. It does
+not prove whether the runner process died because of infrastructure, CPU/memory
+starvation, or network isolation.
+
+CI Retry Gate uses that exact signal only for the already-supported bounded
+`RUNNER_INFRA` retry class. It does not rewrite the retrospective cause family and does
+not weaken the side-effect or attempt gates.
+
+## Permission behavior
+
+Reading check-run annotations uses GitHub's Checks API. Consumers should grant
+`checks: read` in addition to `actions: read`. If that permission is absent, the
+fallback records evidence unavailability and blocks rather than silently degrading into
+an ALLOW.
+
+## Replay
+
+Run:
 
 ```bash
 python public_incident_replay.py --check
 ```
 
-The command exits non-zero on incomplete coverage or any authorization disagreement.
-
-## Evidence integrity
-
-- Positive controls use source-backed failed-job IDs and failed-step timing.
-- Successful reruns are ground truth; their success text is not injected into failure logs.
-- Retrospective diagnosis is never used to manufacture decision-time provenance.
-- A known transient mechanism may still be expected `BLOCK` when the evidence needed to
-  authorize execution is unavailable.
-- A repeated failure remains evidence against automatic rerun even when its broad category
-  looks transient.
-
-## Next engineering boundary
-
-The next useful capability is an authenticated **runner-annotation evidence path**. GitHub
-can retain a hosted-runner-loss annotation even when the job log blob is missing. That
-signal should remain non-authorizing until CI Retry Gate can ingest it with explicit
-source identity, permission handling, and provenance semantics rather than copying issue
-text into the classifier.
+V4 replays the PRQL control through the annotation-specific production helper instead of
+copying issue text into the ordinary job-log path.
