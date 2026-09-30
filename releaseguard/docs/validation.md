@@ -47,3 +47,5 @@ The PostgreSQL healthy-stage test seeds known observations to isolate atomic adv
 No sustained throughput, multi-day soak, database failover, multi-process HA, real customer workflow, n8n Cloud compatibility, external Slack/email delivery, or paid adoption is proven by these tests. Output checks prove only the specified contract. A local chain does not defend against a privileged rewrite of its entire history/head.
 
 Screenshots are generated only after the real n8n functional cases succeed. Preserve failures and fix the cause; do not weaken CI checks to obtain green results.
+
+The real integration exposed a startup distinction in n8n 2.41.4: `/healthz` can return 200 before published webhooks are registered. The harness now waits on `/healthz/readiness`, which the n8n implementation marks only after initialization completes. This was fixed instead of retrying arbitrary failed business requests.

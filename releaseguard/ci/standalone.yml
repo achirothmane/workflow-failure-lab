@@ -1,0 +1,80 @@
+name: ReleaseGuard adversarial validation
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  releaseguard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-bookworm
+        env:
+          POSTGRES_PASSWORD: releaseguard-test-only
+          POSTGRES_USER: releaseguard
+          POSTGRES_DB: releaseguard
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U releaseguard"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      DATABASE_URL: postgresql://releaseguard:releaseguard-test-only@127.0.0.1:5432/releaseguard
+      ADMIN_TOKEN: rg-test-only-admin-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      DATA_TOKEN: rg-test-only-data-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+      UPSTREAM_TOKEN: rg-test-only-upstream-cccccccccccccccccccccccccccc
+      ALERT_TOKEN: rg-test-only-alert-dddddddddddddddddddddddddddddddd
+      RESPONSE_KEY_HEX: "abababababababababababababababababababababababababababababababab"
+      ALLOWED_UPSTREAM_ORIGIN: http://127.0.0.1:5678
+      ALERT_URL: http://127.0.0.1:5678/webhook/releaseguard-alerts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install exact direct dependencies and materialize lockfile
+        run: npm install --ignore-scripts
+      - name: Unit tests and import structure
+        run: |
+          npm test
+          npm run check
+      - name: Adversarial HTTP and transactional storage tests
+        run: npm run test:integration
+      - name: Browser evidence tools
+        run: |
+          npm install --no-save --package-lock=false playwright@1.55.1
+          npx playwright install --with-deps chromium
+      - name: Actual n8n production webhook integration
+        run: |
+          node src/server.mjs > evidence/sidecar.log 2>&1 &
+          printf "%s" "$!" > /tmp/releaseguard-server.pid
+          npm run test:n8n
+      - name: Package tested source, workflows, evidence and lockfile
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import pathlib, zipfile, json, hashlib, os
+          root=pathlib.Path(".")
+          paths=[p for p in root.rglob("*") if p.is_file() and not any(x in p.parts for x in ("node_modules","tmp",".git")) and p.name!=".env"]
+          manifest={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}
+          manifest["tested_commit"]=os.environ["GITHUB_SHA"]
+          (root/"evidence").mkdir(exist_ok=True)
+          (root/"evidence/build-manifest.json").write_text(json.dumps(manifest,indent=2))
+          with zipfile.ZipFile("ReleaseGuard-0.1.0.zip","w",zipfile.ZIP_DEFLATED) as z:
+            for p in paths: z.write(p,"ReleaseGuard/"+str(p))
+            z.write("evidence/build-manifest.json","ReleaseGuard/evidence/build-manifest.json")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ReleaseGuard-tested-package
+          path: |
+            ReleaseGuard-0.1.0.zip
+            evidence/
+          retention-days: 30
+      - name: Stop local test server
+        if: always()
+        run: |
+          if test -f /tmp/releaseguard-server.pid; then kill "$(cat /tmp/releaseguard-server.pid)" || true; fi

@@ -33,7 +33,7 @@ Import each file through n8n's Import from File menu. The exported files contain
 
 Create credentials in n8n; copy the corresponding values from your local .env without putting them in workflow JSON. In the HTTP Request node choose generic Header Auth. In each Webhook choose Header Auth.
 
-Publish Stable, Candidate, Alerts, and Gateway. The CLI is also available for self-hosted administration: publish:workflow --id=<id>; a running instance must restart after CLI publication. The CI harness tests this path in an isolated instance.
+Publish Stable, Candidate, Alerts, and Gateway. Wait for n8n's /healthz/readiness to return 200; /healthz alone reports process liveness before webhook registration is complete. The CLI is also available for self-hosted administration: publish:workflow --id=<id>; a running instance must restart after CLI publication. The CI harness tests this path in an isolated instance.
 
 ## 4. Register the release
 

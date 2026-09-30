@@ -49,13 +49,13 @@ docker(['run','-d','--name',container,'--add-host','host.docker.internal:host-ga
  '-v','rg-n8n-e2e:/home/node/.n8n','-v',process.cwd()+'/tmp/n8n:/fixtures:ro',
  'docker.n8n.io/n8nio/n8n:2.41.4']);
 try{
- await wait(n8n+'/healthz');
+ await wait(n8n+'/healthz/readiness');
  const setup=await fetch(n8n+'/rest/owner/setup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(owner)});
  assert.ok(setup.ok,'fresh n8n owner setup failed: '+setup.status+' '+await setup.text());
  docker(['exec',container,'n8n','import:credentials','--input=/fixtures/credentials.json']);
  docker(['exec',container,'n8n','import:workflow','--input=/fixtures/workflows.json']);
  for(const w of workflows)docker(['exec',container,'n8n','publish:workflow','--id='+w.id]);
- docker(['restart',container]);await wait(n8n+'/healthz');await wait(api+'/healthz');
+ docker(['restart',container]);await wait(n8n+'/healthz/readiness');await wait(api+'/healthz');
  // Actual ingress → sidecar → Candidate → Stable fallback → actual ingress response.
  await create('demo');const selected=requestKey('demo',5).key;
  const r=await fetch(n8n+'/webhook/releaseguard',{method:'POST',headers:{'content-type':'application/json','x-releaseguard-client':creds[1].data.value,'x-request-id':selected},body:JSON.stringify({leadId:'LEAD-1042',score:81,faultCandidate:'invalid'})});

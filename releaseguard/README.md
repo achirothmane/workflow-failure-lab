@@ -67,3 +67,5 @@ The real n8n suite requires the documented disposable CI environment; it creates
 This is a production-oriented release candidate for a controlled pilot, not a universal deployment or side-effect rollback system. It does not undo effects already executed, certify semantic correctness of LLM outputs, detect all workflow edits, provide HA, or prove market demand. The product review distinguishes shipped capabilities from deferred upgrades and commercial hypotheses.
 
 See [PRODUCT-REVIEW.md](docs/PRODUCT-REVIEW.md), [DEMO.md](docs/DEMO.md), and [MARKETPLACE.md](docs/MARKETPLACE.md).
+
+To extract this project to its own GitHub repository, copy `ci/standalone.yml` to `.github/workflows/ci.yml`. The enclosing lab repository is only this build's temporary CI workspace.
