@@ -199,7 +199,7 @@ jobs:
         run: |
           test "${{ steps.doctor.outputs.ready }}" = "true"
           test "${{ steps.doctor.outputs.blocked-checks }}" = "0"
-          test "${{ steps.doctor.outputs.warnings }}" = "0"
+          test "${{ steps.doctor.outputs.checks-read-access }}" = "PASS"
           [[ ",${{ steps.doctor.outputs.required-permissions }}," == *",checks: read,"* ]]
           case ",${{ steps.doctor.outputs.detected-frameworks }}," in
             *,pytest,jest,vitest,*) ;;
