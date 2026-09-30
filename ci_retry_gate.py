@@ -94,7 +94,7 @@ _CAUSAL_OPERATIONAL_PATTERNS = tuple(
         r"^::error::",
         r"^(?:error|fatal|exception|panic)\b\s*[:!]",
         r"^npm (?:err!|error)\b",
-        r"^curl:\s*\(\d+\)",
+        r"^(?:\[[^\]\r\n]{1,80}\]\s+)?curl:\s*\(\d+\)",
         r"^read tcp\b",
         r"^dial tcp\b",
         r"^traceback \(most recent call last\):",
@@ -190,7 +190,10 @@ _HIGH_SPECIFICITY_TRANSIENT_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
             r"\bnpm (?:err!|error) code (?:econnreset|etimedout|eai_again)\b",
             r"\bread tcp\b.*\bread:\s*connection reset by peer\b",
             r"\bdial tcp\b.*(?:i/o timeout|connect:\s*(?:connection timed out|network is unreachable|connection refused))",
-            r"^curl:\s*\((?:6|7|28|35|56)\)(?:\s|$)",
+            r"^(?:\[[^\]\r\n]{1,80}\]\s+)?curl:\s*\((?:6|7|28|35|56)\)(?:\s|$)",
+            r"^(?:##\[error\].*|error:.*)\bunexpected status from "
+            r"(?:head|get|post|put|delete) request to https?://\S+:\s*"
+            r"(?:502 bad gateway|503 service unavailable|504 gateway timeout)",
             r"\bfatal: unable to access\b.*(?:could not resolve host|recv failure: connection reset by peer|failed to connect|operation timed out)",
             r"\b(?:error|fatal):\s*connection reset by peer\b",
             r"\bconnect etimedout\b",
