@@ -40,6 +40,11 @@ export class ReleaseGuard {
     if(r.duplicate.status==='DONE'&&r.duplicate.sealed_response)return {status:r.duplicate.http_status,body:this.secrets.open(r.duplicate.sealed_response),replayed:true};
     return {status:409,body:{error:'REQUEST_IN_PROGRESS_OR_UNKNOWN',requestId}};
    }
+   if(!validator(r.config.inputSchema)(payload)) {
+    await this.store.cancel(r.ticket);if(r.probe)await this.store.cancel(r.probe);
+    const response={status:400,body:{error:'INPUT_CONTRACT_FAILED',releaseId:id,requestId}};
+    await this.store.finish(id,requestId,response.status,this.secrets.seal(response.body));return response;
+   }
    let arm=r.ticket.arm, fallback=false,primary;
    const probe=r.probe?this.attempt(r.probe,payload,r.config):Promise.resolve(null);
    // Attach rejection handler immediately to avoid an unhandled rejection if primary is slow.

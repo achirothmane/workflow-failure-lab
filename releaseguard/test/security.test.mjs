@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {Secrets,validateConfig,tokenEquals,validator} from '../src/security.mjs';
 const schema={type:'object',required:['score'],properties:{score:{type:'number'}},additionalProperties:false};
-const config={stable:{url:'http://n8n:5678/webhook/stable',version:'v1'},candidate:{url:'http://n8n:5678/webhook/candidate',version:'v2'},fallbackMode:'read_only',outputSchema:schema};
+const config={stable:{url:'http://n8n:5678/webhook/stable',version:'v1'},candidate:{url:'http://n8n:5678/webhook/candidate',version:'v2'},fallbackMode:'read_only',inputSchema:{type:'object'},outputSchema:schema};
 test('authenticated routing buckets are stable and spread traffic',()=>{
  const s=new Secrets('ab'.repeat(32));const buckets=Array.from({length:10000},(_,i)=>s.bucket('r','request-'+i));
  const count=buckets.filter(x=>x<5).length;assert.ok(count>400&&count<600);assert.equal(s.bucket('r','x'),s.bucket('r','x'));

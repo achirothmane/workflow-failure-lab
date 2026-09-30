@@ -39,7 +39,7 @@ Publish Stable, Candidate, Alerts, and Gateway. Wait for n8n's /healthz/readines
 
 The bundled config points the service at the Compose n8n service. For an existing instance, update Stable/Candidate URLs and set ALLOWED_UPSTREAM_ORIGIN to that exact origin in the service environment. Only production /webhook/ paths are accepted; redirects, credential-bearing URLs, and arbitrary destinations are rejected.
 
-Adjust Gateway's guardBase and releaseId. Adjust config/demo-release.json's outputSchema to your real output. Stable and Candidate return:
+Adjust Gateway's guardBase and releaseId. Adjust config/demo-release.json's inputSchema and outputSchema to your real input/output. Input validation runs before upstream execution; malformed requests return 400 and cannot pollute Candidate regression metrics. Stable and Candidate return:
 
 ~~~json
 {

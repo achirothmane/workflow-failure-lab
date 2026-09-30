@@ -77,6 +77,51 @@
         }
       ]
     },
-    "policy": {}
+    "policy": {},
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "leadId"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "leadId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "faultCandidate": {
+          "type": "string",
+          "enum": [
+            "none",
+            "error",
+            "partial",
+            "latency",
+            "invalid",
+            "semantic"
+          ]
+        },
+        "faultStable": {
+          "type": "string",
+          "enum": [
+            "none",
+            "error",
+            "partial",
+            "latency",
+            "invalid",
+            "semantic"
+          ]
+        }
+      }
+    }
   }
 }

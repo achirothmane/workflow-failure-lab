@@ -2,7 +2,7 @@
 
 ## Request path
 
-Gateway validates the input and logical request ID, then calls the authenticated service. The service reserves the request and route under a PostgreSQL row lock, then rechecks the admission revision before dispatch. Stable/Candidate production webhooks return a version-marked result. The service measures the actual HTTP call and validates the result contract.
+Gateway validates the input and logical request ID, then calls the authenticated service. The service checks the declared input contract before upstream execution. Bad input returns 400 and is excluded from regression observations. Compiled validators are cached by canonical schema with a fixed cap. The service reserves the request and route under a PostgreSQL row lock, then rechecks the admission revision before dispatch. Stable/Candidate production webhooks return a version-marked result. The service measures the actual HTTP call and validates the result contract.
 
 An invalid/error Candidate outcome is settled before evaluation or fallback. The original observation never becomes a Stable success. A verified read-only fallback is a separate attempt and is excluded from baseline promotion metrics. This avoids selecting only failed Candidate cases as the Stable comparator.
 

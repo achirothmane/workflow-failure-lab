@@ -17,6 +17,7 @@ The first 25 policy cases were also executed in the conversation's JavaScript ru
 
 | User case | Test and expected result |
 |---|---|
+| Bad incoming input | Invalid payload → 400 before upstream execution; no Candidate regression sample |
 | Candidate raises errors | Real HTTP full failures, early error threshold and absolute failure budget → ROLLBACK |
 | Candidate raises latency | Actual delayed upstream and relative/absolute p95 tests → ROLLBACK |
 | Candidate output invalid | HTTP 200 + wrong field type → ROLLBACK and validated Stable fallback |

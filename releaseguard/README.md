@@ -8,7 +8,7 @@ A webhook returning HTTP 200 can still be a broken release. ReleaseGuard validat
 
 - Importable Gateway, Stable, Candidate, and alert-receiver workflow JSON.
 - A small Node service, PostgreSQL schema, Docker Compose, and an operations dashboard.
-- Configurable stages, error budgets, relative/absolute p95 latency budgets, and JSON Schema and cross-field business output checks.
+- Input contract checks before metrics, configurable stages, error budgets, relative/absolute p95 latency budgets, and JSON Schema and cross-field business output checks.
 - A per-stage failure budget, minimum samples, 95% Wilson error-rate bounds, dwell time, and separate fresh confirmation batches.
 - Atomic routing state + decision evidence + alert outbox; version and admission-revision fences.
 - Safe read-only fallback, encrypted idempotent response replay, deadline-based observation loss, and evaluator lease expiry.
@@ -69,3 +69,5 @@ This is a production-oriented release candidate for a controlled pilot, not a un
 See [PRODUCT-REVIEW.md](docs/PRODUCT-REVIEW.md), [DEMO.md](docs/DEMO.md), and [MARKETPLACE.md](docs/MARKETPLACE.md).
 
 To extract this project to its own GitHub repository, copy `ci/standalone.yml` to `.github/workflows/ci.yml`. The enclosing lab repository is only this build's temporary CI workspace.
+
+For production callers that can address the sidecar API directly, `/v1/execute/<release>` avoids an additional n8n Gateway execution. The n8n Gateway remains a tested optional ingress adapter.

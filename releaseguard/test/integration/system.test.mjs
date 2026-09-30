@@ -23,7 +23,7 @@ const upstream=http.createServer(async(req,res)=>{
 });
 upstream.listen(0,'127.0.0.1');await once(upstream,'listening');
 const origin='http://127.0.0.1:'+upstream.address().port;
-const makeConfig=(override={})=>validateConfig({stable:{url:origin+'/webhook/stable',version:'stable-v1'},candidate:{url:origin+'/webhook/candidate',version:'candidate-v1'},fallbackMode:'read_only',outputSchema:{type:'object',required:['score','engine'],additionalProperties:false,properties:{score:{type:'number',minimum:0,maximum:100},engine:{type:'string'}}},
+const makeConfig=(override={})=>validateConfig({stable:{url:origin+'/webhook/stable',version:'stable-v1'},candidate:{url:origin+'/webhook/candidate',version:'candidate-v1'},fallbackMode:'read_only',inputSchema:{type:'object'},outputSchema:{type:'object',required:['score','engine'],additionalProperties:false,properties:{score:{type:'number',minimum:0,maximum:100},engine:{type:'string'}}},
  policy:{minStageMs:1,windowMs:1800000,maxMetricAgeMs:60000,...override}},origin);
 const guard=new ReleaseGuard({store,secrets,upstreamToken:'test'.repeat(12),log:x=>logs.push(JSON.parse(x))});
 function key(id,arm='candidate'){for(let i=0;;i++){const s='req-'+i;if((secrets.bucket(id,s)<5)===(arm==='candidate'))return s;}}
@@ -139,6 +139,13 @@ try{
   await create('dupe');const id=key('dupe','stable');const before=calls.stable;
   const [a,b]=await Promise.all([guard.execute('dupe',id,{stable:'delay'}),guard.execute('dupe',id,{stable:'delay'})]);
   assert.deepEqual([a.status,b.status].sort(),[200,409]);assert.equal(calls.stable,before+1);
+ });
+ await test('bad inputs are rejected before execution and cannot poison Candidate regression metrics',async()=>{
+  const cfg=makeConfig();cfg.inputSchema={type:'object',required:['score'],properties:{score:{type:'number',minimum:0,maximum:100}}};
+  await store.create('inputbad',cfg);const before=calls.candidate+calls.stable;
+  const x=await guard.execute('inputbad',key('inputbad'),{score:'not-a-number'});
+  assert.equal(x.status,400);assert.equal(calls.candidate+calls.stable,before);
+  const d=await guard.evaluate('inputbad');assert.equal(d.evidence.candidate.started,0);assert.equal(d.after.status,'RUNNING');
  });
  await test('version mismatch and malformed output both roll back',async()=>{
   for(const fault of ['version','malformed']){await create(fault);const x=await guard.execute(fault,key(fault),{candidate:fault});assert.equal(x.body.servedBy,'stable');assert.equal((await store.get(fault)).status,'ROLLED_BACK');}

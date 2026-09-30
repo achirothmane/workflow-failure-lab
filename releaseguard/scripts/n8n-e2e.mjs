@@ -13,7 +13,7 @@ async function call(path,{method='POST',data,headers={}}={}){
  const body=await res.json();return {status:res.status,body};
 }
 const config=(p={})=>({stable:{url:n8n+'/webhook/releaseguard-stable',version:'stable-v1'},candidate:{url:n8n+'/webhook/releaseguard-candidate',version:'candidate-v1'},fallbackMode:'read_only',
- outputSchema:JSON.parse(demoSchema()),policy:p});
+ inputSchema:{"type":"object","required":["leadId"],"additionalProperties":false,"properties":{"leadId":{"type":"string","minLength":1,"maxLength":200},"score":{"type":"number","minimum":0,"maximum":100},"sequence":{"type":"integer","minimum":0},"faultCandidate":{"type":"string","enum":["none","error","partial","latency","invalid","semantic"]},"faultStable":{"type":"string","enum":["none","error","partial","latency","invalid","semantic"]}}},outputSchema:JSON.parse(demoSchema()),policy:p});
 function demoSchema(){return JSON.stringify({allOf:[{"if":{"type":"object","required":["score"],"properties":{"score":{"type":"number","minimum":70}}},"then":{"type":"object","properties":{"priority":{"const":"HIGH"}}},"else":{"type":"object","properties":{"priority":{"const":"NORMAL"}}}}],type:'object',required:['leadId','score','priority','engine'],additionalProperties:false,properties:{leadId:{type:'string',minLength:1},score:{type:'number',minimum:0,maximum:100},priority:{type:'string',enum:['HIGH','NORMAL']},engine:{type:'string',enum:['stable','candidate']}}});}
 async function create(id,p={}){const x=await call('/v1/releases',{data:{id,config:config(p)}});assert.equal(x.status,201,JSON.stringify(x));}
 async function execute(id,key,payload){return call('/v1/execute/'+id,{headers:{authorization:'Bearer '+env.DATA_TOKEN,'x-request-id':key},data:payload});}

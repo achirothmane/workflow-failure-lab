@@ -3,6 +3,7 @@ import { canonical } from './store.mjs';
 import { policy } from './policy.mjs';
 import Ajv from 'ajv';
 const ajv=new Ajv({strict:true,allErrors:false,validateFormats:false});
+const compiled=new Map();
 export function validateConfig(input,allowedOrigin) {
  if(!input||typeof input!=='object'||Array.isArray(input))throw Error('invalid release config');
  const u=new URL(allowedOrigin);
@@ -24,8 +25,11 @@ export function validateConfig(input,allowedOrigin) {
  // Schemas are operator configuration; refs cannot fetch URLs or execute code.
  const schemaText=JSON.stringify(input.outputSchema);
  if(schemaText.length>20000||schemaText.includes('"$ref"')||schemaText.includes('"pattern"'))throw Error('external refs/regex are not supported in v1');
- ajv.compile(input.outputSchema);
- return {...endpoints,fallbackMode:mode,outputSchema:input.outputSchema,policy:p};
+ if(!input.inputSchema||input.inputSchema.type!=='object')throw Error('inputSchema must describe an object');
+ const inputText=JSON.stringify(input.inputSchema);
+ if(inputText.length>20000||inputText.includes('"$ref"')||inputText.includes('"pattern"'))throw Error('unsafe inputSchema');
+ validator(input.outputSchema);validator(input.inputSchema);
+ return {...endpoints,fallbackMode:mode,inputSchema:input.inputSchema,outputSchema:input.outputSchema,policy:p};
 }
 export class Secrets {
  constructor(hex) { if(!/^[a-fA-F0-9]{64}$/.test(hex||''))throw Error('RESPONSE_KEY_HEX must be a persistent 32-byte hex key');this.key=Buffer.from(hex,'hex'); }
@@ -42,4 +46,8 @@ export const tokenEquals=(a,b)=>{
  if(typeof a!=='string'||typeof b!=='string')return false;
  const aa=Buffer.from(a),bb=Buffer.from(b);return aa.length===bb.length&&timingSafeEqual(aa,bb);
 };
-export function validator(schema){const check=ajv.compile(schema);return value=>!!check(value);}
+export function validator(schema){
+ const key=canonical(schema);let check=compiled.get(key);
+ if(!check){check=ajv.compile(schema);ajv.removeSchema(schema);if(compiled.size>=128)compiled.delete(compiled.keys().next().value);compiled.set(key,check);}
+ return value=>!!check(value);
+}
