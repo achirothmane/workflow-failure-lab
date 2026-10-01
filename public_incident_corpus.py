@@ -169,6 +169,47 @@ HIROMI_RATE_LIMIT_RECURRENCE = PublicIncident(
 )
 
 
+RUNNER_IMAGES_PRESTEP_DISK_EXHAUSTION = PublicIncident(
+    case_id="runner-images-13719-prestep-disk-exhaustion",
+    repository="actions/runner-images",
+    source_url="https://github.com/actions/runner-images/issues/13719",
+    observed_signal=(
+        "GitHub-hosted runner raised System.IO.IOException: No space left on device "
+        "while initializing its own diagnostic log before any workflow step executed"
+    ),
+    actual_cause_family="PERSISTENT_HOSTED_RUNNER_CAPACITY",
+    remediation_family="RUNNER_IMAGE_OR_CAPACITY_REMEDIATION",
+    classifier_implication=(
+        "A resource failure that recurs before step execution across reruns and runner "
+        "labels must remain BLOCK; a hosted-runner symptom is not enough to infer that "
+        "another immediate attempt will be safe or useful."
+    ),
+    expected_decision="BLOCK",
+)
+
+
+CFN_LINT_DNS_RETRY_EXHAUSTION = PublicIncident(
+    case_id="serverless-cfn-lint-dns-retry-exhaustion-2025-11-19",
+    repository="aws/serverless-application-model",
+    source_url="https://github.com/aws-cloudformation/cfn-lint/issues/4296",
+    observed_signal=(
+        "cfn-lint schema update failed with [Errno -3] Temporary failure in name "
+        "resolution on all three in-step retries"
+    ),
+    actual_cause_family="DEPENDENCY_DNS_RETRY_EXHAUSTION",
+    remediation_family="FRESH_RUNNER_OR_DEPENDENCY_RECOVERY",
+    classifier_implication=(
+        "Retrospective evidence that a later workflow attempt recovered does not replace "
+        "decision-time step-bound provenance. Issue-derived DNS text without runner "
+        "timestamps must fail closed rather than being promoted to automatic retry authority."
+    ),
+    expected_decision="BLOCK",
+    ground_truth_run_id=19517345578,
+    failed_job_id=55875798766,
+    successful_rerun_job_id=55876077959,
+)
+
+
 PUBLIC_INCIDENT_CORPUS_V1 = (
     GEOPHIRES_526,
     DECK_STREAK_439,
@@ -207,4 +248,10 @@ PUBLIC_INCIDENT_CORPUS_V4 = tuple(
     if incident.case_id == PRQL_HOSTED_RUNNER_LOSS.case_id
     else incident
     for incident in PUBLIC_INCIDENT_CORPUS_V3
+)
+
+
+PUBLIC_INCIDENT_CORPUS_V5 = PUBLIC_INCIDENT_CORPUS_V4 + (
+    RUNNER_IMAGES_PRESTEP_DISK_EXHAUSTION,
+    CFN_LINT_DNS_RETRY_EXHAUSTION,
 )
