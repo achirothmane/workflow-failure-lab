@@ -20,6 +20,15 @@ jobs:
       TARGET_JOB_ID: '107760608854'
       TARGET_CHECK_RUN_ID: '107760608854'
     steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install package
+        run: python -m pip install -e .
+
       - name: Probe unauthenticated public GitHub evidence endpoints
         shell: bash
         run: |
@@ -111,3 +120,20 @@ jobs:
           if required["repository"] != 200 or required["run"] != 200 or required["attempt-jobs"] != 200:
               raise SystemExit("basic public run metadata unexpectedly unavailable")
           PY
+
+      - name: Exercise zero-install public annotation fallback
+        env:
+          INPUT_PUBLIC_READ_ONLY: 'true'
+          INPUT_REPOSITORY: ${{ env.TARGET_REPOSITORY }}
+          INPUT_RUN_ID: ${{ env.TARGET_RUN_ID }}
+          INPUT_RUN_ATTEMPT: ${{ env.TARGET_ATTEMPT }}
+          INPUT_AUTO_RERUN: 'false'
+          INPUT_COMMENT_ON_PR: 'false'
+          INPUT_MAX_ATTEMPTS: '2'
+          CI_RETRY_GATE_REPORT_FILE: public-activation-report.md
+          CI_RETRY_GATE_LOG_DIAGNOSTICS: 'true'
+        run: |
+          python3 ci_retry_gate.py
+          test -s public-activation-report.md
+          ! grep -q "requires a GitHub token" public-activation-report.md
+          grep -q "Public check annotation" public-activation-report.md
