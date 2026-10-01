@@ -1185,6 +1185,12 @@ pytest
 CI runs the test suite on Python 3.12 and also performs a clean-install verification gate.
 
 
+## Support
+
+For setup help, bug reports, public-run analysis, and security-reporting guidance, see [SUPPORT.md](SUPPORT.md).
+
+For security vulnerabilities, follow [SECURITY.md](SECURITY.md) rather than opening a public issue.
+
 ## License
 
 CI Retry Gate is released under the MIT License. See [LICENSE](LICENSE).
