@@ -1,6 +1,6 @@
 # v1 Release Readiness
 
-This checklist covers the CI Retry Gate v1 release line. The current release target is `v1.4.0`.
+This checklist covers the CI Retry Gate v1 release line. The current release target is `v1.4.1`.
 
 ## Required before tagging
 
@@ -27,14 +27,15 @@ This checklist covers the CI Retry Gate v1 release line. The current release tar
 - [x] Decision Experience v1 remains descriptive-only and cannot grant retry authority.
 - [x] Fleet Report v1 remains report-only and cannot mutate workflow runs or claim unsupported savings.
 - [x] Setup Doctor emits copy-ready activation YAML only after READY and never writes it into the target repository.
+- [x] Public zero-install annotation fallback preserves exact check-run/job/head/conclusion/app binding and cannot mutate the target repository.
 - [x] Causal Dominance remains research-only and is not imported by production retry entrypoints.
 - [x] Two independent real Causal Dominance positive controls remain pinned: SWC and pipx.
-- [ ] Third independent Causal Dominance positive control. This is **not a blocker for v1.4.0** because the feature remains disabled in production.
+- [ ] Third independent Causal Dominance positive control. This is **not a blocker for v1.4.1** because the feature remains disabled in production.
 - [x] MIT License is present.
 
-## v1.4.0 production scope
+## v1.4.1 production scope
 
-The release keeps the conservative retry authority from v1.3.0 and adds a product/adoption layer around it: Decision Experience v1, evidence-bounded value metrics, the report-only Fleet Report action, and Setup Doctor copy-ready activation workflow generation. EvidenceBundle, exact state binding, EBA integration artifacts, authenticated runner-loss evidence, Public Incident Replay v4, flaky-test intelligence, shadow/benchmark research, and fail-closed defaults remain intact.
+This patch keeps the v1.4.0 authorization model intact and improves the zero-install activation path. When public job-log download is unavailable, `INPUT_PUBLIC_READ_ONLY=true` may consume publicly readable GitHub Checks metadata and annotations through the same exact binding and runner-loss signal requirements used by the authenticated fallback. No target-repository credential is forwarded and no write authority is added.
 
 The following remain outside production retry authority:
 
@@ -44,9 +45,9 @@ The following remain outside production retry authority:
 
 ## Tagging plan
 
-1. Merge the v1.4.0 release-preparation pull request only after its required checks are green.
+1. Merge the v1.4.1 release-preparation pull request only after its required checks are green.
 2. Confirm the post-merge `main` CI run is green.
-3. Create the immutable `v1.4.0` release tag from that exact green `main` commit.
+3. Create the immutable `v1.4.1` release tag from that exact green `main` commit.
 4. Move the stable major tag `v1` to the same commit.
 5. Publish release notes from `CHANGELOG.md`.
 6. Run the permanent published-`@v1` smoke path.
