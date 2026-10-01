@@ -4,6 +4,43 @@ All notable changes to CI Retry Gate are documented here.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-30
+
+### Added
+
+- Public Incident Corpus and executable Public Incident Replay Gate covering nine source-backed GitHub Actions incidents across nine repositories.
+- Bidirectional replay controls: known bounded transient failures must remain ALLOW while ambiguous, unsafe, recurrent, or authority-insufficient incidents must remain BLOCK.
+- Mechanism-diverse replay coverage for connection resets, external HTTP 5xx, network unreachable, hosted-runner loss, runner-shutdown ambiguity, workload/resource pressure, and persistent rate limiting.
+- Authenticated GitHub Checks annotation fallback for runner-loss evidence when the ordinary job log blob is unavailable.
+- Exact check-run evidence binding across check-run ID, workflow job name, head SHA, conclusion, GitHub Actions app identity, and failure-level annotation.
+- Setup Doctor preflight for `checks: read`, including an explicit `checks-read-access` output.
+- Evidence-before-Action integration artifacts for CI retry execution: ActionRequest, AssumptionState, AuthorityGrant, Decision, and ExecutionReceipt.
+- Canonical JSON, temporal-admissibility, contextual-scope, assumption, authority, and governed-action conformance suites.
+- Historical Flakiness Evidence Producer and shadow evaluation that can surface strictly-prior recovery evidence without changing production retry authority.
+
+### Changed
+
+- Terminal runner shutdown / exit-143 symptoms no longer reach high-confidence transient authorization without independent runner-origin evidence.
+- The dependency/network classifier now recognizes source-backed task-prefixed curl transport failures and explicit operational external 502/503/504 request failures.
+- Public Incident Replay is now a required CI gate before the Python test suite.
+- Setup Doctor recommendations include `checks: read` and use the current `achirothmane/workflow-failure-lab@v1` action owner.
+- Runner-loss annotation evidence can improve execution provenance without overriding side-effect boundaries or retry-attempt limits.
+
+### Safety
+
+- Public replay requires 100% corpus coverage, zero false ALLOW, and zero false BLOCK decisions for the current admitted corpus.
+- Authenticated annotation evidence fails closed on missing token, Checks API failure, binding mismatch, third-party check app, non-failure annotation, or unrecognized annotation text.
+- Retrospective root-cause knowledge is kept separate from decision-time evidence.
+- A stronger evidence source does not automatically grant execution authority: side-effect boundaries, exact state binding, attempt caps, and Evidence Gate policy remain independent.
+- Causal Dominance remains research-only and is still excluded from production retry authority.
+
+### Verification
+
+- Public Incident Replay v4 exercises nine public incidents from nine independent repositories with four expected ALLOW and five expected BLOCK controls.
+- External consumer validation demonstrated strictly-prior historical flakiness support while production authorization remained BLOCK / UNKNOWN.
+- The release candidate must pass CI, Compatibility Matrix, Remote v1 Consumer E2E, clean-install verification, and release-readiness verification before tagging.
+
+
 ## [1.2.0] - 2026-09-27
 
 ### Added
