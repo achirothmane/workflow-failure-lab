@@ -211,7 +211,7 @@ outputs:
     description: 'Number of failed jobs assessed in the current run.'
     value: ${{ steps.gate.outputs.failed-jobs }}
   wasted-minutes:
-    description: 'Observed runtime in minutes across failed jobs in the current run.'
+    description: 'Legacy output name for observed runtime across failed jobs; it does not by itself prove CI waste or savings.'
     value: ${{ steps.gate.outputs.wasted-minutes }}
   selective-safe-jobs:
     description: 'Number of failed jobs that qualified for selective safe rerun.'
