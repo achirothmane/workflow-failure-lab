@@ -4,6 +4,15 @@ All notable changes to CI Retry Gate are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- Zero-install public analysis can now use unauthenticated GitHub Checks metadata and annotations as a narrowly bound fallback when public job-log download is unavailable.
+
+### Safety
+
+- Public annotation fallback is limited to `INPUT_PUBLIC_READ_ONLY=true`, retains exact check-run/job/head/conclusion/app binding, and never grants write capability to the target repository.
+
+
 ## [1.4.0] - 2026-10-01
 
 ### Added
