@@ -43,6 +43,34 @@ The same data is available as the descriptive-only `decision-experience-json` ou
 
 CI Retry Gate deliberately does **not** call observed failed runtime “minutes saved.” A savings claim requires later evidence that establishes the relevant counterfactual rerun outcome. The Decision Experience artifact has `authority: DESCRIPTIVE_ONLY` and cannot grant retry authority.
 
+### Report-only fleet view
+
+After the single-run decision surface is useful, run a read-only fleet report across recent completed workflow runs:
+
+```yaml
+name: CI Retry Gate Fleet Report
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: achirothmane/workflow-failure-lab/fleet@v1
+        with:
+          github-token: ${{ github.token }}
+          runs: '50'
+```
+
+The fleet report shows how many failed jobs matched the current rerun-eligible evidence shape, how many stayed blocked, why they were blocked, observed failed-job runtime, and ground-truth outcomes when a genuine later rerun exists.
+
+It is deliberately **report-only**: it cannot rerun jobs, post comments, open Issues, or alter quarantine state. It also does not label observed runtime as “saved minutes”; savings require later counterfactual evidence.
+
 ### Real CI proof
 
 | Historical failure | Observed outcome | Gate result |

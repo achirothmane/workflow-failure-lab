@@ -1,0 +1,17 @@
+name: CI Retry Gate Fleet Report
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: achirothmane/workflow-failure-lab/fleet@v1
+        with:
+          github-token: ${{ github.token }}
+          runs: '50'
