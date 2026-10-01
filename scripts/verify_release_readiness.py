@@ -67,7 +67,8 @@ def main() -> int:
         "Setup Doctor must fail on BLOCKED checks by default",
     )
 
-    version_match = re.search(r'(?m)^version\s*=\s*"(?P<version>\d+\.\d+\.\d+)"\s*    require(
+    version_match = re.search(
+        r'(?m)^version\\s*=\\s*"(?P<version>\\d+\\.\\d+\\.\\d+)"\\s*    require(
         "achirothmane/workflow-failure-lab@v1" in release_smoke
         and "othy19904-eng/workflow-failure-lab@v1" not in release_smoke,
         "release smoke must consume the current achirothmane @v1 ref",
@@ -143,6 +144,7 @@ def main() -> int:
         and "Third independent Causal Dominance positive control" in release_doc,
         "release checklist must preserve the 2/3 Causal Dominance evidence boundary",
     )
+
     print("release-readiness: PASS")
     print("- v1 metadata present")
     print(f"- Marketplace description length: {len(action_description)} chars")
@@ -162,12 +164,17 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-, pyproject)
+,
+        pyproject,
+    )
     require(version_match is not None, "pyproject semantic version is missing")
     release_version = version_match.group("version")
     require(release_version.startswith("1."), "release version must remain on the stable v1 line")
     require(
-        re.search(rf"(?m)^## \[{re.escape(release_version)}\] - \d{{4}}-\d{{2}}-\d{{2}}$", changelog)
+        re.search(
+            rf"(?m)^## \\[{re.escape(release_version)}\\] - \\d{{4}}-\\d{{2}}-\\d{{2}}$",
+            changelog,
+        )
         is not None,
         f"CHANGELOG v{release_version} entry is missing",
     )
