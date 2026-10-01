@@ -4,6 +4,8 @@ All notable changes to CI Retry Gate are documented here.
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-01
+
 ### Added
 
 - Decision Experience v1: a compact user-facing decision card with final decision, evidence status, deterministic next action, observed failed runtime, and rerun-eligible/blocked job counts.
