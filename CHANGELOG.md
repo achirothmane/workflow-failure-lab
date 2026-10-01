@@ -4,6 +4,16 @@ All notable changes to CI Retry Gate are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Decision Experience v1: a compact user-facing decision card with final decision, evidence status, deterministic next action, observed failed runtime, and rerun-eligible/blocked job counts.
+- Descriptive-only `decision-experience-json` and operator/value outputs for downstream reporting.
+
+### Changed
+
+- Value reporting now explicitly distinguishes observed failed-job runtime from counterfactual CI savings; no saved-minute claim is emitted without later evidence.
+
+
 ## [1.3.0] - 2026-09-30
 
 ### Added

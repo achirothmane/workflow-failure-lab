@@ -132,6 +132,33 @@ outputs:
   reason:
     description: 'Human-readable explanation for the ALLOW/BLOCK decision.'
     value: ${{ steps.gate.outputs.reason }}
+  decision-experience-json:
+    description: 'Descriptive-only v1 decision/value artifact with next action and evidence-bounded runtime metrics.'
+    value: ${{ steps.gate.outputs.decision-experience-json }}
+  next-action:
+    description: 'Deterministic operator next action such as RERUN_ALLOWED, COLLECT_MORE_EVIDENCE, or INVESTIGATE_REGRESSION.'
+    value: ${{ steps.gate.outputs.next-action }}
+  observed-failed-minutes:
+    description: 'Observed runtime in minutes across the failed jobs covered by this decision; not a claimed savings number.'
+    value: ${{ steps.gate.outputs.observed-failed-minutes }}
+  rerun-eligible-jobs:
+    description: 'Failed jobs individually meeting transient/confidence/provenance/no-side-effect evidence conditions.'
+    value: ${{ steps.gate.outputs.rerun-eligible-jobs }}
+  rerun-blocked-jobs:
+    description: 'Failed jobs that do not individually meet the evidence conditions for rerun eligibility.'
+    value: ${{ steps.gate.outputs.rerun-blocked-jobs }}
+  side-effect-blocked-jobs:
+    description: 'Failed jobs carrying a side-effect boundary signal.'
+    value: ${{ steps.gate.outputs.side-effect-blocked-jobs }}
+  evidence-unavailable-jobs:
+    description: 'Failed jobs whose ordinary/eligible fallback evidence could not be acquired.'
+    value: ${{ steps.gate.outputs.evidence-unavailable-jobs }}
+  eligible-failed-minutes:
+    description: 'Observed failed-job runtime belonging to individually rerun-eligible jobs; descriptive only.'
+    value: ${{ steps.gate.outputs.eligible-failed-minutes }}
+  blocked-failed-minutes:
+    description: 'Observed failed-job runtime belonging to jobs that remained ineligible for rerun.'
+    value: ${{ steps.gate.outputs.blocked-failed-minutes }}
   failed-jobs-json:
     description: 'Compact JSON summary of failed-job classification, confidence, provenance, and side-effect risk.'
     value: ${{ steps.gate.outputs.failed-jobs-json }}
@@ -184,7 +211,7 @@ outputs:
     description: 'Number of failed jobs assessed in the current run.'
     value: ${{ steps.gate.outputs.failed-jobs }}
   wasted-minutes:
-    description: 'Observed runtime in minutes across failed jobs in the current run.'
+    description: 'Legacy output name for observed runtime across failed jobs; it does not by itself prove CI waste or savings.'
     value: ${{ steps.gate.outputs.wasted-minutes }}
   selective-safe-jobs:
     description: 'Number of failed jobs that qualified for selective safe rerun.'

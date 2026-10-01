@@ -25,6 +25,7 @@ from evidence_artifact import write_evidence_artifact
 from evidence_producer import produce_ci_evidence_bundle
 from ci_assumption_profile import build_ci_retry_assumption_state
 from ci_authority_profile import build_ci_authority_grant
+from decision_experience import build_decision_experience, render_decision_card
 from eba_integration_contract import (
     ContractViolation,
     build_ci_action_request,
@@ -1258,7 +1259,7 @@ def _write_output(name: str, value: str) -> None:
             handle.write(f"{name}={value}\n")
 
 
-def render_report(repo: str, run_id: int, run_attempt: int, assessments: list[JobAssessment], safe: bool, reason: str, rerun_triggered: bool, recovered: dict[int, str] | None = None, historical: dict | None = None, recurrent: dict[int, str] | None = None) -> str:
+def render_report(repo: str, run_id: int, run_attempt: int, assessments: list[JobAssessment], safe: bool, reason: str, rerun_triggered: bool, recovered: dict[int, str] | None = None, historical: dict | None = None, recurrent: dict[int, str] | None = None, decision_experience: dict | None = None) -> str:
     wasted = round(sum(item.duration_minutes for item in assessments), 2)
     lines = [
         "<!-- ci-retry-gate-report -->",
@@ -1271,6 +1272,9 @@ def render_report(repo: str, run_id: int, run_attempt: int, assessments: list[Jo
         f"{reason}",
         "",
     ]
+    if decision_experience:
+        lines.extend(render_decision_card(decision_experience).rstrip().splitlines())
+        lines.append("")
     recovered = recovered or {}
     if recovered:
         lines.extend([
@@ -1823,7 +1827,26 @@ def main() -> int:
     decision_sha256 = write_contract_artifact(decision_path, contract_decision)
     receipt_sha256 = write_contract_artifact(receipt_path, execution_receipt)
 
-    report = render_report(repo, run_id, run_attempt, assessments, safe, reason, rerun_triggered, recovered, historical, recurrent)
+    decision_experience = build_decision_experience(
+        evidence_decision=evidence_decision,
+        assessments=assessments,
+        rerun_triggered=rerun_triggered,
+        run_attempt=run_attempt,
+        max_attempts=max_attempts,
+    )
+    report = render_report(
+        repo,
+        run_id,
+        run_attempt,
+        assessments,
+        safe,
+        reason,
+        rerun_triggered,
+        recovered,
+        historical,
+        recurrent,
+        decision_experience,
+    )
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
         with open(summary_path, "a", encoding="utf-8") as handle:
@@ -1847,6 +1870,39 @@ def main() -> int:
     _write_output("decision", str(evidence_decision["decision"]))
     _write_output("evidence-status", str(evidence_decision["evidence_status"]))
     _write_output("reason", reason)
+    _write_output(
+        "decision-experience-json",
+        json.dumps(decision_experience, separators=(",", ":"), sort_keys=True),
+    )
+    _write_output("next-action", str(decision_experience["next_action"]))
+    _write_output(
+        "observed-failed-minutes",
+        f"{float(decision_experience['minutes']['observed_failed']):.2f}",
+    )
+    _write_output(
+        "rerun-eligible-jobs",
+        str(decision_experience["jobs"]["rerun_eligible"]),
+    )
+    _write_output(
+        "rerun-blocked-jobs",
+        str(decision_experience["jobs"]["rerun_blocked"]),
+    )
+    _write_output(
+        "side-effect-blocked-jobs",
+        str(decision_experience["jobs"]["side_effect_blocked"]),
+    )
+    _write_output(
+        "evidence-unavailable-jobs",
+        str(decision_experience["jobs"]["evidence_unavailable"]),
+    )
+    _write_output(
+        "eligible-failed-minutes",
+        f"{float(decision_experience['minutes']['rerun_eligible_failed']):.2f}",
+    )
+    _write_output(
+        "blocked-failed-minutes",
+        f"{float(decision_experience['minutes']['rerun_blocked_failed']):.2f}",
+    )
     _write_output(
         "failed-jobs-json",
         json.dumps(evidence_decision["failed_jobs"], separators=(",", ":"), sort_keys=True),

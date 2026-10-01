@@ -10,7 +10,7 @@ A failed workflow does not tell you whether a retry is safe.
 
 CI Retry Gate evaluates the failed run and returns an evidence-backed `ALLOW` or `BLOCK` decision before any rerun is authorized. Deterministic regressions, side-effect risk, stale state, contradictory evidence, and insufficient evidence remain fail-closed.
 
-In v1.2, authorization is also bound to the exact workflow state that produced the evidence. If the run attempt, head SHA, workflow identity, lifecycle, or relevant failed-job state changes, the old justification cannot be reused for a later mutation.
+In v1.3, authorization is also bound to the exact workflow state that produced the evidence. If the run attempt, head SHA, workflow identity, lifecycle, or relevant failed-job state changes, the old justification cannot be reused for a later mutation.
 
 ### Try one real failure first — zero install, zero write access
 
@@ -27,6 +27,21 @@ Interpret the result in seconds:
 | `UNKNOWN` | Evidence is insufficient or unavailable, so the gate fails closed. |
 
 The first trial has one job: **tell you whether the evidence changed or shortened your retry-versus-investigate decision.** If it does not, do not install anything.
+
+### Decision Experience + evidence-bounded value measurement
+
+Every gate invocation now produces a compact **Decision at a glance** before the detailed evidence:
+
+- final `ALLOW` or `BLOCK`;
+- evidence status;
+- deterministic operator next action;
+- observed failed-job runtime;
+- individually rerun-eligible versus blocked failed jobs;
+- side-effect and evidence-unavailable counts.
+
+The same data is available as the descriptive-only `decision-experience-json` output plus `next-action`, `observed-failed-minutes`, `rerun-eligible-jobs`, `rerun-blocked-jobs`, `side-effect-blocked-jobs`, `evidence-unavailable-jobs`, `eligible-failed-minutes`, and `blocked-failed-minutes`.
+
+CI Retry Gate deliberately does **not** call observed failed runtime “minutes saved.” A savings claim requires later evidence that establishes the relevant counterfactual rerun outcome. The Decision Experience artifact has `authority: DESCRIPTIVE_ONLY` and cannot grant retry authority.
 
 ### Real CI proof
 
@@ -995,7 +1010,7 @@ jobs:
 
 ## Outputs
 
-Core outputs include the current-run safety decision, selective-rerun counts, history/fingerprint metrics, and Policy Learning recommendations. Shadow Mode additionally emits `shadow-decisions`, `shadow-evaluated-decisions`, `shadow-recoveries`, `shadow-false-positives`, `shadow-unknown-outcomes`, `shadow-observed-precision`, and `shadow-recoverable-failed-minutes`.
+Core outputs include the current-run safety decision, selective-rerun counts, history/fingerprint metrics, and Policy Learning recommendations. Decision Experience additionally emits a descriptive-only operator summary and evidence-bounded runtime metrics without claiming counterfactual savings. Shadow Mode additionally emits `shadow-decisions`, `shadow-evaluated-decisions`, `shadow-recoveries`, `shadow-false-positives`, `shadow-unknown-outcomes`, `shadow-observed-precision`, and `shadow-recoverable-failed-minutes`.
 
 Benchmark Mode emits:
 
