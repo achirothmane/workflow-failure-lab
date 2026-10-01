@@ -1,18 +1,92 @@
 # CI Retry Gate
 
-[![CI](https://github.com/othy19904-eng/workflow-failure-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/othy19904-eng/workflow-failure-lab/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/github/v/release/othy19904-eng/workflow-failure-lab)](https://github.com/othy19904-eng/workflow-failure-lab/releases/latest)
+[![CI](https://github.com/achirothmane/workflow-failure-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/achirothmane/workflow-failure-lab/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/achirothmane/workflow-failure-lab)](https://github.com/achirothmane/workflow-failure-lab/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ![CI Retry Gate product flow](docs/ci-retry-gate-hero.png)
 
-## Stop wasting CI runs on failures that should not be retried.
+## Stop blindly rerunning failed GitHub Actions jobs.
 
-**CI Retry Gate tells GitHub Actions when a failed job is safe to retry, detects evidence-backed flaky tests, routes them to the right owner, and tracks the investigation until the test is healthy again.**
+A failed workflow does not tell you whether a retry is safe.
 
-It is designed to start **read-only**. Automatic reruns, PR comments, managed Issues, and quarantine enforcement stay off until you explicitly enable the permissions and behavior you want.
+CI Retry Gate evaluates the failed run and returns an evidence-backed `ALLOW` or `BLOCK` decision before any rerun is authorized. Deterministic regressions, side-effect risk, stale state, contradictory evidence, and insufficient evidence remain fail-closed.
 
-### Try it on your repository first — no write permissions
+Authorization is bound to the exact workflow state that produced the evidence. If the run attempt, head SHA, workflow identity, lifecycle, or relevant failed-job state changes, the old justification cannot be reused for a later mutation.
+
+### Try one real failure first — zero install, zero write access
+
+**[Analyze a public GitHub Actions failure](https://github.com/achirothmane/workflow-failure-lab/issues/new?template=public-run-analysis.yml)**
+
+Paste a public repository in `owner/repo` form and a failed Actions run ID. CI Retry Gate analyzes that historical run without changing the target repository and posts the evidence-backed result to the request issue.
+
+Interpret the result in seconds:
+
+| Result | Meaning |
+|---|---|
+| `ALLOW / SUFFICIENT` | The observed evidence supports the bounded rerun policy. |
+| `BLOCK` | The failure should not receive rerun authority from the current evidence. |
+| `UNKNOWN` | Evidence is insufficient or unavailable, so the gate fails closed. |
+
+The first trial has one job: **tell you whether the evidence changed or shortened your retry-versus-investigate decision.** If it does not, do not install anything.
+
+For public zero-install analysis, CI Retry Gate does not forward your repository token into the target repository. Public workflow metadata, check-run metadata, and check annotations are used when GitHub exposes them anonymously. Public job-log downloads may still be unavailable; when that happens the gate keeps the missing evidence explicit and fails closed rather than inventing a cause.
+
+### Decision Experience + evidence-bounded value measurement
+
+Every gate invocation now produces a compact **Decision at a glance** before the detailed evidence:
+
+- final `ALLOW` or `BLOCK`;
+- evidence status;
+- deterministic operator next action;
+- observed failed-job runtime;
+- individually rerun-eligible versus blocked failed jobs;
+- side-effect and evidence-unavailable counts.
+
+The same data is available as the descriptive-only `decision-experience-json` output plus `next-action`, `observed-failed-minutes`, `rerun-eligible-jobs`, `rerun-blocked-jobs`, `side-effect-blocked-jobs`, `evidence-unavailable-jobs`, `eligible-failed-minutes`, and `blocked-failed-minutes`.
+
+CI Retry Gate deliberately does **not** call observed failed runtime “minutes saved.” A savings claim requires later evidence that establishes the relevant counterfactual rerun outcome. The Decision Experience artifact has `authority: DESCRIPTIVE_ONLY` and cannot grant retry authority.
+
+### Report-only fleet view
+
+After the single-run decision surface is useful, run a read-only fleet report across recent completed workflow runs:
+
+```yaml
+name: CI Retry Gate Fleet Report
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: achirothmane/workflow-failure-lab/fleet@v1
+        with:
+          github-token: ${{ github.token }}
+          runs: '50'
+```
+
+The fleet report shows how many failed jobs matched the current rerun-eligible evidence shape, how many stayed blocked, why they were blocked, observed failed-job runtime, and ground-truth outcomes when a genuine later rerun exists.
+
+It is deliberately **report-only**: it cannot rerun jobs, post comments, open Issues, or alter quarantine state. It also does not label observed runtime as “saved minutes”; savings require later counterfactual evidence.
+
+### Real CI proof
+
+| Historical failure | Observed outcome | Gate result |
+|---|---|---|
+| [ROCm recovery case](https://github.com/achirothmane/workflow-failure-lab/issues/82#issuecomment-5842318725) | Every failed job had a successful counterpart in attempt 2 | `FAILURE_RECOVERED` |
+| [ROCm recurrence case](https://github.com/achirothmane/workflow-failure-lab/issues/83#issuecomment-5842328212) | One job recovered, but the same Windows `hiprand` job failed again in attempt 2 | `NEXT_ATTEMPT_RECURRENCE` |
+
+Public job logs were unavailable in these cases, so the gate kept failure cause as `EVIDENCE_UNAVAILABLE` instead of inventing a cause from missing evidence.
+
+The selective-rerun path is also proven from a separate consumer repository: two failed jobs qualified as selective-safe candidates, exactly one rerun mutation was issued for that evaluated state epoch, GitHub advanced the workflow attempt, exactly one job received a new execution, and no second mutation reused the old justification.
+
+### After proof: run the Setup Doctor — no write permissions
 
 ![CI Retry Gate Setup Doctor](docs/setup-doctor-overview.png)
 
@@ -27,6 +101,7 @@ on:
 permissions:
   contents: read
   actions: read
+  checks: read
 
 jobs:
   doctor:
@@ -35,13 +110,33 @@ jobs:
       - uses: actions/checkout@v4
 
       - id: doctor
-        uses: othy19904-eng/workflow-failure-lab/doctor@v1
+        uses: achirothmane/workflow-failure-lab/doctor@v1
         with:
           github-token: ${{ github.token }}
           frameworks: 'auto'
 ```
 
-The Doctor inspects the checked-out repository and returns **READY**, **WARN**, or **BLOCKED** with concrete fixes. It can detect pytest, Jest, and Vitest, catch missing `jest-junit`, inspect JUnit artifact wiring, validate CODEOWNERS/ownership maps and quarantine manifests, check GitHub read access, and show the permissions needed for the features you plan to enable.
+The Doctor inspects the checked-out repository and returns **READY**, **WARN**, or **BLOCKED** with concrete fixes. It can detect pytest, Jest, and Vitest, catch missing `jest-junit`, inspect JUnit artifact wiring, validate CODEOWNERS/ownership maps and quarantine manifests, verify Actions read access, probe Checks read access for runner-loss annotations, and show the permissions needed for the features you plan to enable. Missing `checks: read` is a warning rather than a blocker because ordinary log-based analysis remains available.
+
+When the verdict is **READY**, the Doctor also emits a complete copy-ready `activation-workflow` output plus the smaller `recommended-config` snippet. Set `source-workflow` to the exact name of the CI workflow you want to observe. The generated workflow preserves report-only defaults unless you explicitly ask the Doctor for `rerun-mode: auto` or `rerun-mode: selective`.
+
+Example:
+
+```yaml
+- id: doctor
+  uses: achirothmane/workflow-failure-lab/doctor@v1
+  with:
+    github-token: ${{ github.token }}
+    source-workflow: 'CI'
+    rerun-mode: 'none'
+
+- name: Show generated activation workflow
+  if: ${{ steps.doctor.outputs.activation-ready == 'true' }}
+  run: |
+    printf '%s\n' "${{ steps.doctor.outputs.activation-workflow }}"
+```
+
+The Doctor never writes the generated workflow into your repository; copying it remains an explicit maintainer action.
 
 It **does not** create comments, Issues, reruns, or quarantines to prove write access.
 
@@ -57,6 +152,7 @@ PASS  Framework detection
 PASS  Jest JUnit reporter
 PASS  JUnit artifact wiring
 PASS  GitHub API read access
+PASS  GitHub Checks read access
 WARN  Future write features require explicit permissions
 ```
 
@@ -74,7 +170,7 @@ WARN  Future write features require explicit permissions
 
 ### Verified from a separate consumer repository
 
-The stable `@v1` line is continuously exercised from a repository that does **not** contain the product source:
+The movable `@v1` compatibility line is continuously exercised from a repository that does **not** contain the product source:
 
 - root GitHub Action resolution through `@v1`;
 - pytest, Jest, and Vitest adapters;
@@ -85,15 +181,16 @@ The stable `@v1` line is continuously exercised from a repository that does **no
 - managed Issue create → update without duplication → healthy auto-close;
 - read-only `doctor@v1` onboarding.
 
-External consumer: [ci-retry-gate-consumer-e2e](https://github.com/othy19904-eng/ci-retry-gate-consumer-e2e)
+External consumer: [ci-retry-gate-consumer-e2e](https://github.com/achirothmane/ci-retry-gate-consumer-e2e)
 
 ### Safe rollout path
 
-1. **Run the Doctor** with only `contents: read` and `actions: read`.
-2. Fix any **BLOCKED** prerequisite and review WARN findings.
-3. Add CI Retry Gate in report-only mode with automatic reruns still off.
-4. Observe real decisions and flaky-test evidence.
-5. Enable only the write feature you actually want: reruns, PR triage, managed Issues, or quarantine lifecycle.
+1. **Zero-install proof:** analyze one public historical failure without changing the target repository.
+2. Decide whether the evidence changed or shortened the rerun/investigate decision.
+3. **Only if useful**, run the Doctor with `contents: read`, `actions: read`, and `checks: read` so it can verify the runner-annotation fallback too.
+4. Add CI Retry Gate in report-only mode with automatic reruns still off.
+5. Observe repeated real decisions and flaky-test evidence.
+6. Enable only the write feature you actually want: reruns, PR triage, managed Issues, or quarantine lifecycle.
 
 ### 60-second report-only gate
 
@@ -109,13 +206,14 @@ on:
 
 permissions:
   actions: read
+  checks: read
 
 jobs:
   retry-gate:
     if: ${{ github.event.workflow_run.conclusion == 'failure' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: othy19904-eng/workflow-failure-lab@v1
+      - uses: achirothmane/workflow-failure-lab@v1
         with:
           github-token: ${{ github.token }}
           auto-rerun: 'false'
@@ -124,7 +222,52 @@ jobs:
 
 That analyzes the failed run without rerunning anything. When you later choose to enable reruns, grant `actions: write` and opt into exactly one rerun mode.
 
-> Use `@v1` for the current stable v1 line, or pin an exact `v1.x.y` tag when you need an immutable dependency.
+### Installed historical trial
+
+If the zero-install proof was useful and you want to reproduce the analysis from inside your own repository, start with one historical failure.
+
+1. Copy [`examples/historical-run-trial.yml`](examples/historical-run-trial.yml) into your repository as `.github/workflows/historical-run-trial.yml`.
+2. Open **Actions → Historical CI Failure Trial → Run workflow**.
+3. Paste the numeric run ID from any failed GitHub Actions run in the same repository. If that run was rerun and you want to inspect an earlier attempt, also enter its attempt number.
+4. Open the completed trial and read the job summary.
+
+The trial is intentionally read-only: it grants `actions: read`, `checks: read`, and `contents: read`, disables both rerun modes, and keeps PR comments off. `checks: read` lets the gate recover GitHub's runner-loss annotation when a dead runner never uploaded its job log; missing Checks access still fails closed. A specific `run-attempt` can be selected for rerun-heavy cases; historical-attempt mode cannot trigger a rerun. The summary shows the authorization decision, evidence status, whether the failure qualified for rerun, failed jobs assessed, observed failed-job runtime, and a next action.
+
+A useful first activation is simple: **within 15 minutes, the user can point the gate at a real past failure and decide whether the evidence changed or shortened the investigation.**
+
+> Use `@v1` for the current movable v1 compatibility line. Pin an exact `v1.x.y` tag or commit SHA when you need an immutable dependency.
+
+### Machine-readable authorization output
+
+The gate also exposes an evidence contract for agents and policy engines. The existing rerun rules remain unchanged; this output makes the decision explicit and auditable:
+
+```json
+{
+  "action": "rerun_ci",
+  "decision": "ALLOW",
+  "evidence_status": "SUFFICIENT",
+  "confidence": "high",
+  "observed_at": "2026-09-22T20:10:00Z",
+  "fresh_until": null,
+  "scope": {
+    "repository": "owner/repo",
+    "run_id": 123456789,
+    "run_attempt": 1,
+    "head_sha": "abc123"
+  },
+  "contradictions": []
+}
+```
+
+Available outputs:
+
+- `decision`: `ALLOW` or `BLOCK`.
+- `evidence-status`: `SUFFICIENT`, `CONTRADICTED`, or `UNKNOWN`.
+- `evidence-json`: the complete compact JSON authorization contract, scoped to the exact run attempt and head SHA.
+- `evidence-bundle-path`: the canonical EvidenceBundle artifact produced before authorization.
+- `evidence-bundle-sha256`: the SHA-256 digest verified by the isolated gate process.
+
+`UNKNOWN` never grants rerun authority. Consumers must recompute the decision after the workflow state, run attempt, or head SHA changes.
 
 ## What makes it different from a retry loop?
 
@@ -149,6 +292,8 @@ The action classifies failed jobs into:
 - `UNKNOWN`
 
 A high-confidence transient classification is still **not enough** by itself to authorize a rerun. Production rerun authority also requires confirmed execution provenance, no side-effect boundary, and remaining retry attempts.
+
+When a runner disappears before GitHub finalizes its log blob, CI Retry Gate can use one narrow fallback: a failure annotation from the exact GitHub Actions check run. The fallback requires `checks: read` and exact check-run/job/head binding; annotation access failure or any binding mismatch remains `BLOCK`. See [Authenticated runner annotation evidence](docs/authenticated-runner-annotation-evidence.md).
 
 Example fail-closed outcome:
 
@@ -203,7 +348,7 @@ Other frameworks are supported when they emit standard JUnit XML.
 ### 2. Enable history analysis in CI Retry Gate
 
 ```yaml
-- uses: othy19904-eng/workflow-failure-lab@v1
+- uses: achirothmane/workflow-failure-lab@v1
   with:
     github-token: ${{ github.token }}
     flaky-test-intelligence: 'true'
@@ -227,7 +372,7 @@ Detection and quarantine are deliberately separate. A test is never quarantined 
 Enable lifecycle evaluation:
 
 ```yaml
-- uses: othy19904-eng/workflow-failure-lab@v1
+- uses: achirothmane/workflow-failure-lab@v1
   with:
     github-token: ${{ github.token }}
     flaky-test-intelligence: 'true'
@@ -278,13 +423,13 @@ A non-quarantined failure always keeps CI red. A missing or malformed JUnit repo
 
 ```yaml
 - id: flaky-policy
-  uses: othy19904-eng/workflow-failure-lab@v1
+  uses: achirothmane/workflow-failure-lab@v1
   with:
     github-token: ${{ github.token }}
     flaky-test-intelligence: 'true'
     quarantine-lifecycle: 'true'
 
-- uses: othy19904-eng/workflow-failure-lab/adapters/pytest@v1
+- uses: achirothmane/workflow-failure-lab/adapters/pytest@v1
   with:
     active-tests-json: ${{ steps.flaky-policy.outputs.active-quarantine-tests-json }}
     test-command: 'python -m pytest -q'
@@ -297,7 +442,7 @@ The pytest adapter injects `--junitxml` unless the command already specifies a J
 Install `jest-junit` in the project, then:
 
 ```yaml
-- uses: othy19904-eng/workflow-failure-lab/adapters/jest@v1
+- uses: achirothmane/workflow-failure-lab/adapters/jest@v1
   with:
     active-tests-json: ${{ steps.flaky-policy.outputs.active-quarantine-tests-json }}
     test-command: 'npx jest --ci'
@@ -308,7 +453,7 @@ The adapter adds the `jest-junit` reporter and points it at the managed JUnit pa
 #### Vitest
 
 ```yaml
-- uses: othy19904-eng/workflow-failure-lab/adapters/vitest@v1
+- uses: achirothmane/workflow-failure-lab/adapters/vitest@v1
   with:
     active-tests-json: ${{ steps.flaky-policy.outputs.active-quarantine-tests-json }}
     test-command: 'npx vitest run'
@@ -328,7 +473,7 @@ The adapters never use shell evaluation for `test-command`; it is tokenized and 
 For monorepos or packages that keep their test configuration below the repository root, set `working-directory` on any adapter. The test command runs from that directory while the managed JUnit path remains anchored to the GitHub workspace, so history collection still finds the report consistently.
 
 ```yaml
-- uses: othy19904-eng/workflow-failure-lab/adapters/vitest@v1
+- uses: achirothmane/workflow-failure-lab/adapters/vitest@v1
   with:
     active-tests-json: ${{ steps.flaky-policy.outputs.active-quarantine-tests-json }}
     working-directory: 'packages/web'
@@ -356,14 +501,14 @@ The matrix intentionally installs the latest version available inside each teste
 The matrix currently uses Python 3.12 for the enforcement runtime and Node.js 22 for Jest/Vitest integration tests.
 
 
-### 6. Stable `v1` remote-consumer gate
+### 6. `v1` remote-consumer compatibility gate
 
 The repository also runs a packaging-level consumer workflow that invokes the stable release line through remote GitHub Action references:
 
-- `othy19904-eng/workflow-failure-lab@v1`
-- `othy19904-eng/workflow-failure-lab/adapters/pytest@v1`
-- `othy19904-eng/workflow-failure-lab/adapters/jest@v1`
-- `othy19904-eng/workflow-failure-lab/adapters/vitest@v1`
+- `achirothmane/workflow-failure-lab@v1`
+- `achirothmane/workflow-failure-lab/adapters/pytest@v1`
+- `achirothmane/workflow-failure-lab/adapters/jest@v1`
+- `achirothmane/workflow-failure-lab/adapters/vitest@v1`
 
 This is intentionally different from the local smoke tests that use `./adapters/...`. The remote gate verifies that the movable `v1` branch contains the packaged files consumers actually receive, that the root action can run with read-only Actions/content permissions when reruns are disabled, and that each adapter still preserves the red/green quarantine boundary.
 
@@ -375,7 +520,7 @@ For every adapter, the gate:
 4. requires zero blocking failures and one quarantined failure;
 5. verifies JUnit evidence is uploaded as an attempt-aware GitHub Actions artifact.
 
-The `v1` branch is advanced only by fast-forward to a commit that has already passed the normal CI, compatibility matrix, and remote-consumer gate. It is never force-moved as part of this process.
+The documented release process advances `v1` by fast-forward only after the selected commit has passed normal CI, the compatibility matrix, and the remote-consumer gate. This is currently a **maintainer process claim**, not a GitHub-enforced branch-control claim: at the C10 audit, GitHub reports `main` and `v1` as `protected=false`, and no repository rulesets are exposed. Consumers that require immutable provenance should pin an exact release tag such as `v1.2.0` or an exact commit SHA.
 
 
 ### 7. Developer triage surface
@@ -407,7 +552,7 @@ permissions:
   pull-requests: write
 
 steps:
-  - uses: othy19904-eng/workflow-failure-lab@v1
+  - uses: achirothmane/workflow-failure-lab@v1
     with:
       github-token: ${{ github.token }}
       flaky-test-intelligence: 'true'
@@ -424,7 +569,7 @@ The triage UI does not grant authority. A `QUARANTINE_CANDIDATE` still requires 
 Ownership routing is opt-in and remains read-only:
 
 ```yaml
-- uses: othy19904-eng/workflow-failure-lab@v1
+- uses: achirothmane/workflow-failure-lab@v1
   with:
     github-token: ${{ github.token }}
     flaky-test-intelligence: 'true'
@@ -477,7 +622,7 @@ permissions:
   issues: write
 
 steps:
-  - uses: othy19904-eng/workflow-failure-lab@v1
+  - uses: achirothmane/workflow-failure-lab@v1
     with:
       github-token: ${{ github.token }}
       flaky-test-intelligence: 'true'
@@ -641,7 +786,7 @@ Benchmark Mode samples completed workflow runs, reads first-attempt failed jobs,
 Example:
 
 ```yaml
-- uses: othy19904-eng/workflow-failure-lab@v1
+- uses: achirothmane/workflow-failure-lab@v1
   with:
     github-token: ${{ github.token }}
     benchmark-mode: 'true'
@@ -836,9 +981,13 @@ This creates a controlled path from `UNKNOWN` → repeated evidence → candidat
 
 ## Selective Safe Rerun
 
-`selective-rerun: 'true'` reruns only failed jobs that are high-confidence transient failures. Code regressions, unknown failures, low-confidence failures, and side-effect jobs remain blocked. The attempt cap prevents rerun loops.
+`selective-rerun: 'true'` identifies failed jobs that are high-confidence transient failures. Code regressions, unknown failures, low-confidence failures, and side-effect jobs remain blocked. The attempt cap prevents rerun loops.
 
-Because GitHub may also rerun dependent jobs when one job is rerun, selective mode fails closed if the workflow contains deploy/publish/migrate or other side-effect signals.
+Before mutation, the selected job is re-bound to the exact workflow attempt, head SHA, workflow identity, lifecycle, and failed job execution using the same EASL subject-state invariant used by the legacy auto-rerun path.
+
+Selective mode performs **at most one write per evaluated workflow-state epoch**. GitHub's job-rerun endpoint also reruns dependent jobs, so once one selective rerun is accepted the workflow is known to be changing. Remaining safe candidates are not allowed to reuse the old pre-mutation justification; they must be re-evaluated from a later stable workflow state.
+
+Because GitHub may also rerun dependent jobs when one job is rerun, selective mode also fails closed if the workflow contains deploy/publish/migrate or other side-effect signals.
 
 ## Basic usage
 
@@ -854,6 +1003,7 @@ on:
 
 permissions:
   actions: read
+  checks: read
   contents: read
 
 jobs:
@@ -861,7 +1011,7 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'failure' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: othy19904-eng/workflow-failure-lab@v1
+      - uses: achirothmane/workflow-failure-lab@v1
         with:
           github-token: ${{ github.token }}
           auto-rerun: 'false'
@@ -875,6 +1025,7 @@ Selective safe rerun:
 ```yaml
 permissions:
   actions: write
+  checks: read
   contents: read
 
 jobs:
@@ -882,7 +1033,7 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'failure' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: othy19904-eng/workflow-failure-lab@v1
+      - uses: achirothmane/workflow-failure-lab@v1
         with:
           github-token: ${{ github.token }}
           auto-rerun: 'false'
@@ -904,7 +1055,7 @@ jobs:
 | `auto-rerun` | `false` | Legacy all-or-nothing rerun mode. |
 | `selective-rerun` | `false` | Reruns only individually safe high-confidence transient failed jobs. |
 | `max-attempts` | `2` | Prevents rerun loops. |
-| `comment-on-pr` | `true` | Posts the current-run Markdown report to the associated PR when permitted. |
+| `comment-on-pr` | `false` | Posts the current-run Markdown report to the associated PR only when explicitly enabled and permitted. |
 | `history-runs` | `10` | Previous completed runs of the same workflow to inspect; capped at 50. |
 | `policy-shadow-mode` | `false` | Runs the read-only same-workflow retrospective backtest. |
 | `benchmark-mode` | `false` | Runs the read-only cross-repository backtest. |
@@ -913,7 +1064,7 @@ jobs:
 
 ## Outputs
 
-Core outputs include the current-run safety decision, selective-rerun counts, history/fingerprint metrics, and Policy Learning recommendations. Shadow Mode additionally emits `shadow-decisions`, `shadow-evaluated-decisions`, `shadow-recoveries`, `shadow-false-positives`, `shadow-unknown-outcomes`, `shadow-observed-precision`, and `shadow-recoverable-failed-minutes`.
+Core outputs include the current-run safety decision, selective-rerun counts, history/fingerprint metrics, and Policy Learning recommendations. Decision Experience additionally emits a descriptive-only operator summary and evidence-bounded runtime metrics without claiming counterfactual savings. Shadow Mode additionally emits `shadow-decisions`, `shadow-evaluated-decisions`, `shadow-recoveries`, `shadow-false-positives`, `shadow-unknown-outcomes`, `shadow-observed-precision`, and `shadow-recoverable-failed-minutes`.
 
 Benchmark Mode emits:
 
@@ -977,6 +1128,9 @@ Benchmark Mode emits:
 | `benchmark-unknown-cause-ambiguous-operational` | UNKNOWN failures with stable operational evidence not matching another family. |
 
 ## Safety model
+
+Before legacy `auto-rerun` mutates the workflow, the gate re-reads the target run and evaluates repository/run identity, attempt, head SHA, workflow identity, and failed-job set as opaque **EASL subject-state bindings**. Any binding drift invalidates the earlier rerun justification and blocks mutation. The Python action uses a narrow compatibility layer for this single EASL invariant; the Go EASL module remains the reference implementation.
+
 
 The action fails closed. `UNKNOWN`, code failures, mixed evidence, low-confidence classifications, attempt caps, and side-effect signals block automatic reruns. Log evidence is redacted for common token/API-key patterns before it is included in reports or fingerprint inputs.
 
