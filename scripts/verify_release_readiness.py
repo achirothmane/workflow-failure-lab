@@ -68,7 +68,25 @@ def main() -> int:
     )
 
     version_match = re.search(
-        r'(?m)^version\\s*=\\s*"(?P<version>\\d+\\.\\d+\\.\\d+)"\\s*    require(
+        r'(?m)^version\s*=\s*"(?P<version>\d+\.\d+\.\d+)"\s*$',
+        pyproject,
+    )
+    require(version_match is not None, "pyproject semantic version is missing")
+    release_version = version_match.group("version")
+    require(release_version.startswith("1."), "release version must remain on the stable v1 line")
+    require(
+        re.search(
+            rf"(?m)^## \[{re.escape(release_version)}\] - \d{{4}}-\d{{2}}-\d{{2}}$",
+            changelog,
+        )
+        is not None,
+        f"CHANGELOG v{release_version} entry is missing",
+    )
+    require(
+        f"current release target is `v{release_version}`" in release_doc,
+        f"release readiness target must match pyproject v{release_version}",
+    )
+    require(
         "achirothmane/workflow-failure-lab@v1" in release_smoke
         and "othy19904-eng/workflow-failure-lab@v1" not in release_smoke,
         "release smoke must consume the current achirothmane @v1 ref",
@@ -155,118 +173,6 @@ def main() -> int:
     print("- Setup Doctor composite action and fail-closed default present")
     print(f"- v{release_version} release metadata is internally consistent")
     print("- subject-state binding and conformance contract present")
-    print("- release smoke consumes achirothmane/workflow-failure-lab@v1")
-    print("- EvidenceBundle runtime artifact and isolated gate boundary present")
-    print("- Causal Dominance remains research-only")
-    print("- SWC + pipx evidence pinned at 2/3")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
-,
-        pyproject,
-    )
-    require(version_match is not None, "pyproject semantic version is missing")
-    release_version = version_match.group("version")
-    require(release_version.startswith("1."), "release version must remain on the stable v1 line")
-    require(
-        re.search(
-            rf"(?m)^## \\[{re.escape(release_version)}\\] - \\d{{4}}-\\d{{2}}-\\d{{2}}$",
-            changelog,
-        )
-        is not None,
-        f"CHANGELOG v{release_version} entry is missing",
-    )
-    require(
-        f"current release target is `v{release_version}`" in release_doc,
-        f"release readiness target must match pyproject v{release_version}",
-    )
-    require(
-        "achirothmane/workflow-failure-lab@v1" in release_smoke
-        and "othy19904-eng/workflow-failure-lab@v1" not in release_smoke,
-        "release smoke must consume the current achirothmane @v1 ref",
-    )
-    require(
-        "REASON_SUBJECT_STATE_CHANGED" in easl_compat
-        and "evaluate_required_state_bindings" in easl_compat,
-        "EASL subject-state compatibility layer is missing",
-    )
-    require(
-        '"primitive": "subject_state_binding"' in conformance_vectors,
-        "canonical subject-state conformance vectors are missing",
-    )
-
-    # Research-only Causal Dominance must not silently gain production authority.
-    production_entrypoints = {
-        "ci_retry_gate.py": text("ci_retry_gate.py"),
-        "selective_rerun.py": text("selective_rerun.py"),
-    }
-
-    ci_retry_source = production_entrypoints["ci_retry_gate.py"]
-    evidence_gate_cli = text("evidence_gate_cli.py")
-    evidence_artifact = text("evidence_artifact.py")
-    require(
-        "from evidence_gate import" not in ci_retry_source,
-        "ci_retry_gate.py must not import the authorization gate in-process",
-    )
-    require(
-        "evidence_gate_cli.py" in ci_retry_source and "subprocess.run" in ci_retry_source,
-        "ci_retry_gate.py must invoke the isolated evidence gate process",
-    )
-    require(
-        "write_evidence_artifact" in ci_retry_source,
-        "ci_retry_gate.py must persist EvidenceBundle before authorization",
-    )
-    require(
-        "expected-sha256" in evidence_gate_cli,
-        "evidence gate CLI must verify the producer artifact digest",
-    )
-    require(
-        "hashlib.sha256" in evidence_artifact,
-        "EvidenceBundle artifact must retain SHA-256 integrity verification",
-    )
-    require(
-        "evidence-bundle-path:" in action and "evidence-bundle-sha256:" in action,
-        "action.yml must expose EvidenceBundle path and SHA-256 outputs",
-    )
-    forbidden = (
-        "causal_dominance_direct_verifier",
-        "causal_dominance_shadow",
-        "causal_dominance_validation",
-        "assess_causal_dominance",
-    )
-    for path, source in production_entrypoints.items():
-        for symbol in forbidden:
-            require(symbol not in source, f"{path} imports or uses research-only {symbol}")
-
-    evidence = text("causal_dominance_evidence.py")
-    require(
-        '("swc-project/swc", 34857087636' in evidence,
-        "SWC independent positive control is not pinned",
-    )
-    require(
-        '("pypa/pipx", 31618954128' in evidence,
-        "pipx independent positive control is not pinned",
-    )
-    require(
-        "Production promotion for Causal Dominance remains blocked at 2/3" in changelog,
-        "release notes must state the Causal Dominance promotion boundary",
-    )
-    require(
-        "Third independent Causal Dominance positive control" in release_doc,
-        "release checklist must retain the third-positive evidence item",
-    )
-
-    print("release-readiness: PASS")
-    print("- v1 metadata present")
-    print(f"- Marketplace description length: {len(action_description)} chars")
-    print("- MIT license present")
-    print("- fail-closed rerun defaults preserved")
-    print("- PR comments remain explicit opt-in")
-    print("- README quick start and permissions present")
-    print("- Setup Doctor composite action and fail-closed default present")
-    print("- v1.2.0 subject-state binding and conformance contract present")
     print("- release smoke consumes achirothmane/workflow-failure-lab@v1")
     print("- EvidenceBundle runtime artifact and isolated gate boundary present")
     print("- Causal Dominance remains research-only")
