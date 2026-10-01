@@ -10,7 +10,7 @@ A failed workflow does not tell you whether a retry is safe.
 
 CI Retry Gate evaluates the failed run and returns an evidence-backed `ALLOW` or `BLOCK` decision before any rerun is authorized. Deterministic regressions, side-effect risk, stale state, contradictory evidence, and insufficient evidence remain fail-closed.
 
-In v1.3, authorization is also bound to the exact workflow state that produced the evidence. If the run attempt, head SHA, workflow identity, lifecycle, or relevant failed-job state changes, the old justification cannot be reused for a later mutation.
+Authorization is bound to the exact workflow state that produced the evidence. If the run attempt, head SHA, workflow identity, lifecycle, or relevant failed-job state changes, the old justification cannot be reused for a later mutation.
 
 ### Try one real failure first — zero install, zero write access
 
@@ -80,7 +80,7 @@ It is deliberately **report-only**: it cannot rerun jobs, post comments, open Is
 
 Public job logs were unavailable in these cases, so the gate kept failure cause as `EVIDENCE_UNAVAILABLE` instead of inventing a cause from missing evidence.
 
-The v1.2 selective-rerun path is also proven from a separate consumer repository: two failed jobs qualified as selective-safe candidates, exactly one rerun mutation was issued for that evaluated state epoch, GitHub advanced the workflow attempt, exactly one job received a new execution, and no second mutation reused the old justification.
+The selective-rerun path is also proven from a separate consumer repository: two failed jobs qualified as selective-safe candidates, exactly one rerun mutation was issued for that evaluated state epoch, GitHub advanced the workflow attempt, exactly one job received a new execution, and no second mutation reused the old justification.
 
 ### After proof: run the Setup Doctor — no write permissions
 
