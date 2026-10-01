@@ -67,9 +67,25 @@ def main() -> int:
         "Setup Doctor must fail on BLOCKED checks by default",
     )
 
-    require('version = "1.2.0"' in pyproject, "pyproject version must be 1.2.0 for Marketplace minor release")
-    require("## [1.2.0] - 2026-09-27" in changelog, "CHANGELOG v1.2.0 entry is missing")
-    require("current release target is `v1.2.0`" in release_doc, "release readiness target must be v1.2.0")
+    version_match = re.search(
+        r'(?m)^version\s*=\s*"(?P<version>\d+\.\d+\.\d+)"\s*$',
+        pyproject,
+    )
+    require(version_match is not None, "pyproject semantic version is missing")
+    release_version = version_match.group("version")
+    require(release_version.startswith("1."), "release version must remain on the stable v1 line")
+    require(
+        re.search(
+            rf"(?m)^## \[{re.escape(release_version)}\] - \d{{4}}-\d{{2}}-\d{{2}}$",
+            changelog,
+        )
+        is not None,
+        f"CHANGELOG v{release_version} entry is missing",
+    )
+    require(
+        f"current release target is `v{release_version}`" in release_doc,
+        f"release readiness target must match pyproject v{release_version}",
+    )
     require(
         "achirothmane/workflow-failure-lab@v1" in release_smoke
         and "othy19904-eng/workflow-failure-lab@v1" not in release_smoke,
@@ -138,12 +154,13 @@ def main() -> int:
         "pipx independent positive control is not pinned",
     )
     require(
-        "Production promotion for Causal Dominance remains blocked at 2/3" in changelog,
-        "release notes must state the Causal Dominance promotion boundary",
+        "Causal Dominance remains research-only" in changelog,
+        "release notes must keep Causal Dominance research-only",
     )
     require(
-        "Third independent Causal Dominance positive control" in release_doc,
-        "release checklist must retain the third-positive evidence item",
+        "Two independent real Causal Dominance positive controls remain pinned" in release_doc
+        and "Third independent Causal Dominance positive control" in release_doc,
+        "release checklist must preserve the 2/3 Causal Dominance evidence boundary",
     )
 
     print("release-readiness: PASS")
@@ -154,7 +171,8 @@ def main() -> int:
     print("- PR comments remain explicit opt-in")
     print("- README quick start and permissions present")
     print("- Setup Doctor composite action and fail-closed default present")
-    print("- v1.2.0 subject-state binding and conformance contract present")
+    print(f"- v{release_version} release metadata is internally consistent")
+    print("- subject-state binding and conformance contract present")
     print("- release smoke consumes achirothmane/workflow-failure-lab@v1")
     print("- EvidenceBundle runtime artifact and isolated gate boundary present")
     print("- Causal Dominance remains research-only")
