@@ -1,9 +1,0 @@
-{
-  "name": "ci-retry-gate-remote-consumer-e2e-vitest",
-  "private": true,
-  "type": "module",
-  "packageManager": "npm@11.20.0",
-  "devDependencies": {
-    "vitest": "5.0.1"
-  }
-}

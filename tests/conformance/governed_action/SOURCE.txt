@@ -1,4 +1,0 @@
-Source: achirothmane/aegis-ege@2b08f173d7e0dc7390b7ba9fec57ab10e28c48ba
-normative-cases.json blob: 37e2e0a0867fa78df37f9d4243a1c4107d62094b
-k07-executable-cases.json blob: 89b971ab136d7b2c889c586429a803fec9587c0d
-Scope: frozen generic/ci cross-language conformance only; Kubernetes/EEP remain Aegis-owned.

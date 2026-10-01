@@ -1,202 +1,81 @@
-name: CI
-
+name: ReleaseGuard adversarial validation
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
-    branches: [main]
-
 permissions:
   contents: read
-  actions: read
-
 jobs:
-  test:
+  releaseguard:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-bookworm
+        env:
+          POSTGRES_PASSWORD: releaseguard-test-only
+          POSTGRES_USER: releaseguard
+          POSTGRES_DB: releaseguard
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U releaseguard"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      DATABASE_URL: postgresql://releaseguard:releaseguard-test-only@127.0.0.1:5432/releaseguard
+      ADMIN_TOKEN: rg-test-only-admin-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      DATA_TOKEN: rg-test-only-data-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+      UPSTREAM_TOKEN: rg-test-only-upstream-cccccccccccccccccccccccccccc
+      ALERT_TOKEN: rg-test-only-alert-dddddddddddddddddddddddddddddddd
+      RESPONSE_KEY_HEX: "abababababababababababababababababababababababababababababababab"
+      ALLOWED_UPSTREAM_ORIGIN: http://127.0.0.1:5678
+      ALERT_URL: http://127.0.0.1:5678/webhook/releaseguard-alerts
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: python -m pip install -e ".[test]"
-      - run: pytest
-      - run: python3 scripts/verify_clean_install.py
-      - run: python3 scripts/verify_release_readiness.py
-
-
-  adapter-smoke:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-
-      - name: Use the verified npm resolver
-        run: npm install --global npm@11.20.0 --ignore-scripts --no-audit --no-fund
-
-      - name: Install Python test dependencies
-        run: python -m pip install -e ".[test]"
-
-      - name: Install locked Jest smoke dependencies
-        working-directory: tests/adapter-smoke/node
-        run: npm ci --ignore-scripts --no-audit --no-fund
-
-      - name: Install locked Vitest smoke dependencies
-        working-directory: tests/adapter-smoke/node/vitest
-        run: npm ci --ignore-scripts --no-audit --no-fund
-
-      - id: pytest-block
-        name: Pytest blocks a non-quarantined real failure
-        continue-on-error: true
-        uses: ./adapters/pytest
-        with:
-          active-tests-json: '[]'
-          test-command: 'python -m pytest smoke/adapter-fixtures/pytest/test_flaky.py -q'
-          junit-path: '.ci-smoke/pytest-discover.xml'
-          artifact-name: 'smoke-pytest-discover'
-
-      - name: Verify pytest blocking path
+      - name: Install tested locked dependencies
+        run: npm ci --ignore-scripts
+      - name: Unit tests and import structure
+        run: |
+          npm test
+          npm run check
+      - name: Adversarial HTTP and transactional storage tests
+        run: npm run test:integration
+      - name: Browser evidence tools
+        run: |
+          npm install --no-save --package-lock=false playwright@1.55.1
+          npx playwright install --with-deps chromium
+      - name: Actual n8n production webhook integration
+        run: |
+          mkdir -p evidence
+          node src/server.mjs > evidence/sidecar.log 2>&1 &
+          printf "%s" "$!" > /tmp/releaseguard-server.pid
+          npm run test:n8n
+      - name: Package tested source, workflows, evidence and lockfile
         if: always()
-        shell: bash
         run: |
-          test "${{ steps.pytest-block.outcome }}" = "failure"
-
-      - id: pytest-id
-        name: Read real pytest failing test ID
-        shell: bash
-        run: |
-          ids="$(python scripts/extract_junit_failures.py .ci-smoke/pytest-discover.xml --expect-count 1)"
-          echo "json=$ids" >> "$GITHUB_OUTPUT"
-
-      - id: pytest-quarantine
-        name: Pytest permits only the ACTIVE quarantined failure
-        uses: ./adapters/pytest
-        with:
-          active-tests-json: ${{ steps.pytest-id.outputs.json }}
-          test-command: 'python -m pytest smoke/adapter-fixtures/pytest/test_flaky.py -q'
-          junit-path: '.ci-smoke/pytest-quarantine.xml'
-          artifact-name: 'smoke-pytest-quarantine'
-
-      - name: Verify pytest quarantine outputs
-        shell: bash
-        run: |
-          test "${{ steps.pytest-quarantine.outputs.quarantine-gate-passed }}" = "true"
-          test "${{ steps.pytest-quarantine.outputs.blocking-failures }}" = "0"
-          test "${{ steps.pytest-quarantine.outputs.quarantined-failures }}" = "1"
-
-      - id: jest-block
-        name: Jest blocks a non-quarantined real failure
-        continue-on-error: true
-        uses: ./adapters/jest
-        env:
-          NODE_PATH: ${{ github.workspace }}/tests/adapter-smoke/node/node_modules
-        with:
-          active-tests-json: '[]'
-          working-directory: 'tests/adapter-smoke/node'
-          test-command: './node_modules/.bin/jest jest/flaky.test.cjs --runInBand --ci'
-          junit-path: '.ci-smoke/jest-discover.xml'
-          artifact-name: 'smoke-jest-discover'
-
-      - name: Verify Jest blocking path
+          python3 - <<'PY'
+          import pathlib, zipfile, json, hashlib, os
+          root=pathlib.Path(".")
+          paths=[p for p in root.rglob("*") if p.is_file() and not any(x in p.parts for x in ("node_modules","tmp",".git")) and p.name!=".env"]
+          manifest={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}
+          manifest["tested_commit"]=os.environ["GITHUB_SHA"]
+          (root/"evidence").mkdir(exist_ok=True)
+          (root/"evidence/build-manifest.json").write_text(json.dumps(manifest,indent=2))
+          with zipfile.ZipFile("ReleaseGuard-0.1.0.zip","w",zipfile.ZIP_DEFLATED) as z:
+            for p in paths: z.write(p,"ReleaseGuard/"+str(p))
+            z.write("evidence/build-manifest.json","ReleaseGuard/evidence/build-manifest.json")
+          PY
+      - uses: actions/upload-artifact@v4
         if: always()
-        shell: bash
-        run: |
-          test "${{ steps.jest-block.outcome }}" = "failure"
-
-      - id: jest-id
-        name: Read real Jest failing test ID
-        shell: bash
-        run: |
-          ids="$(python scripts/extract_junit_failures.py .ci-smoke/jest-discover.xml --expect-count 1)"
-          echo "json=$ids" >> "$GITHUB_OUTPUT"
-
-      - id: jest-quarantine
-        name: Jest permits only the ACTIVE quarantined failure
-        uses: ./adapters/jest
-        env:
-          NODE_PATH: ${{ github.workspace }}/tests/adapter-smoke/node/node_modules
         with:
-          active-tests-json: ${{ steps.jest-id.outputs.json }}
-          working-directory: 'tests/adapter-smoke/node'
-          test-command: './node_modules/.bin/jest jest/flaky.test.cjs --runInBand --ci'
-          junit-path: '.ci-smoke/jest-quarantine.xml'
-          artifact-name: 'smoke-jest-quarantine'
-
-      - name: Verify Jest quarantine outputs
-        shell: bash
-        run: |
-          test "${{ steps.jest-quarantine.outputs.quarantine-gate-passed }}" = "true"
-          test "${{ steps.jest-quarantine.outputs.blocking-failures }}" = "0"
-          test "${{ steps.jest-quarantine.outputs.quarantined-failures }}" = "1"
-
-      - id: vitest-block
-        name: Vitest blocks a non-quarantined real failure
-        continue-on-error: true
-        uses: ./adapters/vitest
-        with:
-          active-tests-json: '[]'
-          working-directory: 'tests/adapter-smoke/node/vitest'
-          test-command: './node_modules/.bin/vitest run flaky.test.js'
-          junit-path: '.ci-smoke/vitest-discover.xml'
-          artifact-name: 'smoke-vitest-discover'
-
-      - name: Verify Vitest blocking path
+          name: ReleaseGuard-tested-package
+          path: |
+            ReleaseGuard-0.1.0.zip
+            evidence/
+          retention-days: 30
+      - name: Stop local test server
         if: always()
-        shell: bash
         run: |
-          test "${{ steps.vitest-block.outcome }}" = "failure"
-
-      - id: vitest-id
-        name: Read real Vitest failing test ID
-        shell: bash
-        run: |
-          ids="$(python scripts/extract_junit_failures.py .ci-smoke/vitest-discover.xml --expect-count 1)"
-          echo "json=$ids" >> "$GITHUB_OUTPUT"
-
-      - id: vitest-quarantine
-        name: Vitest permits only the ACTIVE quarantined failure
-        uses: ./adapters/vitest
-        with:
-          active-tests-json: ${{ steps.vitest-id.outputs.json }}
-          working-directory: 'tests/adapter-smoke/node/vitest'
-          test-command: './node_modules/.bin/vitest run flaky.test.js'
-          junit-path: '.ci-smoke/vitest-quarantine.xml'
-          artifact-name: 'smoke-vitest-quarantine'
-
-      - name: Verify Vitest quarantine outputs
-        shell: bash
-        run: |
-          test "${{ steps.vitest-quarantine.outputs.quarantine-gate-passed }}" = "true"
-          test "${{ steps.vitest-quarantine.outputs.blocking-failures }}" = "0"
-          test "${{ steps.vitest-quarantine.outputs.quarantined-failures }}" = "1"
-
-
-  doctor-smoke:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - id: doctor
-        name: Validate local onboarding diagnostics
-        uses: ./doctor
-        with:
-          github-token: ${{ github.token }}
-          frameworks: 'pytest,jest,vitest'
-          junit-artifact-prefix: 'smoke-'
-          fail-on-blocked: 'true'
-
-      - name: Verify doctor readiness outputs
-        shell: bash
-        run: |
-          test "${{ steps.doctor.outputs.ready }}" = "true"
-          test "${{ steps.doctor.outputs.blocked-checks }}" = "0"
-          case ",${{ steps.doctor.outputs.detected-frameworks }}," in
-            *,pytest,jest,vitest,*) ;;
-            *) exit 1 ;;
-          esac
+          if test -f /tmp/releaseguard-server.pid; then kill "$(cat /tmp/releaseguard-server.pid)" || true; fi

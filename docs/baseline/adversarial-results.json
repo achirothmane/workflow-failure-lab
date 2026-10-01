@@ -1,0 +1,1942 @@
+{
+  "runtime": "Node HTTP + PostgreSQL (not mocks)",
+  "cases": [
+    {
+      "label": "HTTP invalid-output rollback",
+      "release": {
+        "id": "invalid",
+        "status": "ROLLED_BACK",
+        "stage": 0,
+        "epoch": 1,
+        "revision": 2,
+        "stageSince": 1790798003444,
+        "leaseUntil": 1790798003501,
+        "healthyWindows": 0,
+        "lastCandidateN": 0,
+        "lastStableN": 0,
+        "candidatePct": 0,
+        "lastReason": "CANDIDATE_OUTPUT_INVALID",
+        "configHash": "ce6d66c27f12f5116359c8bf9001ca62bf4f889ea697315d65c091b30c0dc1cb",
+        "auditHead": "c7f45832349f54cf4a70cc7b50ebe794088e46cf73b326fed9ba4514d9baff30",
+        "auditSeq": 2,
+        "stableVersion": "stable-v1",
+        "candidateVersion": "candidate-v1",
+        "policy": {
+          "stages": [
+            5,
+            25,
+            50,
+            100
+          ],
+          "leaseMs": 30000,
+          "earlyMin": 20,
+          "maxP95Ms": 3000,
+          "windowMs": 1800000,
+          "minStable": 200,
+          "freshBatch": 100,
+          "minStageMs": 1,
+          "maxErrorRate": 0.02,
+          "minCandidate": 200,
+          "maxErrorDelta": 0.02,
+          "earlyErrorRate": 0.1,
+          "healthyWindows": 2,
+          "latencySlackMs": 100,
+          "maxInvalidRate": 0,
+          "maxMetricAgeMs": 60000,
+          "maxStableP95Ms": 5000,
+          "maxLatencyRatio": 1.5,
+          "minCompleteness": 1,
+          "baselineProbePct": 10,
+          "requestTimeoutMs": 10000,
+          "maxStableErrorRate": 0.05,
+          "maxCandidateFailures": 5
+        }
+      },
+      "audit": [
+        {
+          "seq": 1,
+          "record": {
+            "at": 1790798003447,
+            "seq": 1,
+            "state": {
+              "epoch": 1,
+              "stage": 0,
+              "status": "RUNNING",
+              "revision": 1,
+              "leaseUntil": 1790798033444,
+              "stageSince": 1790798003444,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "reason": "INITIAL_CANARY",
+            "decision": "HOLD",
+            "releaseId": "invalid",
+            "configHash": "ce6d66c27f12f5116359c8bf9001ca62bf4f889ea697315d65c091b30c0dc1cb",
+            "candidatePct": 5
+          },
+          "previousHash": "",
+          "hash": "440a19babd19991416ee49825db3eeb206a860f33a9c4890ae716b4c333a2615"
+        },
+        {
+          "seq": 2,
+          "record": {
+            "at": 1790798003505,
+            "seq": 2,
+            "after": {
+              "epoch": 1,
+              "stage": 0,
+              "status": "ROLLED_BACK",
+              "revision": 2,
+              "leaseUntil": 1790798003501,
+              "stageSince": 1790798003444,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "action": "STOP",
+            "before": {
+              "epoch": 1,
+              "stage": 0,
+              "status": "RUNNING",
+              "revision": 1,
+              "leaseUntil": 1790798033444,
+              "stageSince": 1790798003444,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "reason": "CANDIDATE_OUTPUT_INVALID",
+            "decision": "ROLLBACK",
+            "evidence": {
+              "stage": 0,
+              "policy": {
+                "stages": [
+                  5,
+                  25,
+                  50,
+                  100
+                ],
+                "leaseMs": 30000,
+                "earlyMin": 20,
+                "maxP95Ms": 3000,
+                "windowMs": 1800000,
+                "minStable": 200,
+                "freshBatch": 100,
+                "minStageMs": 1,
+                "maxErrorRate": 0.02,
+                "minCandidate": 200,
+                "maxErrorDelta": 0.02,
+                "earlyErrorRate": 0.1,
+                "healthyWindows": 2,
+                "latencySlackMs": 100,
+                "maxInvalidRate": 0,
+                "maxMetricAgeMs": 60000,
+                "maxStableP95Ms": 5000,
+                "maxLatencyRatio": 1.5,
+                "minCompleteness": 1,
+                "baselineProbePct": 10,
+                "requestTimeoutMs": 10000,
+                "maxStableErrorRate": 0.05,
+                "maxCandidateFailures": 5
+              },
+              "stable": {
+                "p95Ms": null,
+                "errors": 0,
+                "lastAt": null,
+                "invalid": 0,
+                "settled": 0,
+                "started": 0,
+                "complete": 0
+              },
+              "revision": 1,
+              "candidate": {
+                "p95Ms": 39.60407500000002,
+                "errors": 0,
+                "lastAt": 1790798003500.073,
+                "invalid": 1,
+                "settled": 1,
+                "started": 1,
+                "complete": 1
+              },
+              "stageSince": 1790798003444,
+              "evaluatedAt": 1790798003501.787
+            },
+            "releaseId": "invalid",
+            "configHash": "ce6d66c27f12f5116359c8bf9001ca62bf4f889ea697315d65c091b30c0dc1cb",
+            "routingConfirmed": "STABLE_ONLY"
+          },
+          "previousHash": "440a19babd19991416ee49825db3eeb206a860f33a9c4890ae716b4c333a2615",
+          "hash": "c7f45832349f54cf4a70cc7b50ebe794088e46cf73b326fed9ba4514d9baff30"
+        }
+      ]
+    },
+    {
+      "label": "partial HTTP failures",
+      "release": {
+        "id": "partial",
+        "status": "ROLLED_BACK",
+        "stage": 0,
+        "epoch": 1,
+        "revision": 2,
+        "stageSince": 1790798003536,
+        "leaseUntil": 1790798003898,
+        "healthyWindows": 0,
+        "lastCandidateN": 0,
+        "lastStableN": 0,
+        "candidatePct": 0,
+        "lastReason": "CANDIDATE_FAILURE_BUDGET",
+        "configHash": "ce6d66c27f12f5116359c8bf9001ca62bf4f889ea697315d65c091b30c0dc1cb",
+        "auditHead": "981b02fccbd360ee03ad100340b5bacb8eaaabd58873c60949da730933c65804",
+        "auditSeq": 6,
+        "stableVersion": "stable-v1",
+        "candidateVersion": "candidate-v1",
+        "policy": {
+          "stages": [
+            5,
+            25,
+            50,
+            100
+          ],
+          "leaseMs": 30000,
+          "earlyMin": 20,
+          "maxP95Ms": 3000,
+          "windowMs": 1800000,
+          "minStable": 200,
+          "freshBatch": 100,
+          "minStageMs": 1,
+          "maxErrorRate": 0.02,
+          "minCandidate": 200,
+          "maxErrorDelta": 0.02,
+          "earlyErrorRate": 0.1,
+          "healthyWindows": 2,
+          "latencySlackMs": 100,
+          "maxInvalidRate": 0,
+          "maxMetricAgeMs": 60000,
+          "maxStableP95Ms": 5000,
+          "maxLatencyRatio": 1.5,
+          "minCompleteness": 1,
+          "baselineProbePct": 10,
+          "requestTimeoutMs": 10000,
+          "maxStableErrorRate": 0.05,
+          "maxCandidateFailures": 5
+        }
+      },
+      "audit": [
+        {
+          "seq": 1,
+          "record": {
+            "at": 1790798003537,
+            "seq": 1,
+            "state": {
+              "epoch": 1,
+              "stage": 0,
+              "status": "RUNNING",
+              "revision": 1,
+              "leaseUntil": 1790798033536,
+              "stageSince": 1790798003536,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "reason": "INITIAL_CANARY",
+            "decision": "HOLD",
+            "releaseId": "partial",
+            "configHash": "ce6d66c27f12f5116359c8bf9001ca62bf4f889ea697315d65c091b30c0dc1cb",
+            "candidatePct": 5
+          },
+          "previousHash": "",
+          "hash": "6860d6f7e5a37cc935b63e92c6cd610153ab782723314beace0c9abfc8c6c307"
+        },
+        {
+          "seq": 2,
+          "record": {
+            "at": 1790798003555,
+            "seq": 2,
+            "after": {
+              "epoch": 1,
+              "stage": 0,
+              "status": "RUNNING",
+              "revision": 1,
+              "leaseUntil": 1790798033553,
+              "stageSince": 1790798003536,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "action": "KEEP",
+            "before": {
+              "epoch": 1,
+              "stage": 0,
+              "status": "RUNNING",
+              "revision": 1,
+              "leaseUntil": 1790798033536,
+              "stageSince": 1790798003536,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "reason": "INSUFFICIENT_SAMPLES",
+            "decision": "HOLD",
+            "evidence": {
+              "stage": 0,
+              "policy": {
+                "stages": [
+                  5,
+                  25,
+                  50,
+                  100
+                ],
+                "leaseMs": 30000,
+                "earlyMin": 20,
+                "maxP95Ms": 3000,
+                "windowMs": 1800000,
+                "minStable": 200,
+                "freshBatch": 100,
+                "minStageMs": 1,
+                "maxErrorRate": 0.02,
+                "minCandidate": 200,
+                "maxErrorDelta": 0.02,
+                "earlyErrorRate": 0.1,
+                "healthyWindows": 2,
+                "latencySlackMs": 100,
+                "maxInvalidRate": 0,
+                "maxMetricAgeMs": 60000,
+                "maxStableP95Ms": 5000,
+                "maxLatencyRatio": 1.5,
+                "minCompleteness": 1,
+                "baselineProbePct": 10,
+                "requestTimeoutMs": 10000,
+                "maxStableErrorRate": 0.05,
+                "maxCandidateFailures": 5
+              },
+              "stable": {
+                "p95Ms": null,
+                "errors": 0,
+                "lastAt": null,
+                "invalid": 0,
+                "settled": 0,
+                "started": 0,
+                "complete": 0
+              },
+              "revision": 1,
+              "candidate": {
+                "p95Ms": 2.2493010000000027,
+                "errors": 1,
+                "lastAt": 1790798003551.673,
+                "invalid": 0,
+                "settled": 1,
+                "started": 1,
+                "complete": 1
+              },
+              "stageSince": 1790798003536,
+              "evaluatedAt": 1790798003553.172
+            },
+            "releaseId": "partial",
+            "configHash": "ce6d66c27f12f5116359c8bf9001ca62bf4f889ea697315d65c091b30c0dc1cb",
+            "routingConfirmed": "CANARY_ACTIVE"
+          },
+          "previousHash": "6860d6f7e5a37cc935b63e92c6cd610153ab782723314beace0c9abfc8c6c307",
+          "hash": "4219aeb849d5a50c21040150c9c8a49d52a4f0b3fa524ae61ff89d0c7d640c11"
+        },
+        {
+          "seq": 3,
+          "record": {
+            "at": 1790798003669,
+            "seq": 3,
+            "after": {
+              "epoch": 1,
+              "stage": 0,
+              "status": "RUNNING",
+              "revision": 1,
+              "leaseUntil": 1790798033667,
+              "stageSince": 1790798003536,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "action": "KEEP",
+            "before": {
+              "epoch": 1,
+              "stage": 0,
+              "status": "RUNNING",
+              "revision": 1,
+              "leaseUntil": 1790798033553,
+              "stageSince": 1790798003536,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "reason": "INSUFFICIENT_SAMPLES",
+            "decision": "HOLD",
+            "evidence": {
+              "stage": 0,
+              "policy": {
+                "stages": [
+                  5,
+                  25,
+                  50,
+                  100
+                ],
+                "leaseMs": 30000,
+                "earlyMin": 20,
+                "maxP95Ms": 3000,
+                "windowMs": 1800000,
+                "minStable": 200,
+                "freshBatch": 100,
+                "minStageMs": 1,
+                "maxErrorRate": 0.02,
+                "minCandidate": 200,
+                "maxErrorDelta": 0.02,
+                "earlyErrorRate": 0.1,
+                "healthyWindows": 2,
+                "latencySlackMs": 100,
+                "maxInvalidRate": 0,
+                "maxMetricAgeMs": 60000,
+                "maxStableP95Ms": 5000,
+                "maxLatencyRatio": 1.5,
+                "minCompleteness": 1,
+                "baselineProbePct": 10,
+                "requestTimeoutMs": 10000,
+                "maxStableErrorRate": 0.05,
+                "maxCandidateFailures": 5
+              },
+              "stable": {
+                "p95Ms": null,
+                "errors": 0,
+                "lastAt": null,
+                "invalid": 0,
+                "settled": 0,
+                "started": 0,
+                "complete": 0
+              },
+              "revision": 1,
+              "candidate": {
+                "p95Ms": 4.755859999999984,
+                "errors": 2,
+                "lastAt": 1790798003665.602,
+                "invalid": 0,
+                "settled": 5,
+                "started": 5,
+                "complete": 5
+              },
+              "stageSince": 1790798003536,
+              "evaluatedAt": 1790798003667.236
+            },
+            "releaseId": "partial",
+            "configHash": "ce6d66c27f12f5116359c8bf9001ca62bf4f889ea697315d65c091b30c0dc1cb",
+            "routingConfirmed": "CANARY_ACTIVE"
+          },
+          "previousHash": "4219aeb849d5a50c21040150c9c8a49d52a4f0b3fa524ae61ff89d0c7d640c11",
+          "hash": "aa54dcefd6f26e4d5b997c62edaa8b8890b4d55abefc36655c6df0212a7c28be"
+        },
+        {
+          "seq": 4,
+          "record": {
+            "at": 1790798003753,
+            "seq": 4,
+            "after": {
+              "epoch": 1,
+              "stage": 0,
+              "status": "RUNNING",
+              "revision": 1,
+              "leaseUntil": 1790798033751,
+              "stageSince": 1790798003536,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "action": "KEEP",
+            "before": {
+              "epoch": 1,
+              "stage": 0,
+              "status": "RUNNING",
+              "revision": 1,
+              "leaseUntil": 1790798033667,
+              "stageSince": 1790798003536,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "reason": "INSUFFICIENT_SAMPLES",
+            "decision": "HOLD",
+            "evidence": {
+              "stage": 0,
+              "policy": {
+                "stages": [
+                  5,
+                  25,
+                  50,
+                  100
+                ],
+                "leaseMs": 30000,
+                "earlyMin": 20,
+                "maxP95Ms": 3000,
+                "windowMs": 1800000,
+                "minStable": 200,
+                "freshBatch": 100,
+                "minStageMs": 1,
+                "maxErrorRate": 0.02,
+                "minCandidate": 200,
+                "maxErrorDelta": 0.02,
+                "earlyErrorRate": 0.1,
+                "healthyWindows": 2,
+                "latencySlackMs": 100,
+                "maxInvalidRate": 0,
+                "maxMetricAgeMs": 60000,
+                "maxStableP95Ms": 5000,
+                "maxLatencyRatio": 1.5,
+                "minCompleteness": 1,
+                "baselineProbePct": 10,
+                "requestTimeoutMs": 10000,
+                "maxStableErrorRate": 0.05,
+                "maxCandidateFailures": 5
+              },
+              "stable": {
+                "p95Ms": null,
+                "errors": 0,
+                "lastAt": null,
+                "invalid": 0,
+                "settled": 0,
+                "started": 0,
+                "complete": 0
+              },
+              "revision": 1,
+              "candidate": {
+                "p95Ms": 4.755859999999984,
+                "errors": 3,
+                "lastAt": 1790798003750.286,
+                "invalid": 0,
+                "settled": 9,
+                "started": 9,
+                "complete": 9
+              },
+              "stageSince": 1790798003536,
+              "evaluatedAt": 1790798003751.565
+            },
+            "releaseId": "partial",
+            "configHash": "ce6d66c27f12f5116359c8bf9001ca62bf4f889ea697315d65c091b30c0dc1cb",
+            "routingConfirmed": "CANARY_ACTIVE"
+          },
+          "previousHash": "aa54dcefd6f26e4d5b997c62edaa8b8890b4d55abefc36655c6df0212a7c28be",
+          "hash": "431b449401c1e9ad8dae267c0401fdd9255f2facf8057c370b28e2796cad5138"
+        },
+        {
+          "seq": 5,
+          "record": {
+            "at": 1790798003814,
+            "seq": 5,
+            "after": {
+              "epoch": 1,
+              "stage": 0,
+              "status": "RUNNING",
+              "revision": 1,
+              "leaseUntil": 1790798033812,
+              "stageSince": 1790798003536,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "action": "KEEP",
+            "before": {
+              "epoch": 1,
+              "stage": 0,
+              "status": "RUNNING",
+              "revision": 1,
+              "leaseUntil": 1790798033751,
+              "stageSince": 1790798003536,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "reason": "INSUFFICIENT_SAMPLES",
+            "decision": "HOLD",
+            "evidence": {
+              "stage": 0,
+              "policy": {
+                "stages": [
+                  5,
+                  25,
+                  50,
+                  100
+                ],
+                "leaseMs": 30000,
+                "earlyMin": 20,
+                "maxP95Ms": 3000,
+                "windowMs": 1800000,
+                "minStable": 200,
+                "freshBatch": 100,
+                "minStageMs": 1,
+                "maxErrorRate": 0.02,
+                "minCandidate": 200,
+                "maxErrorDelta": 0.02,
+                "earlyErrorRate": 0.1,
+                "healthyWindows": 2,
+                "latencySlackMs": 100,
+                "maxInvalidRate": 0,
+                "maxMetricAgeMs": 60000,
+                "maxStableP95Ms": 5000,
+                "maxLatencyRatio": 1.5,
+                "minCompleteness": 1,
+                "baselineProbePct": 10,
+                "requestTimeoutMs": 10000,
+                "maxStableErrorRate": 0.05,
+                "maxCandidateFailures": 5
+              },
+              "stable": {
+                "p95Ms": null,
+                "errors": 0,
+                "lastAt": null,
+                "invalid": 0,
+                "settled": 0,
+                "started": 0,
+                "complete": 0
+              },
+              "revision": 1,
+              "candidate": {
+                "p95Ms": 4.755859999999984,
+                "errors": 4,
+                "lastAt": 1790798003811.142,
+                "invalid": 0,
+                "settled": 13,
+                "started": 13,
+                "complete": 13
+              },
+              "stageSince": 1790798003536,
+              "evaluatedAt": 1790798003812.369
+            },
+            "releaseId": "partial",
+            "configHash": "ce6d66c27f12f5116359c8bf9001ca62bf4f889ea697315d65c091b30c0dc1cb",
+            "routingConfirmed": "CANARY_ACTIVE"
+          },
+          "previousHash": "431b449401c1e9ad8dae267c0401fdd9255f2facf8057c370b28e2796cad5138",
+          "hash": "2c77af686407b585e7213b0c7b216bf54a3d2adfb5982bf2b38d9999296eaef8"
+        },
+        {
+          "seq": 6,
+          "record": {
+            "at": 1790798003902,
+            "seq": 6,
+            "after": {
+              "epoch": 1,
+              "stage": 0,
+              "status": "ROLLED_BACK",
+              "revision": 2,
+              "leaseUntil": 1790798003898,
+              "stageSince": 1790798003536,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "action": "STOP",
+            "before": {
+              "epoch": 1,
+              "stage": 0,
+              "status": "RUNNING",
+              "revision": 1,
+              "leaseUntil": 1790798033812,
+              "stageSince": 1790798003536,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "reason": "CANDIDATE_FAILURE_BUDGET",
+            "decision": "ROLLBACK",
+            "evidence": {
+              "stage": 0,
+              "policy": {
+                "stages": [
+                  5,
+                  25,
+                  50,
+                  100
+                ],
+                "leaseMs": 30000,
+                "earlyMin": 20,
+                "maxP95Ms": 3000,
+                "windowMs": 1800000,
+                "minStable": 200,
+                "freshBatch": 100,
+                "minStageMs": 1,
+                "maxErrorRate": 0.02,
+                "minCandidate": 200,
+                "maxErrorDelta": 0.02,
+                "earlyErrorRate": 0.1,
+                "healthyWindows": 2,
+                "latencySlackMs": 100,
+                "maxInvalidRate": 0,
+                "maxMetricAgeMs": 60000,
+                "maxStableP95Ms": 5000,
+                "maxLatencyRatio": 1.5,
+                "minCompleteness": 1,
+                "baselineProbePct": 10,
+                "requestTimeoutMs": 10000,
+                "maxStableErrorRate": 0.05,
+                "maxCandidateFailures": 5
+              },
+              "stable": {
+                "p95Ms": null,
+                "errors": 0,
+                "lastAt": null,
+                "invalid": 0,
+                "settled": 0,
+                "started": 0,
+                "complete": 0
+              },
+              "revision": 1,
+              "candidate": {
+                "p95Ms": 4.755859999999984,
+                "errors": 5,
+                "lastAt": 1790798003897.235,
+                "invalid": 0,
+                "settled": 17,
+                "started": 17,
+                "complete": 17
+              },
+              "stageSince": 1790798003536,
+              "evaluatedAt": 1790798003898.59
+            },
+            "releaseId": "partial",
+            "configHash": "ce6d66c27f12f5116359c8bf9001ca62bf4f889ea697315d65c091b30c0dc1cb",
+            "routingConfirmed": "STABLE_ONLY"
+          },
+          "previousHash": "2c77af686407b585e7213b0c7b216bf54a3d2adfb5982bf2b38d9999296eaef8",
+          "hash": "981b02fccbd360ee03ad100340b5bacb8eaaabd58873c60949da730933c65804"
+        }
+      ]
+    },
+    {
+      "label": "measured HTTP latency",
+      "release": {
+        "id": "latency",
+        "status": "ROLLED_BACK",
+        "stage": 0,
+        "epoch": 1,
+        "revision": 2,
+        "stageSince": 1790798003917,
+        "leaseUntil": 1790798004438,
+        "healthyWindows": 0,
+        "lastCandidateN": 0,
+        "lastStableN": 0,
+        "candidatePct": 0,
+        "lastReason": "CANDIDATE_LATENCY_SLO",
+        "configHash": "aec06c0bedbb9338134acbc688efc1026511adc5d97a1d684770daadeb03290d",
+        "auditHead": "2e6db5532523022240d9aa61e73156bd01c2db8127d70cf3d172f8997f599745",
+        "auditSeq": 2,
+        "stableVersion": "stable-v1",
+        "candidateVersion": "candidate-v1",
+        "policy": {
+          "stages": [
+            5,
+            25,
+            50,
+            100
+          ],
+          "leaseMs": 30000,
+          "earlyMin": 4,
+          "maxP95Ms": 80,
+          "windowMs": 1800000,
+          "minStable": 200,
+          "freshBatch": 100,
+          "minStageMs": 1,
+          "maxErrorRate": 0.02,
+          "minCandidate": 200,
+          "maxErrorDelta": 0.02,
+          "earlyErrorRate": 0.1,
+          "healthyWindows": 2,
+          "latencySlackMs": 100,
+          "maxInvalidRate": 0,
+          "maxMetricAgeMs": 60000,
+          "maxStableP95Ms": 5000,
+          "maxLatencyRatio": 1.5,
+          "minCompleteness": 1,
+          "baselineProbePct": 10,
+          "requestTimeoutMs": 1000,
+          "maxStableErrorRate": 0.05,
+          "maxCandidateFailures": 5
+        }
+      },
+      "audit": [
+        {
+          "seq": 1,
+          "record": {
+            "at": 1790798003918,
+            "seq": 1,
+            "state": {
+              "epoch": 1,
+              "stage": 0,
+              "status": "RUNNING",
+              "revision": 1,
+              "leaseUntil": 1790798033917,
+              "stageSince": 1790798003917,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "reason": "INITIAL_CANARY",
+            "decision": "HOLD",
+            "releaseId": "latency",
+            "configHash": "aec06c0bedbb9338134acbc688efc1026511adc5d97a1d684770daadeb03290d",
+            "candidatePct": 5
+          },
+          "previousHash": "",
+          "hash": "7f72a5da0d3a41a1af02256a08a3f3f2529917c70f9456850ce62ebb304baa0c"
+        },
+        {
+          "seq": 2,
+          "record": {
+            "at": 1790798004440,
+            "seq": 2,
+            "after": {
+              "epoch": 1,
+              "stage": 0,
+              "status": "ROLLED_BACK",
+              "revision": 2,
+              "leaseUntil": 1790798004438,
+              "stageSince": 1790798003917,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "action": "STOP",
+            "before": {
+              "epoch": 1,
+              "stage": 0,
+              "status": "RUNNING",
+              "revision": 1,
+              "leaseUntil": 1790798033917,
+              "stageSince": 1790798003917,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "reason": "CANDIDATE_LATENCY_SLO",
+            "decision": "ROLLBACK",
+            "evidence": {
+              "stage": 0,
+              "policy": {
+                "stages": [
+                  5,
+                  25,
+                  50,
+                  100
+                ],
+                "leaseMs": 30000,
+                "earlyMin": 4,
+                "maxP95Ms": 80,
+                "windowMs": 1800000,
+                "minStable": 200,
+                "freshBatch": 100,
+                "minStageMs": 1,
+                "maxErrorRate": 0.02,
+                "minCandidate": 200,
+                "maxErrorDelta": 0.02,
+                "earlyErrorRate": 0.1,
+                "healthyWindows": 2,
+                "latencySlackMs": 100,
+                "maxInvalidRate": 0,
+                "maxMetricAgeMs": 60000,
+                "maxStableP95Ms": 5000,
+                "maxLatencyRatio": 1.5,
+                "minCompleteness": 1,
+                "baselineProbePct": 10,
+                "requestTimeoutMs": 1000,
+                "maxStableErrorRate": 0.05,
+                "maxCandidateFailures": 5
+              },
+              "stable": {
+                "p95Ms": null,
+                "errors": 0,
+                "lastAt": null,
+                "invalid": 0,
+                "settled": 0,
+                "started": 0,
+                "complete": 0
+              },
+              "revision": 1,
+              "candidate": {
+                "p95Ms": 122.14198700000009,
+                "errors": 0,
+                "lastAt": 1790798004436.266,
+                "invalid": 0,
+                "settled": 4,
+                "started": 4,
+                "complete": 4
+              },
+              "stageSince": 1790798003917,
+              "evaluatedAt": 1790798004438.272
+            },
+            "releaseId": "latency",
+            "configHash": "aec06c0bedbb9338134acbc688efc1026511adc5d97a1d684770daadeb03290d",
+            "routingConfirmed": "STABLE_ONLY"
+          },
+          "previousHash": "7f72a5da0d3a41a1af02256a08a3f3f2529917c70f9456850ce62ebb304baa0c",
+          "hash": "2e6db5532523022240d9aa61e73156bd01c2db8127d70cf3d172f8997f599745"
+        }
+      ]
+    },
+    {
+      "label": "incomplete metrics",
+      "release": {
+        "id": "missing",
+        "status": "PAUSED",
+        "stage": 0,
+        "epoch": 1,
+        "revision": 2,
+        "stageSince": 1790798004445,
+        "leaseUntil": 1790798004457,
+        "healthyWindows": 0,
+        "lastCandidateN": 0,
+        "lastStableN": 0,
+        "candidatePct": 0,
+        "lastReason": "METRICS_INCOMPLETE",
+        "configHash": "ce6d66c27f12f5116359c8bf9001ca62bf4f889ea697315d65c091b30c0dc1cb",
+        "auditHead": "118bfb54ffdb45d2c6a07a0aef360b819edbdb9ddab1c5dc748b8c827185a055",
+        "auditSeq": 2,
+        "stableVersion": "stable-v1",
+        "candidateVersion": "candidate-v1",
+        "policy": {
+          "stages": [
+            5,
+            25,
+            50,
+            100
+          ],
+          "leaseMs": 30000,
+          "earlyMin": 20,
+          "maxP95Ms": 3000,
+          "windowMs": 1800000,
+          "minStable": 200,
+          "freshBatch": 100,
+          "minStageMs": 1,
+          "maxErrorRate": 0.02,
+          "minCandidate": 200,
+          "maxErrorDelta": 0.02,
+          "earlyErrorRate": 0.1,
+          "healthyWindows": 2,
+          "latencySlackMs": 100,
+          "maxInvalidRate": 0,
+          "maxMetricAgeMs": 60000,
+          "maxStableP95Ms": 5000,
+          "maxLatencyRatio": 1.5,
+          "minCompleteness": 1,
+          "baselineProbePct": 10,
+          "requestTimeoutMs": 10000,
+          "maxStableErrorRate": 0.05,
+          "maxCandidateFailures": 5
+        }
+      },
+      "audit": [
+        {
+          "seq": 1,
+          "record": {
+            "at": 1790798004445,
+            "seq": 1,
+            "state": {
+              "epoch": 1,
+              "stage": 0,
+              "status": "RUNNING",
+              "revision": 1,
+              "leaseUntil": 1790798034445,
+              "stageSince": 1790798004445,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "reason": "INITIAL_CANARY",
+            "decision": "HOLD",
+            "releaseId": "missing",
+            "configHash": "ce6d66c27f12f5116359c8bf9001ca62bf4f889ea697315d65c091b30c0dc1cb",
+            "candidatePct": 5
+          },
+          "previousHash": "",
+          "hash": "d4d49a8a16f4b5bd64e9f5eb63881f80a4629b8c6094bc6b072569cf0e93accd"
+        },
+        {
+          "seq": 2,
+          "record": {
+            "at": 1790798004460,
+            "seq": 2,
+            "after": {
+              "epoch": 1,
+              "stage": 0,
+              "status": "PAUSED",
+              "revision": 2,
+              "leaseUntil": 1790798004457,
+              "stageSince": 1790798004445,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "action": "PAUSE",
+            "before": {
+              "epoch": 1,
+              "stage": 0,
+              "status": "RUNNING",
+              "revision": 1,
+              "leaseUntil": 1790798034445,
+              "stageSince": 1790798004445,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "reason": "METRICS_INCOMPLETE",
+            "decision": "HOLD",
+            "evidence": {
+              "stage": 0,
+              "policy": {
+                "stages": [
+                  5,
+                  25,
+                  50,
+                  100
+                ],
+                "leaseMs": 30000,
+                "earlyMin": 20,
+                "maxP95Ms": 3000,
+                "windowMs": 1800000,
+                "minStable": 200,
+                "freshBatch": 100,
+                "minStageMs": 1,
+                "maxErrorRate": 0.02,
+                "minCandidate": 200,
+                "maxErrorDelta": 0.02,
+                "earlyErrorRate": 0.1,
+                "healthyWindows": 2,
+                "latencySlackMs": 100,
+                "maxInvalidRate": 0,
+                "maxMetricAgeMs": 60000,
+                "maxStableP95Ms": 5000,
+                "maxLatencyRatio": 1.5,
+                "minCompleteness": 1,
+                "baselineProbePct": 10,
+                "requestTimeoutMs": 10000,
+                "maxStableErrorRate": 0.05,
+                "maxCandidateFailures": 5
+              },
+              "stable": {
+                "p95Ms": 100,
+                "errors": 0,
+                "lastAt": 1790798004449.937,
+                "invalid": 0,
+                "settled": 200,
+                "started": 200,
+                "complete": 200
+              },
+              "revision": 1,
+              "candidate": {
+                "p95Ms": 100,
+                "errors": 0,
+                "lastAt": 1790798004454.768,
+                "invalid": 0,
+                "settled": 200,
+                "started": 200,
+                "complete": 199
+              },
+              "stageSince": 1790798004445,
+              "evaluatedAt": 1790798004457.923
+            },
+            "releaseId": "missing",
+            "configHash": "ce6d66c27f12f5116359c8bf9001ca62bf4f889ea697315d65c091b30c0dc1cb",
+            "routingConfirmed": "STABLE_ONLY"
+          },
+          "previousHash": "d4d49a8a16f4b5bd64e9f5eb63881f80a4629b8c6094bc6b072569cf0e93accd",
+          "hash": "118bfb54ffdb45d2c6a07a0aef360b819edbdb9ddab1c5dc748b8c827185a055"
+        }
+      ]
+    },
+    {
+      "label": "Stable incident",
+      "release": {
+        "id": "stablebad",
+        "status": "PAUSED",
+        "stage": 0,
+        "epoch": 1,
+        "revision": 2,
+        "stageSince": 1790798004476,
+        "leaseUntil": 1790798004500,
+        "healthyWindows": 0,
+        "lastCandidateN": 0,
+        "lastStableN": 0,
+        "candidatePct": 0,
+        "lastReason": "RELEASE_INACTIVE",
+        "configHash": "ce6d66c27f12f5116359c8bf9001ca62bf4f889ea697315d65c091b30c0dc1cb",
+        "auditHead": "04fc08a404bb5336425e0644c94322662d5abedfb11f56415ecea3ff1e7b4ff9",
+        "auditSeq": 3,
+        "stableVersion": "stable-v1",
+        "candidateVersion": "candidate-v1",
+        "policy": {
+          "stages": [
+            5,
+            25,
+            50,
+            100
+          ],
+          "leaseMs": 30000,
+          "earlyMin": 20,
+          "maxP95Ms": 3000,
+          "windowMs": 1800000,
+          "minStable": 200,
+          "freshBatch": 100,
+          "minStageMs": 1,
+          "maxErrorRate": 0.02,
+          "minCandidate": 200,
+          "maxErrorDelta": 0.02,
+          "earlyErrorRate": 0.1,
+          "healthyWindows": 2,
+          "latencySlackMs": 100,
+          "maxInvalidRate": 0,
+          "maxMetricAgeMs": 60000,
+          "maxStableP95Ms": 5000,
+          "maxLatencyRatio": 1.5,
+          "minCompleteness": 1,
+          "baselineProbePct": 10,
+          "requestTimeoutMs": 10000,
+          "maxStableErrorRate": 0.05,
+          "maxCandidateFailures": 5
+        }
+      },
+      "audit": [
+        {
+          "seq": 1,
+          "record": {
+            "at": 1790798004477,
+            "seq": 1,
+            "state": {
+              "epoch": 1,
+              "stage": 0,
+              "status": "RUNNING",
+              "revision": 1,
+              "leaseUntil": 1790798034476,
+              "stageSince": 1790798004476,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "reason": "INITIAL_CANARY",
+            "decision": "HOLD",
+            "releaseId": "stablebad",
+            "configHash": "ce6d66c27f12f5116359c8bf9001ca62bf4f889ea697315d65c091b30c0dc1cb",
+            "candidatePct": 5
+          },
+          "previousHash": "",
+          "hash": "77162f64c3206c3f8b5cf8e1350544ef6642c4cda28fd51ff49ddbe0fdcd9b51"
+        },
+        {
+          "seq": 2,
+          "record": {
+            "at": 1790798004490,
+            "seq": 2,
+            "after": {
+              "epoch": 1,
+              "stage": 0,
+              "status": "PAUSED",
+              "revision": 2,
+              "leaseUntil": 1790798004488,
+              "stageSince": 1790798004476,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "action": "PAUSE",
+            "before": {
+              "epoch": 1,
+              "stage": 0,
+              "status": "RUNNING",
+              "revision": 1,
+              "leaseUntil": 1790798034476,
+              "stageSince": 1790798004476,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "reason": "STABLE_UNHEALTHY",
+            "decision": "HOLD",
+            "evidence": {
+              "stage": 0,
+              "policy": {
+                "stages": [
+                  5,
+                  25,
+                  50,
+                  100
+                ],
+                "leaseMs": 30000,
+                "earlyMin": 20,
+                "maxP95Ms": 3000,
+                "windowMs": 1800000,
+                "minStable": 200,
+                "freshBatch": 100,
+                "minStageMs": 1,
+                "maxErrorRate": 0.02,
+                "minCandidate": 200,
+                "maxErrorDelta": 0.02,
+                "earlyErrorRate": 0.1,
+                "healthyWindows": 2,
+                "latencySlackMs": 100,
+                "maxInvalidRate": 0,
+                "maxMetricAgeMs": 60000,
+                "maxStableP95Ms": 5000,
+                "maxLatencyRatio": 1.5,
+                "minCompleteness": 1,
+                "baselineProbePct": 10,
+                "requestTimeoutMs": 10000,
+                "maxStableErrorRate": 0.05,
+                "maxCandidateFailures": 5
+              },
+              "stable": {
+                "p95Ms": 100,
+                "errors": 30,
+                "lastAt": 1790798004480.888,
+                "invalid": 0,
+                "settled": 200,
+                "started": 200,
+                "complete": 200
+              },
+              "revision": 1,
+              "candidate": {
+                "p95Ms": 100,
+                "errors": 0,
+                "lastAt": 1790798004485.583,
+                "invalid": 0,
+                "settled": 200,
+                "started": 200,
+                "complete": 200
+              },
+              "stageSince": 1790798004476,
+              "evaluatedAt": 1790798004488.611
+            },
+            "releaseId": "stablebad",
+            "configHash": "ce6d66c27f12f5116359c8bf9001ca62bf4f889ea697315d65c091b30c0dc1cb",
+            "routingConfirmed": "STABLE_ONLY"
+          },
+          "previousHash": "77162f64c3206c3f8b5cf8e1350544ef6642c4cda28fd51ff49ddbe0fdcd9b51",
+          "hash": "233e31415032e628e5ab0986d169c410db47b83a7bd2796c151d5e7a04bdc4de"
+        },
+        {
+          "seq": 3,
+          "record": {
+            "at": 1790798004502,
+            "seq": 3,
+            "after": {
+              "epoch": 1,
+              "stage": 0,
+              "status": "PAUSED",
+              "revision": 2,
+              "leaseUntil": 1790798004500,
+              "stageSince": 1790798004476,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "action": "KEEP",
+            "before": {
+              "epoch": 1,
+              "stage": 0,
+              "status": "PAUSED",
+              "revision": 2,
+              "leaseUntil": 1790798004488,
+              "stageSince": 1790798004476,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "reason": "RELEASE_INACTIVE",
+            "decision": "HOLD",
+            "evidence": {
+              "stage": 0,
+              "policy": {
+                "stages": [
+                  5,
+                  25,
+                  50,
+                  100
+                ],
+                "leaseMs": 30000,
+                "earlyMin": 20,
+                "maxP95Ms": 3000,
+                "windowMs": 1800000,
+                "minStable": 200,
+                "freshBatch": 100,
+                "minStageMs": 1,
+                "maxErrorRate": 0.02,
+                "minCandidate": 200,
+                "maxErrorDelta": 0.02,
+                "earlyErrorRate": 0.1,
+                "healthyWindows": 2,
+                "latencySlackMs": 100,
+                "maxInvalidRate": 0,
+                "maxMetricAgeMs": 60000,
+                "maxStableP95Ms": 5000,
+                "maxLatencyRatio": 1.5,
+                "minCompleteness": 1,
+                "baselineProbePct": 10,
+                "requestTimeoutMs": 10000,
+                "maxStableErrorRate": 0.05,
+                "maxCandidateFailures": 5
+              },
+              "stable": {
+                "p95Ms": 100,
+                "errors": 31,
+                "lastAt": 1790798004498.863,
+                "invalid": 0,
+                "settled": 201,
+                "started": 201,
+                "complete": 201
+              },
+              "revision": 2,
+              "candidate": {
+                "p95Ms": 100,
+                "errors": 0,
+                "lastAt": 1790798004485.583,
+                "invalid": 0,
+                "settled": 200,
+                "started": 200,
+                "complete": 200
+              },
+              "stageSince": 1790798004476,
+              "evaluatedAt": 1790798004500.76
+            },
+            "releaseId": "stablebad",
+            "configHash": "ce6d66c27f12f5116359c8bf9001ca62bf4f889ea697315d65c091b30c0dc1cb",
+            "routingConfirmed": "STABLE_ONLY"
+          },
+          "previousHash": "233e31415032e628e5ab0986d169c410db47b83a7bd2796c151d5e7a04bdc4de",
+          "hash": "04fc08a404bb5336425e0644c94322662d5abedfb11f56415ecea3ff1e7b4ff9"
+        }
+      ]
+    },
+    {
+      "label": "5→25→50→100→verified",
+      "release": {
+        "id": "healthy",
+        "status": "COMPLETED",
+        "stage": 3,
+        "epoch": 4,
+        "revision": 5,
+        "stageSince": 1790798004548,
+        "leaseUntil": 1790798034562,
+        "healthyWindows": 0,
+        "lastCandidateN": 0,
+        "lastStableN": 0,
+        "candidatePct": 100,
+        "lastReason": "RELEASE_VERIFIED",
+        "configHash": "cb9ce27a8d8dadff9f5bf12d2b29dabdb0f3572dfd8a38cbd85717ba48e85f6f",
+        "auditHead": "eac4dc0b8020cdf2ea5dd7107f9deabe995b83ebffc247db34da080ff00db716",
+        "auditSeq": 5,
+        "stableVersion": "stable-v1",
+        "candidateVersion": "candidate-v1",
+        "policy": {
+          "stages": [
+            5,
+            25,
+            50,
+            100
+          ],
+          "leaseMs": 30000,
+          "earlyMin": 20,
+          "maxP95Ms": 3000,
+          "windowMs": 1800000,
+          "minStable": 200,
+          "freshBatch": 100,
+          "minStageMs": 1,
+          "maxErrorRate": 0.02,
+          "minCandidate": 200,
+          "maxErrorDelta": 0.02,
+          "earlyErrorRate": 0.1,
+          "healthyWindows": 1,
+          "latencySlackMs": 100,
+          "maxInvalidRate": 0,
+          "maxMetricAgeMs": 60000,
+          "maxStableP95Ms": 5000,
+          "maxLatencyRatio": 1.5,
+          "minCompleteness": 1,
+          "baselineProbePct": 10,
+          "requestTimeoutMs": 10000,
+          "maxStableErrorRate": 0.05,
+          "maxCandidateFailures": 5
+        }
+      },
+      "audit": [
+        {
+          "seq": 1,
+          "record": {
+            "at": 1790798004507,
+            "seq": 1,
+            "state": {
+              "epoch": 1,
+              "stage": 0,
+              "status": "RUNNING",
+              "revision": 1,
+              "leaseUntil": 1790798034506,
+              "stageSince": 1790798004506,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "reason": "INITIAL_CANARY",
+            "decision": "HOLD",
+            "releaseId": "healthy",
+            "configHash": "cb9ce27a8d8dadff9f5bf12d2b29dabdb0f3572dfd8a38cbd85717ba48e85f6f",
+            "candidatePct": 5
+          },
+          "previousHash": "",
+          "hash": "89e78222beb62605ea13c4e0418038b3333b1f0b5df88effea4f89de443370f3"
+        },
+        {
+          "seq": 2,
+          "record": {
+            "at": 1790798004521,
+            "seq": 2,
+            "after": {
+              "epoch": 2,
+              "stage": 1,
+              "status": "RUNNING",
+              "revision": 2,
+              "leaseUntil": 1790798034519,
+              "stageSince": 1790798004519,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "action": "ADVANCE",
+            "before": {
+              "epoch": 1,
+              "stage": 0,
+              "status": "RUNNING",
+              "revision": 1,
+              "leaseUntil": 1790798034506,
+              "stageSince": 1790798004506,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "reason": "STAGE_VERIFIED",
+            "windows": 1,
+            "decision": "PROMOTE",
+            "evidence": {
+              "stage": 0,
+              "policy": {
+                "stages": [
+                  5,
+                  25,
+                  50,
+                  100
+                ],
+                "leaseMs": 30000,
+                "earlyMin": 20,
+                "maxP95Ms": 3000,
+                "windowMs": 1800000,
+                "minStable": 200,
+                "freshBatch": 100,
+                "minStageMs": 1,
+                "maxErrorRate": 0.02,
+                "minCandidate": 200,
+                "maxErrorDelta": 0.02,
+                "earlyErrorRate": 0.1,
+                "healthyWindows": 1,
+                "latencySlackMs": 100,
+                "maxInvalidRate": 0,
+                "maxMetricAgeMs": 60000,
+                "maxStableP95Ms": 5000,
+                "maxLatencyRatio": 1.5,
+                "minCompleteness": 1,
+                "baselineProbePct": 10,
+                "requestTimeoutMs": 10000,
+                "maxStableErrorRate": 0.05,
+                "maxCandidateFailures": 5
+              },
+              "stable": {
+                "p95Ms": 100,
+                "errors": 0,
+                "lastAt": 1790798004511.263,
+                "invalid": 0,
+                "settled": 200,
+                "started": 200,
+                "complete": 200
+              },
+              "revision": 1,
+              "candidate": {
+                "p95Ms": 100,
+                "errors": 0,
+                "lastAt": 1790798004516.182,
+                "invalid": 0,
+                "settled": 200,
+                "started": 200,
+                "complete": 200
+              },
+              "confidence": {
+                "z": 1.96,
+                "stableError": {
+                  "low": 0,
+                  "high": 0.018846005918320894
+                },
+                "candidateError": {
+                  "low": 0,
+                  "high": 0.018846005918320894
+                }
+              },
+              "stageSince": 1790798004506,
+              "evaluatedAt": 1790798004519.337
+            },
+            "releaseId": "healthy",
+            "configHash": "cb9ce27a8d8dadff9f5bf12d2b29dabdb0f3572dfd8a38cbd85717ba48e85f6f",
+            "routingConfirmed": "CANARY_ACTIVE"
+          },
+          "previousHash": "89e78222beb62605ea13c4e0418038b3333b1f0b5df88effea4f89de443370f3",
+          "hash": "1558295fde0ea2bc2fa9e350a7fe6a5263276a3624e5db589a8a41bc8c93865c"
+        },
+        {
+          "seq": 3,
+          "record": {
+            "at": 1790798004536,
+            "seq": 3,
+            "after": {
+              "epoch": 3,
+              "stage": 2,
+              "status": "RUNNING",
+              "revision": 3,
+              "leaseUntil": 1790798034534,
+              "stageSince": 1790798004534,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "action": "ADVANCE",
+            "before": {
+              "epoch": 2,
+              "stage": 1,
+              "status": "RUNNING",
+              "revision": 2,
+              "leaseUntil": 1790798034519,
+              "stageSince": 1790798004519,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "reason": "STAGE_VERIFIED",
+            "windows": 1,
+            "decision": "PROMOTE",
+            "evidence": {
+              "stage": 1,
+              "policy": {
+                "stages": [
+                  5,
+                  25,
+                  50,
+                  100
+                ],
+                "leaseMs": 30000,
+                "earlyMin": 20,
+                "maxP95Ms": 3000,
+                "windowMs": 1800000,
+                "minStable": 200,
+                "freshBatch": 100,
+                "minStageMs": 1,
+                "maxErrorRate": 0.02,
+                "minCandidate": 200,
+                "maxErrorDelta": 0.02,
+                "earlyErrorRate": 0.1,
+                "healthyWindows": 1,
+                "latencySlackMs": 100,
+                "maxInvalidRate": 0,
+                "maxMetricAgeMs": 60000,
+                "maxStableP95Ms": 5000,
+                "maxLatencyRatio": 1.5,
+                "minCompleteness": 1,
+                "baselineProbePct": 10,
+                "requestTimeoutMs": 10000,
+                "maxStableErrorRate": 0.05,
+                "maxCandidateFailures": 5
+              },
+              "stable": {
+                "p95Ms": 100,
+                "errors": 0,
+                "lastAt": 1790798004525.707,
+                "invalid": 0,
+                "settled": 200,
+                "started": 200,
+                "complete": 200
+              },
+              "revision": 2,
+              "candidate": {
+                "p95Ms": 100,
+                "errors": 0,
+                "lastAt": 1790798004531.319,
+                "invalid": 0,
+                "settled": 200,
+                "started": 200,
+                "complete": 200
+              },
+              "confidence": {
+                "z": 1.96,
+                "stableError": {
+                  "low": 0,
+                  "high": 0.018846005918320894
+                },
+                "candidateError": {
+                  "low": 0,
+                  "high": 0.018846005918320894
+                }
+              },
+              "stageSince": 1790798004519,
+              "evaluatedAt": 1790798004534.572
+            },
+            "releaseId": "healthy",
+            "configHash": "cb9ce27a8d8dadff9f5bf12d2b29dabdb0f3572dfd8a38cbd85717ba48e85f6f",
+            "routingConfirmed": "CANARY_ACTIVE"
+          },
+          "previousHash": "1558295fde0ea2bc2fa9e350a7fe6a5263276a3624e5db589a8a41bc8c93865c",
+          "hash": "9a92d37b0d7437b859fcd68c7f3fea86d0e3ca79a9fee86f3c645eb89312338d"
+        },
+        {
+          "seq": 4,
+          "record": {
+            "at": 1790798004550,
+            "seq": 4,
+            "after": {
+              "epoch": 4,
+              "stage": 3,
+              "status": "RUNNING",
+              "revision": 4,
+              "leaseUntil": 1790798034548,
+              "stageSince": 1790798004548,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "action": "ADVANCE",
+            "before": {
+              "epoch": 3,
+              "stage": 2,
+              "status": "RUNNING",
+              "revision": 3,
+              "leaseUntil": 1790798034534,
+              "stageSince": 1790798004534,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "reason": "STAGE_VERIFIED",
+            "windows": 1,
+            "decision": "PROMOTE",
+            "evidence": {
+              "stage": 2,
+              "policy": {
+                "stages": [
+                  5,
+                  25,
+                  50,
+                  100
+                ],
+                "leaseMs": 30000,
+                "earlyMin": 20,
+                "maxP95Ms": 3000,
+                "windowMs": 1800000,
+                "minStable": 200,
+                "freshBatch": 100,
+                "minStageMs": 1,
+                "maxErrorRate": 0.02,
+                "minCandidate": 200,
+                "maxErrorDelta": 0.02,
+                "earlyErrorRate": 0.1,
+                "healthyWindows": 1,
+                "latencySlackMs": 100,
+                "maxInvalidRate": 0,
+                "maxMetricAgeMs": 60000,
+                "maxStableP95Ms": 5000,
+                "maxLatencyRatio": 1.5,
+                "minCompleteness": 1,
+                "baselineProbePct": 10,
+                "requestTimeoutMs": 10000,
+                "maxStableErrorRate": 0.05,
+                "maxCandidateFailures": 5
+              },
+              "stable": {
+                "p95Ms": 100,
+                "errors": 0,
+                "lastAt": 1790798004540.742,
+                "invalid": 0,
+                "settled": 200,
+                "started": 200,
+                "complete": 200
+              },
+              "revision": 3,
+              "candidate": {
+                "p95Ms": 100,
+                "errors": 0,
+                "lastAt": 1790798004545.583,
+                "invalid": 0,
+                "settled": 200,
+                "started": 200,
+                "complete": 200
+              },
+              "confidence": {
+                "z": 1.96,
+                "stableError": {
+                  "low": 0,
+                  "high": 0.018846005918320894
+                },
+                "candidateError": {
+                  "low": 0,
+                  "high": 0.018846005918320894
+                }
+              },
+              "stageSince": 1790798004534,
+              "evaluatedAt": 1790798004548.744
+            },
+            "releaseId": "healthy",
+            "configHash": "cb9ce27a8d8dadff9f5bf12d2b29dabdb0f3572dfd8a38cbd85717ba48e85f6f",
+            "routingConfirmed": "CANARY_ACTIVE"
+          },
+          "previousHash": "9a92d37b0d7437b859fcd68c7f3fea86d0e3ca79a9fee86f3c645eb89312338d",
+          "hash": "834ebaead5ceecf6463de6a49a547b21e42a5e6478df9c99a4515ef85ccd790e"
+        },
+        {
+          "seq": 5,
+          "record": {
+            "at": 1790798004564,
+            "seq": 5,
+            "after": {
+              "epoch": 4,
+              "stage": 3,
+              "status": "COMPLETED",
+              "revision": 5,
+              "leaseUntil": 1790798034562,
+              "stageSince": 1790798004548,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "action": "COMPLETE",
+            "before": {
+              "epoch": 4,
+              "stage": 3,
+              "status": "RUNNING",
+              "revision": 4,
+              "leaseUntil": 1790798034548,
+              "stageSince": 1790798004548,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "reason": "RELEASE_VERIFIED",
+            "windows": 1,
+            "decision": "PROMOTE",
+            "evidence": {
+              "stage": 3,
+              "policy": {
+                "stages": [
+                  5,
+                  25,
+                  50,
+                  100
+                ],
+                "leaseMs": 30000,
+                "earlyMin": 20,
+                "maxP95Ms": 3000,
+                "windowMs": 1800000,
+                "minStable": 200,
+                "freshBatch": 100,
+                "minStageMs": 1,
+                "maxErrorRate": 0.02,
+                "minCandidate": 200,
+                "maxErrorDelta": 0.02,
+                "earlyErrorRate": 0.1,
+                "healthyWindows": 1,
+                "latencySlackMs": 100,
+                "maxInvalidRate": 0,
+                "maxMetricAgeMs": 60000,
+                "maxStableP95Ms": 5000,
+                "maxLatencyRatio": 1.5,
+                "minCompleteness": 1,
+                "baselineProbePct": 10,
+                "requestTimeoutMs": 10000,
+                "maxStableErrorRate": 0.05,
+                "maxCandidateFailures": 5
+              },
+              "stable": {
+                "p95Ms": 100,
+                "errors": 0,
+                "lastAt": 1790798004554.437,
+                "invalid": 0,
+                "settled": 200,
+                "started": 200,
+                "complete": 200
+              },
+              "revision": 4,
+              "candidate": {
+                "p95Ms": 100,
+                "errors": 0,
+                "lastAt": 1790798004559.307,
+                "invalid": 0,
+                "settled": 200,
+                "started": 200,
+                "complete": 200
+              },
+              "confidence": {
+                "z": 1.96,
+                "stableError": {
+                  "low": 0,
+                  "high": 0.018846005918320894
+                },
+                "candidateError": {
+                  "low": 0,
+                  "high": 0.018846005918320894
+                }
+              },
+              "stageSince": 1790798004548,
+              "evaluatedAt": 1790798004562.516
+            },
+            "releaseId": "healthy",
+            "configHash": "cb9ce27a8d8dadff9f5bf12d2b29dabdb0f3572dfd8a38cbd85717ba48e85f6f",
+            "routingConfirmed": "CANARY_ACTIVE"
+          },
+          "previousHash": "834ebaead5ceecf6463de6a49a547b21e42a5e6478df9c99a4515ef85ccd790e",
+          "hash": "eac4dc0b8020cdf2ea5dd7107f9deabe995b83ebffc247db34da080ff00db716"
+        }
+      ]
+    },
+    {
+      "label": "failed commit and recovery",
+      "release": {
+        "id": "failedrollback",
+        "status": "ROLLED_BACK",
+        "stage": 0,
+        "epoch": 1,
+        "revision": 2,
+        "stageSince": 1790798004703,
+        "leaseUntil": 0,
+        "healthyWindows": 0,
+        "lastCandidateN": 0,
+        "lastStableN": 0,
+        "candidatePct": 0,
+        "lastReason": "OPERATOR_ROLLBACK",
+        "configHash": "ce6d66c27f12f5116359c8bf9001ca62bf4f889ea697315d65c091b30c0dc1cb",
+        "auditHead": "9f049dde8dd584bb14bc979cb6b2a90f58ec137d7bf22fe0e49913551afb2d82",
+        "auditSeq": 2,
+        "stableVersion": "stable-v1",
+        "candidateVersion": "candidate-v1",
+        "policy": {
+          "stages": [
+            5,
+            25,
+            50,
+            100
+          ],
+          "leaseMs": 30000,
+          "earlyMin": 20,
+          "maxP95Ms": 3000,
+          "windowMs": 1800000,
+          "minStable": 200,
+          "freshBatch": 100,
+          "minStageMs": 1,
+          "maxErrorRate": 0.02,
+          "minCandidate": 200,
+          "maxErrorDelta": 0.02,
+          "earlyErrorRate": 0.1,
+          "healthyWindows": 2,
+          "latencySlackMs": 100,
+          "maxInvalidRate": 0,
+          "maxMetricAgeMs": 60000,
+          "maxStableP95Ms": 5000,
+          "maxLatencyRatio": 1.5,
+          "minCompleteness": 1,
+          "baselineProbePct": 10,
+          "requestTimeoutMs": 10000,
+          "maxStableErrorRate": 0.05,
+          "maxCandidateFailures": 5
+        }
+      },
+      "audit": [
+        {
+          "seq": 1,
+          "record": {
+            "at": 1790798004703,
+            "seq": 1,
+            "state": {
+              "epoch": 1,
+              "stage": 0,
+              "status": "RUNNING",
+              "revision": 1,
+              "leaseUntil": 1790798034703,
+              "stageSince": 1790798004703,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "reason": "INITIAL_CANARY",
+            "decision": "HOLD",
+            "releaseId": "failedrollback",
+            "configHash": "ce6d66c27f12f5116359c8bf9001ca62bf4f889ea697315d65c091b30c0dc1cb",
+            "candidatePct": 5
+          },
+          "previousHash": "",
+          "hash": "14bcc79b4521d5b3a5248dd4835bde400d7bae4e97d533c1a2b4868ec8eb8c26"
+        },
+        {
+          "seq": 2,
+          "record": {
+            "at": 1790798004722,
+            "seq": 2,
+            "after": {
+              "epoch": 1,
+              "stage": 0,
+              "status": "ROLLED_BACK",
+              "revision": 2,
+              "leaseUntil": 0,
+              "stageSince": 1790798004703,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "before": {
+              "epoch": 1,
+              "stage": 0,
+              "status": "RUNNING",
+              "revision": 1,
+              "leaseUntil": 1790798034703,
+              "stageSince": 1790798004703,
+              "lastStableN": 0,
+              "healthyWindows": 0,
+              "lastCandidateN": 0
+            },
+            "reason": "OPERATOR_ROLLBACK",
+            "decision": "ROLLBACK",
+            "releaseId": "failedrollback",
+            "configHash": "ce6d66c27f12f5116359c8bf9001ca62bf4f889ea697315d65c091b30c0dc1cb",
+            "routingConfirmed": "STABLE_ONLY"
+          },
+          "previousHash": "14bcc79b4521d5b3a5248dd4835bde400d7bae4e97d533c1a2b4868ec8eb8c26",
+          "hash": "9f049dde8dd584bb14bc979cb6b2a90f58ec137d7bf22fe0e49913551afb2d82"
+        }
+      ]
+    }
+  ],
+  "failClosedEvents": [
+    {
+      "event": "RELEASEGUARD_FAIL_CLOSED",
+      "releaseId": "fenced",
+      "reason": "OPERATOR_STOP_PENDING",
+      "at": 1790798004695
+    },
+    {
+      "event": "RELEASEGUARD_FAIL_CLOSED",
+      "releaseId": "failedrollback",
+      "reason": "EVALUATION_OR_ROLLBACK_COMMIT_FAILED",
+      "at": 1790798004718
+    },
+    {
+      "event": "RELEASEGUARD_FAIL_CLOSED",
+      "releaseId": "failedrollback",
+      "reason": "OPERATOR_STOP_PENDING",
+      "at": 1790798004720
+    },
+    {
+      "event": "RELEASEGUARD_FAIL_CLOSED",
+      "releaseId": "delayed",
+      "reason": "OPERATOR_STOP_PENDING",
+      "at": 1790798004739
+    }
+  ]
+}
