@@ -220,6 +220,7 @@ def required_permissions(
 ) -> tuple[str, ...]:
     permissions = ["contents: read"]
     permissions.append("actions: write" if rerun_mode != "none" else "actions: read")
+    permissions.append("checks: read")
     if triage_comment:
         permissions.append("pull-requests: write")
     if issue_lifecycle:
@@ -246,7 +247,7 @@ def build_recommended_yaml(
         "",
         "steps:",
         "  - uses: actions/checkout@v4",
-        "  - uses: othy19904-eng/workflow-failure-lab@v1",
+        "  - uses: achirothmane/workflow-failure-lab@v1",
         "    with:",
         "      github-token: ${{ github.token }}",
         "      comment-on-pr: 'false'",
@@ -521,12 +522,40 @@ def inspect_setup(
                     "Grant contents: read and actions: read to the workflow token.",
                 )
             )
+
+        try:
+            api.request("GET", f"/repos/{repo}/commits/HEAD/check-runs?per_page=1")
+            checks.append(
+                DoctorCheck(
+                    "GitHub Checks read access",
+                    PASS,
+                    "Check runs are readable; runner-loss annotation fallback can operate.",
+                )
+            )
+        except RuntimeError as exc:
+            checks.append(
+                DoctorCheck(
+                    "GitHub Checks read access",
+                    WARN,
+                    str(exc),
+                    "Grant checks: read to enable authenticated runner-loss annotation fallback. "
+                    "Ordinary log-based retry analysis remains available.",
+                )
+            )
     else:
         checks.append(
             DoctorCheck(
                 "GitHub API read access",
                 WARN,
                 "Token or repository was not provided; API read access was not verified.",
+            )
+        )
+        checks.append(
+            DoctorCheck(
+                "GitHub Checks read access",
+                WARN,
+                "Token or repository was not provided; Checks read access was not verified.",
+                "Grant checks: read to enable authenticated runner-loss annotation fallback.",
             )
         )
 
@@ -667,6 +696,15 @@ def main() -> int:
     _write_output("warnings", str(report.warnings))
     _write_output("detected-frameworks", ",".join(report.detected_frameworks))
     _write_output("required-permissions", ",".join(report.required_permissions))
+    checks_read = next(
+        (
+            item.status
+            for item in report.checks
+            if item.name == "GitHub Checks read access"
+        ),
+        "UNVERIFIED",
+    )
+    _write_output("checks-read-access", checks_read)
 
     for check in report.checks:
         if check.status == BLOCKED:

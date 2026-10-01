@@ -52,6 +52,7 @@ on:
 permissions:
   contents: read
   actions: read
+  checks: read
 
 jobs:
   doctor:
@@ -66,7 +67,7 @@ jobs:
           frameworks: 'auto'
 ```
 
-The Doctor inspects the checked-out repository and returns **READY**, **WARN**, or **BLOCKED** with concrete fixes. It can detect pytest, Jest, and Vitest, catch missing `jest-junit`, inspect JUnit artifact wiring, validate CODEOWNERS/ownership maps and quarantine manifests, check GitHub read access, and show the permissions needed for the features you plan to enable.
+The Doctor inspects the checked-out repository and returns **READY**, **WARN**, or **BLOCKED** with concrete fixes. It can detect pytest, Jest, and Vitest, catch missing `jest-junit`, inspect JUnit artifact wiring, validate CODEOWNERS/ownership maps and quarantine manifests, verify Actions read access, probe Checks read access for runner-loss annotations, and show the permissions needed for the features you plan to enable. Missing `checks: read` is a warning rather than a blocker because ordinary log-based analysis remains available.
 
 It **does not** create comments, Issues, reruns, or quarantines to prove write access.
 
@@ -82,6 +83,7 @@ PASS  Framework detection
 PASS  Jest JUnit reporter
 PASS  JUnit artifact wiring
 PASS  GitHub API read access
+PASS  GitHub Checks read access
 WARN  Future write features require explicit permissions
 ```
 
@@ -116,7 +118,7 @@ External consumer: [ci-retry-gate-consumer-e2e](https://github.com/achirothmane/
 
 1. **Zero-install proof:** analyze one public historical failure without changing the target repository.
 2. Decide whether the evidence changed or shortened the rerun/investigate decision.
-3. **Only if useful**, run the Doctor with `contents: read` and `actions: read`.
+3. **Only if useful**, run the Doctor with `contents: read`, `actions: read`, and `checks: read` so it can verify the runner-annotation fallback too.
 4. Add CI Retry Gate in report-only mode with automatic reruns still off.
 5. Observe repeated real decisions and flaky-test evidence.
 6. Enable only the write feature you actually want: reruns, PR triage, managed Issues, or quarantine lifecycle.

@@ -4,7 +4,7 @@ author: 'othy19904-eng'
 
 inputs:
   github-token:
-    description: 'GitHub token used only for read-only repository and Actions API checks.'
+    description: 'GitHub token used only for read-only repository, Actions, and Checks API diagnostics.'
     required: true
   repository:
     description: 'Repository in owner/name form. Defaults to github.repository.'
@@ -75,6 +75,9 @@ outputs:
   required-permissions:
     description: 'Comma-separated recommended GitHub workflow permissions for the requested feature set.'
     value: ${{ steps.doctor.outputs.required-permissions }}
+  checks-read-access:
+    description: 'PASS, WARN, or UNVERIFIED result for the GitHub Checks read-access preflight.'
+    value: ${{ steps.doctor.outputs.checks-read-access }}
 
 runs:
   using: 'composite'
