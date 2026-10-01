@@ -201,6 +201,10 @@ jobs:
           test "${{ steps.doctor.outputs.blocked-checks }}" = "0"
           test "${{ steps.doctor.outputs.checks-read-access }}" = "PASS"
           [[ ",${{ steps.doctor.outputs.required-permissions }}," == *",checks: read,"* ]]
+          test "${{ steps.doctor.outputs.activation-ready }}" = "true"
+          [[ "${{ steps.doctor.outputs.activation-workflow }}" == *"workflow_run:"* ]]
+          [[ "${{ steps.doctor.outputs.activation-workflow }}" == *"achirothmane/workflow-failure-lab@v1"* ]]
+          [[ "${{ steps.doctor.outputs.activation-workflow }}" == *"auto-rerun: 'false'"* ]]
           case ",${{ steps.doctor.outputs.detected-frameworks }}," in
             *,pytest,jest,vitest,*) ;;
             *) exit 1 ;;
