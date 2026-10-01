@@ -6,7 +6,12 @@ from dataclasses import dataclass, replace
 from ci_retry_gate import assess_authenticated_runner_annotations, assess_job
 from evidence_gate import build_ci_retry_decision
 from evidence_producer import produce_ci_evidence_bundle
-from public_incident_corpus import PUBLIC_INCIDENT_CORPUS_V3, PUBLIC_INCIDENT_CORPUS_V4, PublicIncident
+from public_incident_corpus import (
+    PUBLIC_INCIDENT_CORPUS_V3,
+    PUBLIC_INCIDENT_CORPUS_V4,
+    PUBLIC_INCIDENT_CORPUS_V5,
+    PublicIncident,
+)
 
 
 EXPECTED_ALLOW = "ALLOW"
@@ -440,8 +445,58 @@ PUBLIC_INCIDENT_REPLAY_FIXTURES_V4 = tuple(
 )
 
 
+PUBLIC_INCIDENT_REPLAY_FIXTURES_V5 = PUBLIC_INCIDENT_REPLAY_FIXTURES_V4 + (
+    PublicIncidentReplayFixture(
+        case_id="runner-images-13719-prestep-disk-exhaustion",
+        log_excerpt=(
+            "System.IO.IOException: No space left on device : "
+            "'/home/runner/actions-runner/cached/_diag/Worker_20260223-165456-utc.log'\n"
+        ),
+        job_name="hosted-runner initialization",
+        failed_step_name="",
+        expected_decision=EXPECTED_BLOCK,
+        fixture_basis=(
+            "actions/runner-images #13719 reports the worker failing before any workflow "
+            "step, on a tiny repository with no build/cache workload; multiple reruns and "
+            "switching ubuntu-latest to ubuntu-22.04 reproduced the same pre-step failure. "
+            "The replay job shell is deterministic scaffolding only, not claimed upstream metadata."
+        ),
+    ),
+    PublicIncidentReplayFixture(
+        case_id="serverless-cfn-lint-dns-retry-exhaustion-2025-11-19",
+        log_excerpt=(
+            "socket.gaierror: [Errno -3] Temporary failure in name resolution\n"
+            "urllib.error.URLError: <urlopen error [Errno -3] Temporary failure in name resolution>\n"
+            "cfn-lint schema update failed, retrying... (attempt 1 of 3)\n"
+            "urllib.error.URLError: <urlopen error [Errno -3] Temporary failure in name resolution>\n"
+            "cfn-lint schema update failed, retrying... (attempt 2 of 3)\n"
+            "urllib.error.URLError: <urlopen error [Errno -3] Temporary failure in name resolution>\n"
+            "cfn-lint schema update failed after 3 attempts\n"
+            "make: *** [Makefile:57: lint] Error 1\n"
+        ),
+        job_name="ubuntu-latest / 3.9",
+        failed_step_name="",
+        expected_decision=EXPECTED_BLOCK,
+        fixture_basis=(
+            "aws-cloudformation/cfn-lint #4296 preserves the full failure text for "
+            "serverless-application-model run 19517345578 / failed job 55875798766. "
+            "GitHub's latest-attempt job list shows the same ubuntu-latest / 3.9 identity "
+            "later succeeded as job 55876077959. The issue-preserved log lacks GitHub "
+            "runner timestamps and failed-step timing metadata, so that retrospective "
+            "recovery must not be relabeled as decision-time provenance."
+        ),
+        source_job={
+            "id": 55875798766,
+            "name": "ubuntu-latest / 3.9",
+            "conclusion": "failure",
+            "steps": [],
+        },
+    ),
+)
+
+
 def _incident_index() -> dict[str, PublicIncident]:
-    return {incident.case_id: incident for incident in PUBLIC_INCIDENT_CORPUS_V4}
+    return {incident.case_id: incident for incident in PUBLIC_INCIDENT_CORPUS_V5}
 
 
 def _replay_job(fixture: PublicIncidentReplayFixture, ordinal: int) -> dict:
@@ -523,9 +578,9 @@ def replay_public_incident(
 def run_public_incident_replay() -> PublicIncidentReplaySummary:
     results = tuple(
         replay_public_incident(fixture, ordinal=index)
-        for index, fixture in enumerate(PUBLIC_INCIDENT_REPLAY_FIXTURES_V4, start=1)
+        for index, fixture in enumerate(PUBLIC_INCIDENT_REPLAY_FIXTURES_V5, start=1)
     )
-    corpus_ids = {incident.case_id for incident in PUBLIC_INCIDENT_CORPUS_V4}
+    corpus_ids = {incident.case_id for incident in PUBLIC_INCIDENT_CORPUS_V5}
     replay_ids = {result.case_id for result in results}
     missing = tuple(sorted(corpus_ids - replay_ids))
     return PublicIncidentReplaySummary(
@@ -537,7 +592,7 @@ def run_public_incident_replay() -> PublicIncidentReplaySummary:
 
 def render_public_incident_replay(summary: PublicIncidentReplaySummary) -> str:
     lines = [
-        "Public Incident Replay Gate v4",
+        "Public Incident Replay Gate v5",
         f"cases: {summary.replayed_cases}/{summary.corpus_size}",
         f"coverage: {summary.coverage:.0%}",
         f"false ALLOW: {summary.false_allows}",

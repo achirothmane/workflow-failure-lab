@@ -3,6 +3,7 @@ from public_incident_corpus import (
     PUBLIC_INCIDENT_CORPUS_V2,
     PUBLIC_INCIDENT_CORPUS_V3,
     PUBLIC_INCIDENT_CORPUS_V4,
+    PUBLIC_INCIDENT_CORPUS_V5,
 )
 from public_incident_replay import (
     EXPECTED_ALLOW,
@@ -11,6 +12,7 @@ from public_incident_replay import (
     PUBLIC_INCIDENT_REPLAY_FIXTURES_V2,
     PUBLIC_INCIDENT_REPLAY_FIXTURES_V3,
     PUBLIC_INCIDENT_REPLAY_FIXTURES_V4,
+    PUBLIC_INCIDENT_REPLAY_FIXTURES_V5,
     main,
     run_public_incident_replay,
 )
@@ -23,20 +25,24 @@ def test_versioned_fixture_sets_are_preserved():
     assert len(PUBLIC_INCIDENT_REPLAY_FIXTURES_V2) == 6
     assert len(PUBLIC_INCIDENT_CORPUS_V3) == 9
     assert len(PUBLIC_INCIDENT_REPLAY_FIXTURES_V3) == 9
+    assert len(PUBLIC_INCIDENT_CORPUS_V4) == 9
+    assert len(PUBLIC_INCIDENT_REPLAY_FIXTURES_V4) == 9
+    assert len(PUBLIC_INCIDENT_CORPUS_V5) == 11
+    assert len(PUBLIC_INCIDENT_REPLAY_FIXTURES_V5) == 11
 
 
-def test_v4_replay_fixture_covers_every_public_incident():
-    corpus_ids = {incident.case_id for incident in PUBLIC_INCIDENT_CORPUS_V4}
-    replay_ids = {fixture.case_id for fixture in PUBLIC_INCIDENT_REPLAY_FIXTURES_V4}
+def test_v5_replay_fixture_covers_every_public_incident():
+    corpus_ids = {incident.case_id for incident in PUBLIC_INCIDENT_CORPUS_V5}
+    replay_ids = {fixture.case_id for fixture in PUBLIC_INCIDENT_REPLAY_FIXTURES_V5}
     assert replay_ids == corpus_ids
 
 
-def test_fixture_expected_decisions_match_v4_corpus_contract():
+def test_fixture_expected_decisions_match_v5_corpus_contract():
     expected = {
         incident.case_id: incident.expected_decision
-        for incident in PUBLIC_INCIDENT_CORPUS_V4
+        for incident in PUBLIC_INCIDENT_CORPUS_V5
     }
-    for fixture in PUBLIC_INCIDENT_REPLAY_FIXTURES_V4:
+    for fixture in PUBLIC_INCIDENT_REPLAY_FIXTURES_V5:
         assert fixture.expected_decision == expected[fixture.case_id]
 
 
@@ -57,7 +63,7 @@ def test_known_block_cases_remain_blocked():
         if result.expected_decision == EXPECTED_BLOCK
     ]
 
-    assert len(blocked) == 5
+    assert len(blocked) == 7
     assert all(result.actual_decision == EXPECTED_BLOCK for result in blocked)
 
 
@@ -97,7 +103,7 @@ def test_v4_positive_controls_are_allowed():
 def test_log_positive_controls_use_real_failed_step_metadata():
     positive = [
         fixture
-        for fixture in PUBLIC_INCIDENT_REPLAY_FIXTURES_V4
+        for fixture in PUBLIC_INCIDENT_REPLAY_FIXTURES_V5
         if fixture.expected_decision == EXPECTED_ALLOW
         and fixture.check_run is None
     ]
@@ -120,7 +126,7 @@ def test_prql_runner_loss_annotation_confirms_provenance_but_side_effect_still_b
         if item.case_id == "prql-hosted-runner-loss-2026-08-26"
     )
     fixture = next(
-        item for item in PUBLIC_INCIDENT_REPLAY_FIXTURES_V4
+        item for item in PUBLIC_INCIDENT_REPLAY_FIXTURES_V5
         if item.case_id == result.case_id
     )
 
@@ -156,9 +162,37 @@ def test_replay_check_cli_passes_authenticated_annotation_corpus(capsys):
     output = capsys.readouterr().out
 
     assert exit_code == 0
-    assert "Public Incident Replay Gate v4" in output
-    assert "cases: 9/9" in output
+    assert "Public Incident Replay Gate v5" in output
+    assert "cases: 11/11" in output
     assert "coverage: 100%" in output
     assert "false ALLOW: 0" in output
     assert "false BLOCK: 0" in output
     assert "gate: PASS" in output
+
+
+def test_v5_prestep_disk_exhaustion_remains_blocked_as_resource_failure():
+    summary = run_public_incident_replay()
+    result = next(
+        item for item in summary.results
+        if item.case_id == "runner-images-13719-prestep-disk-exhaustion"
+    )
+    assert result.actual_decision == EXPECTED_BLOCK
+    assert result.category == "RESOURCE_TIMEOUT"
+
+
+def test_v5_dns_issue_recovery_does_not_invent_decision_time_provenance():
+    summary = run_public_incident_replay()
+    result = next(
+        item for item in summary.results
+        if item.case_id == "serverless-cfn-lint-dns-retry-exhaustion-2025-11-19"
+    )
+    fixture = next(
+        item for item in PUBLIC_INCIDENT_REPLAY_FIXTURES_V5
+        if item.case_id == result.case_id
+    )
+
+    assert fixture.source_job is not None
+    assert fixture.source_job["id"] == 55875798766
+    assert result.actual_decision == EXPECTED_BLOCK
+    assert result.category == "DEPENDENCY_NETWORK"
+    assert result.provenance_status != "CONFIRMED"

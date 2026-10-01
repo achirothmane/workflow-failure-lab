@@ -54,6 +54,22 @@ missing provenance can become confirmed
 and authority can still remain denied
 ```
 
+### V5
+
+V5 adds two negative controls chosen specifically to pressure persistence and provenance boundaries:
+
+- `actions/runner-images#13719`: `No space left on device` occurs during hosted-runner initialization before any workflow step and recurs across reruns/runner labels. This remains `BLOCK`.
+- `aws-cloudformation/cfn-lint#4296` / `aws/serverless-application-model` run `19517345578`: DNS resolution fails through all three in-step retries. GitHub's latest-attempt job list later shows the same `ubuntu-latest / 3.9` identity succeeding, but the issue-preserved failure text has no runner timestamps or failed-step timing metadata. Retrospective recovery therefore does not manufacture decision-time provenance; this replay remains `BLOCK`.
+
+V5 has 11 incidents across 11 repositories: four `ALLOW`, seven `BLOCK`.
+
+The added controls preserve the distinction:
+
+```text
+later recovery != prior authorization evidence
+runner-shaped failure != guaranteed useful immediate retry
+```
+
 ## Admission rule
 
 Expected `ALLOW` controls require a bounded retry-safe job, high-confidence transient
