@@ -112,6 +112,26 @@ jobs:
 
 The Doctor inspects the checked-out repository and returns **READY**, **WARN**, or **BLOCKED** with concrete fixes. It can detect pytest, Jest, and Vitest, catch missing `jest-junit`, inspect JUnit artifact wiring, validate CODEOWNERS/ownership maps and quarantine manifests, verify Actions read access, probe Checks read access for runner-loss annotations, and show the permissions needed for the features you plan to enable. Missing `checks: read` is a warning rather than a blocker because ordinary log-based analysis remains available.
 
+When the verdict is **READY**, the Doctor also emits a complete copy-ready `activation-workflow` output plus the smaller `recommended-config` snippet. Set `source-workflow` to the exact name of the CI workflow you want to observe. The generated workflow preserves report-only defaults unless you explicitly ask the Doctor for `rerun-mode: auto` or `rerun-mode: selective`.
+
+Example:
+
+```yaml
+- id: doctor
+  uses: achirothmane/workflow-failure-lab/doctor@v1
+  with:
+    github-token: ${{ github.token }}
+    source-workflow: 'CI'
+    rerun-mode: 'none'
+
+- name: Show generated activation workflow
+  if: ${{ steps.doctor.outputs.activation-ready == 'true' }}
+  run: |
+    printf '%s\n' "${{ steps.doctor.outputs.activation-workflow }}"
+```
+
+The Doctor never writes the generated workflow into your repository; copying it remains an explicit maintainer action.
+
 It **does not** create comments, Issues, reruns, or quarantines to prove write access.
 
 Example Doctor result:

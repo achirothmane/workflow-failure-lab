@@ -7,6 +7,7 @@ from setup_doctor import (
     PASS,
     WARN,
     _safe_workdir,
+    build_activation_workflow_yaml,
     build_recommended_yaml,
     detect_frameworks,
     inspect_setup,
@@ -367,6 +368,68 @@ def test_recommended_yaml_matches_requested_features():
     assert "othy19904-eng/workflow-failure-lab@v1" not in text
     assert "actions: write" in text
     assert "checks: read" in text
+
+
+def test_activation_workflow_is_copy_ready_and_read_only_by_default():
+    text = build_activation_workflow_yaml(
+        source_workflow="CI",
+        permissions=("contents: read", "actions: read", "checks: read"),
+        frameworks=("pytest",),
+        junit_prefix="junit-results",
+        ownership_routing=False,
+        ownership_map=".github/flaky-ownership.json",
+        quarantine_lifecycle=False,
+        quarantine_manifest=".github/flaky-quarantine.json",
+        triage_comment=False,
+        issue_lifecycle=False,
+        rerun_mode="none",
+    )
+
+    assert "name: CI Retry Gate" in text
+    assert 'workflows: ["CI"]' in text
+    assert "actions: read" in text
+    assert "auto-rerun: 'false'" in text
+    assert "selective-rerun: 'false'" in text
+    assert "flaky-test-intelligence: 'true'" in text
+    assert "achirothmane/workflow-failure-lab@v1" in text
+
+
+def test_activation_workflow_selective_mode_is_explicit():
+    text = build_activation_workflow_yaml(
+        source_workflow="Build & Test",
+        permissions=("contents: read", "actions: write", "checks: read"),
+        frameworks=(),
+        junit_prefix="junit-results",
+        ownership_routing=False,
+        ownership_map=".github/flaky-ownership.json",
+        quarantine_lifecycle=False,
+        quarantine_manifest=".github/flaky-quarantine.json",
+        triage_comment=False,
+        issue_lifecycle=False,
+        rerun_mode="selective",
+    )
+
+    assert 'workflows: ["Build & Test"]' in text
+    assert "actions: write" in text
+    assert "auto-rerun: 'false'" in text
+    assert "selective-rerun: 'true'" in text
+
+
+def test_activation_workflow_rejects_multiline_source_name():
+    with pytest.raises(ValueError):
+        build_activation_workflow_yaml(
+            source_workflow="CI\nInjected",
+            permissions=("contents: read", "actions: read", "checks: read"),
+            frameworks=(),
+            junit_prefix="junit-results",
+            ownership_routing=False,
+            ownership_map=".github/flaky-ownership.json",
+            quarantine_lifecycle=False,
+            quarantine_manifest=".github/flaky-quarantine.json",
+            triage_comment=False,
+            issue_lifecycle=False,
+            rerun_mode="none",
+        )
 
 
 def test_working_directory_cannot_escape_workspace(tmp_path):

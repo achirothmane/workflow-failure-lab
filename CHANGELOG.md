@@ -8,6 +8,7 @@ All notable changes to CI Retry Gate are documented here.
 
 - Decision Experience v1: a compact user-facing decision card with final decision, evidence status, deterministic next action, observed failed runtime, and rerun-eligible/blocked job counts.
 - Report-only Fleet Report action for recent completed workflow runs, including rerun-eligible/blocked counts, blocker reasons, observed failed runtime, and ground-truth candidate outcomes when available.
+- Setup Doctor copy-ready activation generation, including `activation-ready`, `recommended-config`, and a complete `activation-workflow` output bound to an explicit source workflow name.
 - Descriptive-only `decision-experience-json` and operator/value outputs for downstream reporting.
 
 ### Changed

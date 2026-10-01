@@ -285,6 +285,88 @@ def build_recommended_yaml(
     return "\n".join(lines)
 
 
+def build_activation_workflow_yaml(
+    *,
+    source_workflow: str,
+    permissions: tuple[str, ...],
+    frameworks: tuple[str, ...],
+    junit_prefix: str,
+    ownership_routing: bool,
+    ownership_map: str,
+    quarantine_lifecycle: bool,
+    quarantine_manifest: str,
+    triage_comment: bool,
+    issue_lifecycle: bool,
+    rerun_mode: str,
+) -> str:
+    """Build a copy-ready workflow from the Doctor's requested feature set."""
+    workflow_name = source_workflow.strip()
+    if not workflow_name:
+        raise ValueError("source-workflow must be non-empty")
+    if "\n" in workflow_name or "\r" in workflow_name:
+        raise ValueError("source-workflow must be a single line")
+    if len(workflow_name) > 200:
+        raise ValueError("source-workflow must be at most 200 characters")
+
+    lines = [
+        "name: CI Retry Gate",
+        "",
+        "on:",
+        "  workflow_run:",
+        f"    workflows: [{json.dumps(workflow_name)}]",
+        "    types: [completed]",
+        "",
+        "permissions:",
+        *[f"  {item}" for item in permissions],
+        "",
+        "jobs:",
+        "  retry-gate:",
+        "    if: ${{ github.event.workflow_run.conclusion == 'failure' }}",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        "      - uses: actions/checkout@v4",
+        "      - uses: achirothmane/workflow-failure-lab@v1",
+        "        with:",
+        "          github-token: ${{ github.token }}",
+        "          auto-rerun: 'false'",
+        "          selective-rerun: 'false'",
+        "          comment-on-pr: 'false'",
+    ]
+
+    if rerun_mode == "auto":
+        lines[-3] = "          auto-rerun: 'true'"
+    elif rerun_mode == "selective":
+        lines[-2] = "          selective-rerun: 'true'"
+
+    if frameworks:
+        lines.extend(
+            [
+                "          flaky-test-intelligence: 'true'",
+                f"          junit-artifact-prefix: {json.dumps(junit_prefix)}",
+            ]
+        )
+    if ownership_routing:
+        lines.extend(
+            [
+                "          flaky-ownership-routing: 'true'",
+                f"          flaky-ownership-map: {json.dumps(ownership_map)}",
+            ]
+        )
+    if quarantine_lifecycle:
+        lines.extend(
+            [
+                "          quarantine-lifecycle: 'true'",
+                f"          quarantine-manifest: {json.dumps(quarantine_manifest)}",
+            ]
+        )
+    if triage_comment:
+        lines.append("          flaky-triage-comment: 'true'")
+    if issue_lifecycle:
+        lines.append("          flaky-issue-lifecycle: 'true'")
+
+    return "\n".join(lines)
+
+
 def inspect_setup(
     root: Path,
     *,
@@ -570,6 +652,7 @@ def render_report(
     report: DoctorReport,
     *,
     recommended_yaml: str,
+    activation_workflow_yaml: str,
 ) -> str:
     verdict = "READY" if report.ready else "BLOCKED"
     lines = [
@@ -596,7 +679,13 @@ def render_report(
             recommended_yaml,
             "~~~",
             "",
-            "> The doctor is read-only. It validates configuration and read access but never tests write permissions by creating comments, Issues, reruns, or quarantines.",
+            "### Copy-ready activation workflow",
+            "",
+            "~~~yaml",
+            activation_workflow_yaml,
+            "~~~",
+            "",
+            "> Copy the workflow only when Verdict is READY. The doctor is read-only and never installs this file or tests write permissions by creating comments, Issues, reruns, or quarantines.",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -609,6 +698,28 @@ def _write_output(name: str, value: str) -> None:
         return
     with open(path, "a", encoding="utf-8") as handle:
         handle.write(f"{name}={value}\n")
+
+
+def _write_multiline_output(name: str, value: str) -> None:
+    path = os.environ.get("GITHUB_OUTPUT")
+    if not path:
+        print(f"{name}<<CI_RETRY_GATE_EOF")
+        print(value)
+        print("CI_RETRY_GATE_EOF")
+        return
+
+    delimiter = "CI_RETRY_GATE_EOF"
+    suffix = 0
+    while delimiter in value:
+        suffix += 1
+        delimiter = f"CI_RETRY_GATE_EOF_{suffix}"
+
+    with open(path, "a", encoding="utf-8") as handle:
+        handle.write(f"{name}<<{delimiter}\n")
+        handle.write(value)
+        if not value.endswith("\n"):
+            handle.write("\n")
+        handle.write(f"{delimiter}\n")
 
 
 def main() -> int:
@@ -629,6 +740,13 @@ def main() -> int:
         fail_on_blocked = _bool(os.environ.get("INPUT_FAIL_ON_BLOCKED", "true"), True)
         quarantine_max_days = int(os.environ.get("INPUT_QUARANTINE_MAX_DAYS", "14"))
         rerun_mode = os.environ.get("INPUT_RERUN_MODE", "none").strip().lower()
+        source_workflow = os.environ.get("INPUT_SOURCE_WORKFLOW", "CI").strip()
+        if not source_workflow:
+            raise ValueError("source-workflow must be non-empty")
+        if "\n" in source_workflow or "\r" in source_workflow:
+            raise ValueError("source-workflow must be a single line")
+        if len(source_workflow) > 200:
+            raise ValueError("source-workflow must be at most 200 characters")
         ownership_map = os.environ.get(
             "INPUT_FLAKY_OWNERSHIP_MAP",
             ".github/flaky-ownership.json",
@@ -682,7 +800,24 @@ def main() -> int:
         issue_lifecycle=issue_lifecycle,
         rerun_mode=rerun_mode,
     )
-    markdown = render_report(report, recommended_yaml=recommended)
+    activation_workflow = build_activation_workflow_yaml(
+        source_workflow=source_workflow,
+        permissions=report.required_permissions,
+        frameworks=requested_for_yaml,
+        junit_prefix=junit_prefix,
+        ownership_routing=ownership_routing,
+        ownership_map=ownership_map,
+        quarantine_lifecycle=quarantine_lifecycle,
+        quarantine_manifest=quarantine_manifest,
+        triage_comment=triage_comment,
+        issue_lifecycle=issue_lifecycle,
+        rerun_mode=rerun_mode,
+    )
+    markdown = render_report(
+        report,
+        recommended_yaml=recommended,
+        activation_workflow_yaml=activation_workflow,
+    )
 
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
@@ -696,6 +831,9 @@ def main() -> int:
     _write_output("warnings", str(report.warnings))
     _write_output("detected-frameworks", ",".join(report.detected_frameworks))
     _write_output("required-permissions", ",".join(report.required_permissions))
+    _write_output("activation-ready", "true" if report.ready else "false")
+    _write_multiline_output("recommended-config", recommended)
+    _write_multiline_output("activation-workflow", activation_workflow)
     checks_read = next(
         (
             item.status

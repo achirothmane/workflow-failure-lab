@@ -1,6 +1,6 @@
 name: 'CI Retry Gate Setup Doctor'
 description: 'Read-only onboarding diagnostics for CI Retry Gate framework, JUnit, ownership, quarantine, permissions, and GitHub API access.'
-author: 'othy19904-eng'
+author: 'achirothmane'
 
 inputs:
   github-token:
@@ -58,6 +58,10 @@ inputs:
     description: 'Fail the doctor action when a BLOCKED check exists. WARN checks never fail the job.'
     required: false
     default: 'true'
+  source-workflow:
+    description: 'Source CI workflow name used only to generate the copy-ready workflow_run activation file.'
+    required: false
+    default: 'CI'
 
 outputs:
   ready:
@@ -78,6 +82,15 @@ outputs:
   checks-read-access:
     description: 'PASS, WARN, or UNVERIFIED result for the GitHub Checks read-access preflight.'
     value: ${{ steps.doctor.outputs.checks-read-access }}
+  activation-ready:
+    description: 'true only when the Doctor verdict is READY; use this before copying the generated activation workflow.'
+    value: ${{ steps.doctor.outputs.activation-ready }}
+  recommended-config:
+    description: 'Generated production configuration snippet for the selected feature set.'
+    value: ${{ steps.doctor.outputs.recommended-config }}
+  activation-workflow:
+    description: 'Complete copy-ready workflow_run YAML generated from the selected feature set and source workflow.'
+    value: ${{ steps.doctor.outputs.activation-workflow }}
 
 runs:
   using: 'composite'
@@ -100,4 +113,5 @@ runs:
         INPUT_FLAKY_ISSUE_LIFECYCLE: ${{ inputs.flaky-issue-lifecycle }}
         INPUT_RERUN_MODE: ${{ inputs.rerun-mode }}
         INPUT_FAIL_ON_BLOCKED: ${{ inputs.fail-on-blocked }}
+        INPUT_SOURCE_WORKFLOW: ${{ inputs.source-workflow }}
       run: python3 "$GITHUB_ACTION_PATH/../setup_doctor.py"
