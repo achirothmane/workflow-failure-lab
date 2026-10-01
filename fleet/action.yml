@@ -1,0 +1,67 @@
+name: 'CI Retry Gate Fleet Report'
+description: 'Read-only CI retry/value report across recent completed workflow runs.'
+author: 'achirothmane'
+
+inputs:
+  github-token:
+    description: 'GitHub token with actions:read for the repository.'
+    required: true
+  repository:
+    description: 'Repository in owner/name form. Defaults to github.repository.'
+    required: false
+    default: ''
+  runs:
+    description: 'Recent completed workflow runs to analyze. Range: 1 to 200.'
+    required: false
+    default: '50'
+
+outputs:
+  fleet-report-json:
+    description: 'Read-only fleet report JSON. Never grants retry authority.'
+    value: ${{ steps.fleet.outputs.fleet-report-json }}
+  runs-analyzed:
+    description: 'Completed workflow runs included in the sample.'
+    value: ${{ steps.fleet.outputs.runs-analyzed }}
+  failed-jobs:
+    description: 'First-attempt failed jobs observed in the sample.'
+    value: ${{ steps.fleet.outputs.failed-jobs }}
+  rerun-eligible-jobs:
+    description: 'Failed jobs meeting the current transient/confidence/provenance/no-side-effect evidence shape.'
+    value: ${{ steps.fleet.outputs.rerun-eligible-jobs }}
+  rerun-blocked-jobs:
+    description: 'Failed jobs that remained outside the rerun-eligible evidence shape.'
+    value: ${{ steps.fleet.outputs.rerun-blocked-jobs }}
+  observed-failed-minutes:
+    description: 'Observed runtime across failed jobs. This is not a claimed savings number.'
+    value: ${{ steps.fleet.outputs.observed-failed-minutes }}
+  eligible-failed-minutes:
+    description: 'Observed failed runtime associated with rerun-eligible jobs.'
+    value: ${{ steps.fleet.outputs.eligible-failed-minutes }}
+  blocked-failed-minutes:
+    description: 'Observed failed runtime associated with blocked jobs.'
+    value: ${{ steps.fleet.outputs.blocked-failed-minutes }}
+  validated-candidate-recoveries:
+    description: 'Rerun-eligible historical candidates with validated later recovery.'
+    value: ${{ steps.fleet.outputs.validated-candidate-recoveries }}
+  candidate-failed-again:
+    description: 'Rerun-eligible historical candidates whose genuine later rerun failed again.'
+    value: ${{ steps.fleet.outputs.candidate-failed-again }}
+  candidate-unknown-outcomes:
+    description: 'Rerun-eligible historical candidates without ground-truth-evaluable later outcomes.'
+    value: ${{ steps.fleet.outputs.candidate-unknown-outcomes }}
+
+runs:
+  using: 'composite'
+  steps:
+    - id: fleet
+      name: Build read-only fleet report
+      shell: bash
+      env:
+        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
+        INPUT_REPOSITORY: ${{ inputs.repository }}
+        INPUT_RUNS: ${{ inputs.runs }}
+      run: python3 "$GITHUB_ACTION_PATH/../fleet_report.py"
+
+branding:
+  icon: 'bar-chart-2'
+  color: 'blue'
