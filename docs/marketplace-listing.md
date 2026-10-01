@@ -6,11 +6,11 @@
 
 ## One-line promise
 
-Evidence-backed `ALLOW` / `BLOCK` decisions before rerunning failed GitHub Actions jobs.
+Know whether a failed GitHub Actions job is safe to retry before you rerun it.
 
 ## Short description
 
-CI Retry Gate evaluates failed GitHub Actions runs before retry, using provenance, recurrence, side-effect boundaries, and exact workflow-state binding. Insufficient or contradictory evidence fails closed.
+CI Retry Gate checks a failed GitHub Actions run before retry, returns an evidence-backed `ALLOW` or `BLOCK`, and explains the next action. Missing, contradictory, or risky evidence fails closed.
 
 ## Long description
 
