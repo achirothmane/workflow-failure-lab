@@ -4,6 +4,8 @@
 [![Latest release](https://img.shields.io/github/v/release/achirothmane/workflow-failure-lab)](https://github.com/achirothmane/workflow-failure-lab/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+![CI Retry Gate product flow](docs/ci-retry-gate-hero.png)
+
 ## Stop blindly rerunning failed GitHub Actions jobs.
 
 A failed workflow does not tell you whether a retry is safe.
@@ -85,6 +87,8 @@ Public job logs were unavailable in these cases, so the gate kept failure cause 
 The selective-rerun path is also proven from a separate consumer repository: two failed jobs qualified as selective-safe candidates, exactly one rerun mutation was issued for that evaluated state epoch, GitHub advanced the workflow attempt, exactly one job received a new execution, and no second mutation reused the old justification.
 
 ### After proof: run the Setup Doctor — no write permissions
+
+![CI Retry Gate Setup Doctor](docs/setup-doctor-overview.png)
 
 Run the Setup Doctor before changing your CI behavior:
 
