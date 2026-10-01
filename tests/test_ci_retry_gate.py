@@ -901,6 +901,44 @@ def test_assess_failed_jobs_fails_closed_without_authenticated_token():
     assert any("requires a GitHub token" in item for item in assessment.evidence)
 
 
+def test_assess_failed_jobs_uses_public_annotation_in_public_read_only_mode(monkeypatch):
+    monkeypatch.setenv("INPUT_PUBLIC_READ_ONLY", "true")
+
+    assessments = assess_failed_jobs(
+        _RunnerAnnotationAPI(token=""),
+        "PRQL/prql",
+        [_runner_loss_job()],
+    )
+
+    assert len(assessments) == 1
+    assessment = assessments[0]
+    assert assessment.category == "RUNNER_INFRA"
+    assert assessment.confidence == "high"
+    assert assessment.provenance_status == PROVENANCE_CONFIRMED
+    assert any(
+        item == "source: public GitHub Checks annotation"
+        for item in assessment.provenance_evidence
+    )
+
+
+def test_public_annotation_failure_stays_evidence_unavailable(monkeypatch):
+    monkeypatch.setenv("INPUT_PUBLIC_READ_ONLY", "true")
+
+    assessments = assess_failed_jobs(
+        _RunnerAnnotationAPI(
+            token="",
+            annotation_error="GitHub API GET check-run failed with HTTP 403",
+        ),
+        "PRQL/prql",
+        [_runner_loss_job()],
+    )
+
+    assessment = assessments[0]
+    assert assessment.category == "EVIDENCE_UNAVAILABLE"
+    assert assessment.provenance_status == PROVENANCE_UNAVAILABLE
+    assert any("Public check annotation acquisition failed" in item for item in assessment.evidence)
+
+
 def test_assess_failed_jobs_fails_closed_when_checks_permission_is_unavailable():
     assessments = assess_failed_jobs(
         _RunnerAnnotationAPI(annotation_error="GitHub API GET check-run failed with HTTP 403"),

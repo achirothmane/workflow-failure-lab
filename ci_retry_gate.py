@@ -618,12 +618,14 @@ def _check_run_id_from_job(job: dict) -> int | None:
         return None
 
 
-def assess_authenticated_runner_annotations(
+def _assess_runner_annotations(
     job: dict,
     check_run: dict,
     annotations: Iterable[dict],
+    *,
+    source_label: str,
 ) -> JobAssessment | None:
-    """Build retry evidence from a GitHub Actions check annotation.
+    """Build retry evidence from an exactly-bound GitHub Actions check annotation.
 
     This is deliberately a fallback for missing job logs, not a parallel source
     that can override ordinary step-bound log evidence. Authorization requires
@@ -693,7 +695,7 @@ def assess_authenticated_runner_annotations(
     failure_step = assess_failure_step_provenance(job)
     side_effect_risk, side_effect_evidence = detect_side_effect_risk(job)
     proof = (
-        "source: authenticated GitHub Checks annotation",
+        f"source: {source_label}",
         f"check_run_id: {check_run_id}",
         "check app: github-actions",
         f"head_sha matched: {job_head_sha}",
@@ -722,6 +724,32 @@ def assess_authenticated_runner_annotations(
                 | set(_metadata_redacted_fields(job))
             )
         ),
+    )
+
+
+def assess_authenticated_runner_annotations(
+    job: dict,
+    check_run: dict,
+    annotations: Iterable[dict],
+) -> JobAssessment | None:
+    return _assess_runner_annotations(
+        job,
+        check_run,
+        annotations,
+        source_label="authenticated GitHub Checks annotation",
+    )
+
+
+def assess_public_runner_annotations(
+    job: dict,
+    check_run: dict,
+    annotations: Iterable[dict],
+) -> JobAssessment | None:
+    return _assess_runner_annotations(
+        job,
+        check_run,
+        annotations,
+        source_label="public GitHub Checks annotation",
     )
 
 
@@ -1356,46 +1384,58 @@ def assess_failed_jobs(api: "GitHubAPI", repo: str, failed_jobs: Iterable[dict])
         except RuntimeError as exc:
             # A runner can die before its log blob is finalized. In that narrow
             # case GitHub may still retain a failure annotation on the Actions
-            # check run. Use it only through an authenticated token and only
-            # when the check run is exactly bound to this job/head.
+            # check run. Installed mode uses authenticated Checks access.
+            # Public-read-only mode may use the same exact-bound GitHub check
+            # metadata without forwarding credentials into the target repository.
             error_text = redact(str(exc))
-            annotation_note = "Authenticated check annotation fallback was not available."
+            public_read_only = _bool_env("INPUT_PUBLIC_READ_ONLY", False)
+            annotation_note = "Check annotation fallback was not available."
             check_run_id = _check_run_id_from_job(job)
             api_token = str(getattr(api, "token", "") or "")
-            if api_token and check_run_id is not None:
+            annotation_access_allowed = bool(api_token) or public_read_only
+            if annotation_access_allowed and check_run_id is not None:
+                source = "authenticated" if api_token else "public"
                 try:
                     check_run = api.get_check_run(repo, check_run_id)
                     annotations = api.get_check_run_annotations(repo, check_run_id)
                 except RuntimeError as annotation_exc:
                     annotation_note = (
-                        "Authenticated check annotation acquisition failed: "
+                        f"{source.capitalize()} check annotation acquisition failed: "
                         f"{redact(str(annotation_exc))}"
                     )
                 else:
-                    annotation_assessment = assess_authenticated_runner_annotations(
-                        job,
-                        check_run,
-                        annotations,
-                    )
+                    if api_token:
+                        annotation_assessment = assess_authenticated_runner_annotations(
+                            job,
+                            check_run,
+                            annotations,
+                        )
+                    else:
+                        annotation_assessment = assess_public_runner_annotations(
+                            job,
+                            check_run,
+                            annotations,
+                        )
                     if annotation_assessment is not None:
                         if _bool_env("CI_RETRY_GATE_LOG_DIAGNOSTICS", False):
                             print(
-                                "::notice::using authenticated check annotation fallback "
+                                f"::notice::using {source} check annotation fallback "
                                 f"job_id={job_id} check_run_id={check_run_id}"
                             )
                         assessments.append(annotation_assessment)
                         continue
                     annotation_note = (
-                        "Authenticated check annotations contained no eligible "
+                        f"{source.capitalize()} check annotations contained no eligible "
                         "job-bound runner-loss signal."
                     )
-            elif not api_token:
-                annotation_note = (
-                    "Authenticated check annotation fallback requires a GitHub token."
-                )
             elif check_run_id is None:
                 annotation_note = (
                     "Workflow job metadata did not contain a valid check_run_url."
+                )
+            elif not api_token:
+                annotation_note = (
+                    "Authenticated check annotation fallback requires a GitHub token "
+                    "outside public-read-only mode."
                 )
 
             # Evidence acquisition failure is not an ordinary UNKNOWN
