@@ -17,6 +17,17 @@ All notable changes to CI Retry Gate are documented here.
 
 - Value reporting now explicitly distinguishes observed failed-job runtime from counterfactual CI savings; no saved-minute claim is emitted without later evidence.
 
+### Safety
+
+- Decision Experience is descriptive-only and cannot grant retry authority.
+- Fleet Report is report-only and cannot mutate workflow runs, comments, Issues, or quarantine state.
+- Setup Doctor generates activation YAML but never writes it into the target repository.
+- Automatic and selective reruns remain explicit opt-in.
+
+### Verification
+
+- The v1.4.0 release candidate must pass CI, Compatibility Matrix, Remote v1 Consumer E2E, Public Incident Replay, clean-install verification, and release-readiness verification.
+
 
 ## [1.3.0] - 2026-09-30
 
