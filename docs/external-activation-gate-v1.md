@@ -56,16 +56,24 @@ That is safe, but it can reduce the usefulness of the zero-install path. We ther
 
 ## Stage B — public evidence access probe
 
-The workflow `.github/workflows/public-evidence-access-probe.yml` probes, without a target token:
+The workflow `.github/workflows/public-evidence-access-probe.yml` probed the same external run without a target token and established:
 
-- repository metadata;
-- workflow-run metadata;
-- historical-attempt jobs;
-- check-run metadata;
-- check-run annotations;
-- job logs.
+| Evidence endpoint | Result |
+|---|---:|
+| repository metadata | HTTP 200 |
+| workflow-run metadata | HTTP 200 |
+| historical-attempt jobs | HTTP 200 |
+| check-run metadata | HTTP 200 |
+| check-run annotations | HTTP 200 |
+| job logs | HTTP 403 |
 
-The probe does not write to the external repository and does not treat an unavailable evidence endpoint as authorization.
+This isolates the activation gap precisely: public job-log download is unavailable, but GitHub's check-run and annotation evidence remains publicly readable.
+
+The product change in this gate therefore allows `INPUT_PUBLIC_READ_ONLY=true` to use those public check annotations through the same exact-binding checks already required for authenticated annotation evidence. Installed mode remains authenticated. Outside public-read-only mode, a missing token still fails closed.
+
+The probe also executes the public-read-only analysis end-to-end and asserts that the product no longer reports “requires a GitHub token” when the public annotation path is available.
+
+The probe does not write to the external repository and does not treat an unavailable or ineligible annotation as authorization.
 
 ## Acceptance criteria
 
