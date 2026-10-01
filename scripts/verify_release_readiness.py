@@ -33,7 +33,9 @@ def main() -> int:
     readme = text("README.md")
     action = text("action.yml")
     doctor_action = text("doctor/action.yml")
-    text("setup_doctor.py")
+    setup_doctor = text("setup_doctor.py")
+    fleet_action = text("fleet/action.yml")
+    fleet_report = text("fleet_report.py")
     pyproject = text("pyproject.toml")
     changelog = text("CHANGELOG.md")
     text("SECURITY.md")
@@ -60,11 +62,44 @@ def main() -> int:
     require(input_default(action, "selective-rerun") == "false", "selective-rerun must default to false")
     require(input_default(action, "comment-on-pr") == "false", "comment-on-pr must default to false")
 
+    require(
+        "decision-experience-json:" in action
+        and "next-action:" in action
+        and "observed-failed-minutes:" in action,
+        "Decision Experience outputs are missing from action.yml",
+    )
+
     require("name: 'CI Retry Gate Setup Doctor'" in doctor_action, "doctor/action.yml product name mismatch")
     require("using: 'composite'" in doctor_action, "Setup Doctor must remain a composite action")
     require(
         input_default(doctor_action, "fail-on-blocked") == "true",
         "Setup Doctor must fail on BLOCKED checks by default",
+    )
+
+    require(
+        input_default(doctor_action, "source-workflow") == "CI",
+        "Setup Doctor source-workflow must default to CI",
+    )
+    require(
+        "activation-ready:" in doctor_action
+        and "recommended-config:" in doctor_action
+        and "activation-workflow:" in doctor_action,
+        "Setup Doctor activation outputs are missing",
+    )
+    require(
+        "build_activation_workflow_yaml" in setup_doctor
+        and "The Doctor never writes" not in setup_doctor,
+        "Setup Doctor activation generator is missing or malformed",
+    )
+    require(
+        "name: 'CI Retry Gate Fleet Report'" in fleet_action,
+        "fleet/action.yml product name mismatch",
+    )
+    require("using: 'composite'" in fleet_action, "Fleet Report must remain a composite action")
+    require(
+        '"authority": "REPORT_ONLY"' in fleet_report
+        and '"claimed_saved": None' in fleet_report,
+        "Fleet Report must remain report-only and must not assert unsupported savings",
     )
 
     version_match = re.search(
@@ -171,6 +206,9 @@ def main() -> int:
     print("- PR comments remain explicit opt-in")
     print("- README quick start and permissions present")
     print("- Setup Doctor composite action and fail-closed default present")
+    print("- Decision Experience outputs present")
+    print("- Setup Doctor activation workflow generation present")
+    print("- Fleet Report remains report-only with no unsupported savings claim")
     print(f"- v{release_version} release metadata is internally consistent")
     print("- subject-state binding and conformance contract present")
     print("- release smoke consumes achirothmane/workflow-failure-lab@v1")
