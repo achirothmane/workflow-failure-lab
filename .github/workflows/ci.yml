@@ -196,15 +196,17 @@ jobs:
 
       - name: Verify doctor readiness outputs
         shell: bash
+        env:
+          ACTIVATION_WORKFLOW: ${{ steps.doctor.outputs.activation-workflow }}
         run: |
           test "${{ steps.doctor.outputs.ready }}" = "true"
           test "${{ steps.doctor.outputs.blocked-checks }}" = "0"
           test "${{ steps.doctor.outputs.checks-read-access }}" = "PASS"
           [[ ",${{ steps.doctor.outputs.required-permissions }}," == *",checks: read,"* ]]
           test "${{ steps.doctor.outputs.activation-ready }}" = "true"
-          [[ "${{ steps.doctor.outputs.activation-workflow }}" == *"workflow_run:"* ]]
-          [[ "${{ steps.doctor.outputs.activation-workflow }}" == *"achirothmane/workflow-failure-lab@v1"* ]]
-          [[ "${{ steps.doctor.outputs.activation-workflow }}" == *"auto-rerun: 'false'"* ]]
+          [[ "$ACTIVATION_WORKFLOW" == *"workflow_run:"* ]]
+          [[ "$ACTIVATION_WORKFLOW" == *"achirothmane/workflow-failure-lab@v1"* ]]
+          [[ "$ACTIVATION_WORKFLOW" == *"auto-rerun: 'false'"* ]]
           case ",${{ steps.doctor.outputs.detected-frameworks }}," in
             *,pytest,jest,vitest,*) ;;
             *) exit 1 ;;
