@@ -101,7 +101,7 @@ WARN  Future write features require explicit permissions
 
 ### Verified from a separate consumer repository
 
-The stable `@v1` line is continuously exercised from a repository that does **not** contain the product source:
+The movable `@v1` compatibility line is continuously exercised from a repository that does **not** contain the product source:
 
 - root GitHub Action resolution through `@v1`;
 - pytest, Jest, and Vitest adapters;
@@ -166,7 +166,7 @@ The trial is intentionally read-only: it grants `actions: read`, `checks: read`,
 
 A useful first activation is simple: **within 15 minutes, the user can point the gate at a real past failure and decide whether the evidence changed or shortened the investigation.**
 
-> Use `@v1` for the current stable v1 line, or pin an exact `v1.x.y` tag when you need an immutable dependency.
+> Use `@v1` for the current movable v1 compatibility line. Pin an exact `v1.x.y` tag or commit SHA when you need an immutable dependency.
 
 ### Machine-readable authorization output
 
@@ -432,7 +432,7 @@ The matrix intentionally installs the latest version available inside each teste
 The matrix currently uses Python 3.12 for the enforcement runtime and Node.js 22 for Jest/Vitest integration tests.
 
 
-### 6. Stable `v1` remote-consumer gate
+### 6. `v1` remote-consumer compatibility gate
 
 The repository also runs a packaging-level consumer workflow that invokes the stable release line through remote GitHub Action references:
 
@@ -451,7 +451,7 @@ For every adapter, the gate:
 4. requires zero blocking failures and one quarantined failure;
 5. verifies JUnit evidence is uploaded as an attempt-aware GitHub Actions artifact.
 
-The `v1` branch is advanced only by fast-forward to a commit that has already passed the normal CI, compatibility matrix, and remote-consumer gate. It is never force-moved as part of this process.
+The documented release process advances `v1` by fast-forward only after the selected commit has passed normal CI, the compatibility matrix, and the remote-consumer gate. This is currently a **maintainer process claim**, not a GitHub-enforced branch-control claim: at the C10 audit, GitHub reports `main` and `v1` as `protected=false`, and no repository rulesets are exposed. Consumers that require immutable provenance should pin an exact release tag such as `v1.2.0` or an exact commit SHA.
 
 
 ### 7. Developer triage surface
