@@ -28,6 +28,8 @@ Interpret the result in seconds:
 
 The first trial has one job: **tell you whether the evidence changed or shortened your retry-versus-investigate decision.** If it does not, do not install anything.
 
+For public zero-install analysis, CI Retry Gate does not forward your repository token into the target repository. Public workflow metadata, check-run metadata, and check annotations are used when GitHub exposes them anonymously. Public job-log downloads may still be unavailable; when that happens the gate keeps the missing evidence explicit and fails closed rather than inventing a cause.
+
 ### Decision Experience + evidence-bounded value measurement
 
 Every gate invocation now produces a compact **Decision at a glance** before the detailed evidence:
