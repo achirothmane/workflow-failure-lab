@@ -601,6 +601,7 @@ def build_execution_receipt(
     authority_grant: dict[str, Any] | None = None,
     created_at: str | None = None,
     admitted_at: str | None = None,
+    execution_reason: str | None = None,
 ) -> dict[str, Any]:
     timestamp = created_at or _utc_now()
     if rerun_triggered:
@@ -627,6 +628,7 @@ def build_execution_receipt(
         "started_at": timestamp,
         "finished_at": timestamp,
         "outcome": "SUCCEEDED" if rerun_triggered else "NOT_EXECUTED",
+        "status_reason": execution_reason,
         "resource_changes": (
             [
                 {
