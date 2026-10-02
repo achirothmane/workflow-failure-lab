@@ -100,7 +100,9 @@ def test_external_root_verifier_checks_sigstore_and_git_ancestry():
     assert '"verify"' in text
     assert "--bundle" in text
     assert "--signer-workflow" in text
-    assert "--limit" in text
+    assert '"api"' in text
+    assert "/attestations/sha256:" in text
+    assert "per_page=" in text
     assert "STALE_EXTERNAL_ROOT_ATTESTATION" in text
     assert "EXTERNAL_ROOT_FORK_AT_MAX_EPOCH" in text
     assert "--deny-self-hosted-runners" in text
