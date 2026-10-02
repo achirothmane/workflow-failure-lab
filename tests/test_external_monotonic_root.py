@@ -16,10 +16,27 @@ from external_monotonic_root import (
     verify_latest_root_attestation,
     verify_root_binding,
     verify_sigstore_attestation,
+    verify_sigstore_attestation_set,
     verify_token_not_below_root,
     write_root_anchor,
     write_root_record,
 )
+
+
+class FakeBundleResponse:
+    def __init__(self, body: bytes):
+        self.body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def read(self, limit: int = -1):
+        if limit < 0:
+            return self.body
+        return self.body[:limit]
 
 
 class FakeGitHubAPI:
@@ -316,6 +333,96 @@ def test_distinct_roots_at_same_max_epoch_fail_closed():
             root4a,
             anchor,
             [_verified(root4a, anchor), _verified(root4b, anchor)],
+            predicate_type="https://example.test/root/v1",
+        )
+
+def test_attestation_set_discovery_uses_repo_api_then_offline_verification(
+    tmp_path: Path,
+    monkeypatch,
+):
+    anchor = _anchor()
+    anchor_path = tmp_path / "anchor.json"
+    write_root_anchor(anchor_path, anchor)
+    record = _record(token="2" * 40, epoch=2)
+
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(list(command))
+        if command[:2] == ["gh", "api"]:
+            assert "/attestations/sha256:" in command[-1]
+            assert "per_page=100" in command[-1]
+            assert "predicate_type=" in command[-1]
+            return SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "attestations": [
+                            {"bundle_url": "https://example.test/bundle.json"}
+                        ]
+                    }
+                ),
+                stderr="",
+            )
+        assert command[:3] == ["gh", "attestation", "verify"]
+        assert "--bundle" in command
+        return SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps([_verified(record, anchor)]),
+            stderr="",
+        )
+
+    monkeypatch.setattr("external_monotonic_root.subprocess.run", fake_run)
+    monkeypatch.setattr(
+        "external_monotonic_root.urllib.request.urlopen",
+        lambda request, timeout=30: FakeBundleResponse(b"{}"),
+    )
+
+    verified = verify_sigstore_attestation_set(
+        anchor_path=anchor_path,
+        repository="owner/repo",
+        signer_workflow="owner/repo/.github/workflows/root.yml",
+        predicate_type="https://example.test/root/v1",
+    )
+
+    assert len(verified) == 1
+    assert calls[0][:2] == ["gh", "api"]
+    assert calls[1][:3] == ["gh", "attestation", "verify"]
+
+
+def test_attestation_discovery_fails_closed_at_page_limit(
+    tmp_path: Path,
+    monkeypatch,
+):
+    anchor_path = tmp_path / "anchor.json"
+    write_root_anchor(anchor_path, _anchor())
+
+    def fake_run(command, **kwargs):
+        del kwargs
+        assert command[:2] == ["gh", "api"]
+        return SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "attestations": [
+                        {"bundle_url": f"https://example.test/{index}.json"}
+                        for index in range(100)
+                    ]
+                }
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr("external_monotonic_root.subprocess.run", fake_run)
+
+    with pytest.raises(
+        ExternalMonotonicRootError,
+        match="EXTERNAL_ROOT_ATTESTATION_SET_TRUNCATED",
+    ):
+        verify_sigstore_attestation_set(
+            anchor_path=anchor_path,
+            repository="owner/repo",
+            signer_workflow="owner/repo/.github/workflows/root.yml",
             predicate_type="https://example.test/root/v1",
         )
 
