@@ -602,8 +602,14 @@ def build_execution_receipt(
     created_at: str | None = None,
     admitted_at: str | None = None,
     execution_reason: str | None = None,
+    execution_outcome: str | None = None,
 ) -> dict[str, Any]:
     timestamp = created_at or _utc_now()
+    outcome = execution_outcome or ("SUCCEEDED" if rerun_triggered else "NOT_EXECUTED")
+    if outcome not in {"SUCCEEDED", "NOT_EXECUTED", "UNKNOWN"}:
+        raise ContractViolation("EXECUTION_RECEIPT_OUTCOME_INVALID")
+    if rerun_triggered and outcome != "SUCCEEDED":
+        raise ContractViolation("EXECUTION_RECEIPT_TRIGGER_OUTCOME_MISMATCH")
     if rerun_triggered:
         boundary_time = admitted_at or timestamp
         ensure_decision_allows_request(
@@ -627,17 +633,21 @@ def build_execution_receipt(
         "admitted_at": admitted_at if rerun_triggered else None,
         "started_at": timestamp,
         "finished_at": timestamp,
-        "outcome": "SUCCEEDED" if rerun_triggered else "NOT_EXECUTED",
+        "outcome": outcome,
         "status_reason": execution_reason,
         "resource_changes": (
             [
                 {
                     "resource": action_request.get("action", {}).get("resource"),
                     "operation": "rerun_failed_jobs",
-                    "result": "dispatch-accepted",
+                    "result": (
+                        "dispatch-accepted"
+                        if outcome == "SUCCEEDED"
+                        else "dispatch-unknown"
+                    ),
                 }
             ]
-            if rerun_triggered
+            if outcome in {"SUCCEEDED", "UNKNOWN"}
             else []
         ),
         "actual_usage": {},
