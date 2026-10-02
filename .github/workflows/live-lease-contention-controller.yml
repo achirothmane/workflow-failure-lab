@@ -187,11 +187,13 @@ jobs:
         shell: bash
         run: |
           python3 - <<'PY'
+          import os
           from datetime import datetime, timezone
           from execution_lease import lease_digest, read_execution_lease
 
-          b = read_execution_lease("$RUNNER_TEMP/claim-b/b.execution-lease.json")
-          c = read_execution_lease("$RUNNER_TEMP/claim-c/c.execution-lease.json")
+          root = os.environ["RUNNER_TEMP"]
+          b = read_execution_lease(f"{root}/claim-b/b.execution-lease.json")
+          c = read_execution_lease(f"{root}/claim-c/c.execution-lease.json")
           assert b["epoch"] == c["epoch"] == 2
           assert b["owner_id"] != c["owner_id"]
           assert lease_digest(b) != lease_digest(c)
