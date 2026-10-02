@@ -40,6 +40,15 @@ def _compact_error(value: object) -> str:
     return " ".join(redact(str(value)).split())
 
 
+def _github_cli_env() -> dict[str, str]:
+    env = os.environ.copy()
+    if not env.get("GH_TOKEN"):
+        token = env.get("GITHUB_TOKEN") or env.get("INPUT_GITHUB_TOKEN")
+        if token:
+            env["GH_TOKEN"] = token
+    return env
+
+
 def _canonical_bytes(value: dict[str, Any]) -> bytes:
     return json.dumps(
         value,
@@ -326,9 +335,7 @@ def verify_sigstore_attestation(
         "--format",
         "json",
     ]
-    env = os.environ.copy()
-    if env.get("GITHUB_TOKEN") and not env.get("GH_TOKEN"):
-        env["GH_TOKEN"] = env["GITHUB_TOKEN"]
+    env = _github_cli_env()
 
     try:
         completed = subprocess.run(
@@ -395,9 +402,7 @@ def verify_sigstore_attestation_set(
         "X-GitHub-Api-Version: 2026-03-10",
         endpoint,
     ]
-    env = os.environ.copy()
-    if env.get("GITHUB_TOKEN") and not env.get("GH_TOKEN"):
-        env["GH_TOKEN"] = env["GITHUB_TOKEN"]
+    env = _github_cli_env()
 
     try:
         completed = subprocess.run(
