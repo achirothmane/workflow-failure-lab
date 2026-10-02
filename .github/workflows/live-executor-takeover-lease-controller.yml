@@ -1,0 +1,312 @@
+name: Live Executor Takeover Lease Controller
+
+on:
+  workflow_run:
+    workflows: ["Live Executor Takeover Lease Fixture"]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: write
+  checks: read
+
+jobs:
+  worker-a:
+    name: Worker A acquires lease then dies
+    if: ${{ github.event.workflow_run.run_attempt == 1 && github.event.workflow_run.repository.full_name == github.repository && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: gate
+        name: Build deferred admitted decision
+        shell: bash
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          INPUT_RUN_ID: ${{ github.event.workflow_run.id }}
+          INPUT_REPOSITORY: ${{ github.repository }}
+          INPUT_AUTO_RERUN: 'true'
+          INPUT_DEFER_EFFECT: 'true'
+          INPUT_MAX_ATTEMPTS: '2'
+          INPUT_COMMENT_ON_PR: 'false'
+        run: python3 ci_retry_gate.py
+
+      - name: Verify decision is admitted
+        shell: bash
+        env:
+          DECISION: ${{ steps.gate.outputs.decision }}
+          EVIDENCE_STATUS: ${{ steps.gate.outputs.evidence-status }}
+          MUTATION_ADMITTED: ${{ steps.gate.outputs.mutation-admitted }}
+        run: |
+          test "$DECISION" = "ALLOW"
+          test "$EVIDENCE_STATUS" = "SUFFICIENT"
+          test "$MUTATION_ADMITTED" = "true"
+
+      - name: Persist canonical DER before worker ownership
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.gate.outputs.decision-record-artifact-name }}
+          path: |
+            ${{ steps.gate.outputs.decision-record-path }}
+            ${{ steps.gate.outputs.effect-plan-path }}
+          if-no-files-found: error
+
+      - id: lease-a
+        name: Worker A acquires epoch 1
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/takeover-state/leases"
+          python3 e2e/execution_lease_cli.py initial             --owner worker-a             --decision-sha "${{ steps.gate.outputs.decision-record-sha256 }}"             --plan-sha "${{ steps.gate.outputs.effect-plan-sha256 }}"             --repository "${{ github.repository }}"             --run-id "${{ github.event.workflow_run.id }}"             --ttl 12             --output "$RUNNER_TEMP/takeover-state/leases/a.execution-lease.json"
+
+      - name: Build durable takeover bundle
+        shell: bash
+        env:
+          DECISION_RECORD_PATH: ${{ steps.gate.outputs.decision-record-path }}
+          EFFECT_PLAN_PATH: ${{ steps.gate.outputs.effect-plan-path }}
+          EBA_REQUEST_PATH: ${{ steps.gate.outputs.eba-request-path }}
+          EBA_ASSUMPTION_PATH: ${{ steps.gate.outputs.eba-assumption-path }}
+          EBA_AUTHORITY_PATH: ${{ steps.gate.outputs.eba-authority-path }}
+          EBA_DECISION_PATH: ${{ steps.gate.outputs.eba-decision-path }}
+          DECISION_RECORD_SHA256: ${{ steps.gate.outputs.decision-record-sha256 }}
+          EFFECT_PLAN_SHA256: ${{ steps.gate.outputs.effect-plan-sha256 }}
+          EBA_REQUEST_SHA256: ${{ steps.gate.outputs.eba-request-sha256 }}
+          EBA_ASSUMPTION_SHA256: ${{ steps.gate.outputs.eba-assumption-sha256 }}
+          EBA_AUTHORITY_SHA256: ${{ steps.gate.outputs.eba-authority-sha256 }}
+          EBA_DECISION_SHA256: ${{ steps.gate.outputs.eba-decision-sha256 }}
+          DECISION_RECORD_ARTIFACT_NAME: ${{ steps.gate.outputs.decision-record-artifact-name }}
+          DECISION_EXPERIENCE_JSON: ${{ steps.gate.outputs.decision-experience-json }}
+        run: |
+          python3 e2e/takeover_bundle_manifest.py write             --output "$RUNNER_TEMP/takeover-state/manifest.json"             --bundle-dir "$RUNNER_TEMP/takeover-state/bundle"
+
+      - name: Persist worker A state and lease
+        uses: actions/upload-artifact@v4
+        with:
+          name: executor-takeover-state-${{ github.event.workflow_run.id }}
+          path: ${{ runner.temp }}/takeover-state
+          if-no-files-found: error
+
+      - id: worker-a-crash
+        name: Kill worker A after durable lease persistence
+        continue-on-error: true
+        shell: bash
+        run: python3 -c 'import os; os._exit(91)'
+
+      - name: Verify worker A died before effect
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.worker-a-crash.outcome }}
+        run: test "$OUTCOME" = "failure"
+
+  worker-b-lease:
+    name: Worker B takes over expired lease
+    needs: worker-a
+    if: ${{ github.event.workflow_run.run_attempt == 1 }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore worker A durable state
+        uses: actions/download-artifact@v4
+        with:
+          name: executor-takeover-state-${{ github.event.workflow_run.id }}
+          path: ${{ runner.temp }}/takeover-state
+
+      - id: lease-b
+        name: Wait for expiry and acquire epoch 2
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/lease-b"
+          python3 e2e/execution_lease_cli.py takeover             --previous "$RUNNER_TEMP/takeover-state/leases/a.execution-lease.json"             --owner worker-b             --ttl 120             --wait             --output "$RUNNER_TEMP/lease-b/b.execution-lease.json"
+
+      - name: Verify fencing epoch advanced
+        shell: bash
+        env:
+          OWNER: ${{ steps.lease-b.outputs.lease-owner }}
+          EPOCH: ${{ steps.lease-b.outputs.lease-epoch }}
+        run: |
+          test "$OWNER" = "worker-b"
+          test "$EPOCH" = "2"
+
+      - name: Persist worker B ownership
+        uses: actions/upload-artifact@v4
+        with:
+          name: executor-takeover-lease-b-${{ github.event.workflow_run.id }}
+          path: ${{ runner.temp }}/lease-b/b.execution-lease.json
+          if-no-files-found: error
+
+  stale-worker-a:
+    name: Returned worker A is fenced out
+    needs: worker-b-lease
+    if: ${{ github.event.workflow_run.run_attempt == 1 }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: executor-takeover-state-${{ github.event.workflow_run.id }}
+          path: ${{ runner.temp }}/takeover-state
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: executor-takeover-lease-b-${{ github.event.workflow_run.id }}
+          path: ${{ runner.temp }}/lease-b
+
+      - name: Restore deferred-effect manifest
+        shell: bash
+        run: |
+          python3 e2e/takeover_bundle_manifest.py export             --manifest "$RUNNER_TEMP/takeover-state/manifest.json"             --bundle-dir "$RUNNER_TEMP/takeover-state/bundle"
+          mkdir -p "$RUNNER_TEMP/lease-registry"
+          cp "$RUNNER_TEMP/takeover-state/leases/a.execution-lease.json" "$RUNNER_TEMP/lease-registry/"
+          cp "$RUNNER_TEMP/lease-b/b.execution-lease.json" "$RUNNER_TEMP/lease-registry/"
+
+      - id: stale
+        name: Returned worker A attempts stale execution
+        shell: bash
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          INPUT_EFFECT_PLAN_PATH: ${{ env.TAKEOVER_EFFECT_PLAN_PATH }}
+          INPUT_EFFECT_PLAN_SHA256: ${{ env.TAKEOVER_EFFECT_PLAN_SHA256 }}
+          INPUT_DECISION_RECORD_PATH: ${{ env.TAKEOVER_DECISION_RECORD_PATH }}
+          INPUT_DECISION_RECORD_SHA256: ${{ env.TAKEOVER_DECISION_RECORD_SHA256 }}
+          INPUT_EBA_REQUEST_PATH: ${{ env.TAKEOVER_EBA_REQUEST_PATH }}
+          INPUT_EBA_REQUEST_SHA256: ${{ env.TAKEOVER_EBA_REQUEST_SHA256 }}
+          INPUT_EBA_ASSUMPTION_PATH: ${{ env.TAKEOVER_EBA_ASSUMPTION_PATH }}
+          INPUT_EBA_ASSUMPTION_SHA256: ${{ env.TAKEOVER_EBA_ASSUMPTION_SHA256 }}
+          INPUT_EBA_AUTHORITY_PATH: ${{ env.TAKEOVER_EBA_AUTHORITY_PATH }}
+          INPUT_EBA_AUTHORITY_SHA256: ${{ env.TAKEOVER_EBA_AUTHORITY_SHA256 }}
+          INPUT_EBA_DECISION_PATH: ${{ env.TAKEOVER_EBA_DECISION_PATH }}
+          INPUT_EBA_DECISION_SHA256: ${{ env.TAKEOVER_EBA_DECISION_SHA256 }}
+          INPUT_EBA_RECEIPT_PATH: ${{ runner.temp }}/worker-a-late.eba-receipt.json
+          INPUT_DECISION_EXPERIENCE_JSON: ${{ env.TAKEOVER_DECISION_EXPERIENCE_JSON }}
+          INPUT_EXECUTION_LEASE_PATH: ${{ runner.temp }}/takeover-state/leases/a.execution-lease.json
+          INPUT_EXECUTION_LEASE_REGISTRY_DIR: ${{ runner.temp }}/lease-registry
+          INPUT_EXECUTOR_ID: worker-a
+        run: python3 effect_executor.py
+
+      - name: Verify worker A lost effect authority before state changed
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.stale.outputs.effect-outcome }}
+          TRIGGERED: ${{ steps.stale.outputs.rerun-triggered }}
+          REASON: ${{ steps.stale.outputs.effect-reason }}
+          OWNER: ${{ steps.stale.outputs.execution-lease-owner }}
+          EPOCH: ${{ steps.stale.outputs.execution-lease-epoch }}
+        run: |
+          test "$OUTCOME" = "NOT_EXECUTED"
+          test "$TRIGGERED" = "false"
+          test "$OWNER" = "worker-a"
+          test "$EPOCH" = "1"
+          case "$REASON" in
+            "EXECUTION_LEASE_BLOCK: LEASE_SUPERSEDED:"*) ;;
+            *) echo "::error::unexpected stale worker result: $REASON"; exit 1 ;;
+          esac
+
+      - name: Persist stale-worker fencing proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: executor-takeover-stale-a-proof-${{ github.event.workflow_run.id }}
+          path: ${{ runner.temp }}/worker-a-late.eba-receipt.json
+          if-no-files-found: error
+
+  worker-b-effect:
+    name: Worker B executes under epoch 2
+    needs: stale-worker-a
+    if: ${{ github.event.workflow_run.run_attempt == 1 }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: executor-takeover-state-${{ github.event.workflow_run.id }}
+          path: ${{ runner.temp }}/takeover-state
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: executor-takeover-lease-b-${{ github.event.workflow_run.id }}
+          path: ${{ runner.temp }}/lease-b
+
+      - name: Restore current registry and manifest
+        shell: bash
+        run: |
+          python3 e2e/takeover_bundle_manifest.py export             --manifest "$RUNNER_TEMP/takeover-state/manifest.json"             --bundle-dir "$RUNNER_TEMP/takeover-state/bundle"
+          mkdir -p "$RUNNER_TEMP/lease-registry"
+          cp "$RUNNER_TEMP/takeover-state/leases/a.execution-lease.json" "$RUNNER_TEMP/lease-registry/"
+          cp "$RUNNER_TEMP/lease-b/b.execution-lease.json" "$RUNNER_TEMP/lease-registry/"
+
+      - id: effect
+        name: Execute under current worker B lease
+        shell: bash
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          INPUT_EFFECT_PLAN_PATH: ${{ env.TAKEOVER_EFFECT_PLAN_PATH }}
+          INPUT_EFFECT_PLAN_SHA256: ${{ env.TAKEOVER_EFFECT_PLAN_SHA256 }}
+          INPUT_DECISION_RECORD_PATH: ${{ env.TAKEOVER_DECISION_RECORD_PATH }}
+          INPUT_DECISION_RECORD_SHA256: ${{ env.TAKEOVER_DECISION_RECORD_SHA256 }}
+          INPUT_EBA_REQUEST_PATH: ${{ env.TAKEOVER_EBA_REQUEST_PATH }}
+          INPUT_EBA_REQUEST_SHA256: ${{ env.TAKEOVER_EBA_REQUEST_SHA256 }}
+          INPUT_EBA_ASSUMPTION_PATH: ${{ env.TAKEOVER_EBA_ASSUMPTION_PATH }}
+          INPUT_EBA_ASSUMPTION_SHA256: ${{ env.TAKEOVER_EBA_ASSUMPTION_SHA256 }}
+          INPUT_EBA_AUTHORITY_PATH: ${{ env.TAKEOVER_EBA_AUTHORITY_PATH }}
+          INPUT_EBA_AUTHORITY_SHA256: ${{ env.TAKEOVER_EBA_AUTHORITY_SHA256 }}
+          INPUT_EBA_DECISION_PATH: ${{ env.TAKEOVER_EBA_DECISION_PATH }}
+          INPUT_EBA_DECISION_SHA256: ${{ env.TAKEOVER_EBA_DECISION_SHA256 }}
+          INPUT_EBA_RECEIPT_PATH: ${{ runner.temp }}/worker-b.eba-receipt.json
+          INPUT_DECISION_EXPERIENCE_JSON: ${{ env.TAKEOVER_DECISION_EXPERIENCE_JSON }}
+          INPUT_EXECUTION_LEASE_PATH: ${{ runner.temp }}/lease-b/b.execution-lease.json
+          INPUT_EXECUTION_LEASE_REGISTRY_DIR: ${{ runner.temp }}/lease-registry
+          INPUT_EXECUTOR_ID: worker-b
+        run: python3 effect_executor.py
+
+      - name: Verify only current owner executed
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.effect.outputs.effect-outcome }}
+          TRIGGERED: ${{ steps.effect.outputs.rerun-triggered }}
+          OWNER: ${{ steps.effect.outputs.execution-lease-owner }}
+          EPOCH: ${{ steps.effect.outputs.execution-lease-epoch }}
+        run: |
+          test "$OUTCOME" = "SUCCEEDED"
+          test "$TRIGGERED" = "true"
+          test "$OWNER" = "worker-b"
+          test "$EPOCH" = "2"
+
+      - name: Persist authoritative worker B receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.TAKEOVER_DECISION_RECORD_ARTIFACT_NAME }}-receipt
+          path: |
+            ${{ runner.temp }}/worker-b.eba-receipt.json
+            ${{ runner.temp }}/lease-b/b.execution-lease.json
+          if-no-files-found: error
+
+  reconcile:
+    name: Reconcile executor takeover result
+    if: ${{ github.event.workflow_run.run_attempt == 2 && github.event.workflow_run.repository.full_name == github.repository && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: reconcile
+        uses: ./
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ github.event.workflow_run.id }}
+          repository: ${{ github.repository }}
+          auto-rerun: 'false'
+          selective-rerun: 'false'
+          history-runs: '1'
+
+      - name: Verify takeover has one attributable effect
+        shell: bash
+        env:
+          STATUS: ${{ steps.reconcile.outputs.previous-reconciliation-status }}
+        run: test "$STATUS" = "RECOVERED_AFTER_RERUN"
+
+  reject-extra-attempts:
+    name: Reject extra takeover attempts
+    if: ${{ github.event.workflow_run.run_attempt > 2 }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: exit 1
