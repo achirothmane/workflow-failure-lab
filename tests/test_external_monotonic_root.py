@@ -23,22 +23,6 @@ from external_monotonic_root import (
 )
 
 
-class FakeBundleResponse:
-    def __init__(self, body: bytes):
-        self.body = body
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        return False
-
-    def read(self, limit: int = -1):
-        if limit < 0:
-            return self.body
-        return self.body[:limit]
-
-
 class FakeGitHubAPI:
     def __init__(self, *, status: str, ahead_by: int, behind_by: int):
         self.status = status
@@ -196,8 +180,8 @@ def test_sigstore_verifier_invocation_is_fail_closed(tmp_path: Path, monkeypatch
         assert kwargs["timeout"] == 60
         return SimpleNamespace(
             returncode=1,
-            stdout="",
-            stderr="signature mismatch",
+            stdout=b"",
+            stderr=b"signature mismatch:\x83",
         )
 
     monkeypatch.setattr("external_monotonic_root.subprocess.run", fake_run)
@@ -336,7 +320,7 @@ def test_distinct_roots_at_same_max_epoch_fail_closed():
             predicate_type="https://example.test/root/v1",
         )
 
-def test_attestation_set_discovery_uses_repo_api_then_offline_verification(
+def test_attestation_set_discovery_uses_jsonl_download_then_offline_verification(
     tmp_path: Path,
     monkeypatch,
 ):
@@ -354,34 +338,24 @@ def test_attestation_set_discovery_uses_repo_api_then_offline_verification(
     def fake_run(command, **kwargs):
         calls.append(list(command))
         assert kwargs["env"]["GH_TOKEN"] == "effect-token"
-        if command[:2] == ["gh", "api"]:
-            assert "/attestations/sha256:" in command[-1]
-            assert "per_page=100" in command[-1]
-            assert "predicate_type=" in command[-1]
-            return SimpleNamespace(
-                returncode=0,
-                stdout=json.dumps(
-                    {
-                        "attestations": [
-                            {"bundle_url": "https://example.test/bundle.json"}
-                        ]
-                    }
-                ),
-                stderr="",
-            )
+        if command[:3] == ["gh", "attestation", "download"]:
+            assert "--repo" in command
+            assert "--predicate-type" in command
+            assert "--limit" in command
+            assert command[command.index("--limit") + 1] == "100"
+            download_dir = Path(kwargs["cwd"])
+            (download_dir / "sha256-test.jsonl").write_text("{}\n", encoding="utf-8")
+            return SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
+
         assert command[:3] == ["gh", "attestation", "verify"]
         assert "--bundle" in command
         return SimpleNamespace(
             returncode=0,
-            stdout=json.dumps([_verified(record, anchor)]),
-            stderr="",
+            stdout=json.dumps([_verified(record, anchor)]).encode("utf-8"),
+            stderr=b"",
         )
 
     monkeypatch.setattr("external_monotonic_root.subprocess.run", fake_run)
-    monkeypatch.setattr(
-        "external_monotonic_root.urllib.request.urlopen",
-        lambda request, timeout=30: FakeBundleResponse(b"{}"),
-    )
 
     verified = verify_sigstore_attestation_set(
         anchor_path=anchor_path,
@@ -391,8 +365,9 @@ def test_attestation_set_discovery_uses_repo_api_then_offline_verification(
     )
 
     assert len(verified) == 1
-    assert calls[0][:2] == ["gh", "api"]
+    assert calls[0][:3] == ["gh", "attestation", "download"]
     assert calls[1][:3] == ["gh", "attestation", "verify"]
+
 
 
 def test_attestation_discovery_fails_closed_at_page_limit(
@@ -403,20 +378,14 @@ def test_attestation_discovery_fails_closed_at_page_limit(
     write_root_anchor(anchor_path, _anchor())
 
     def fake_run(command, **kwargs):
-        del kwargs
-        assert command[:2] == ["gh", "api"]
-        return SimpleNamespace(
-            returncode=0,
-            stdout=json.dumps(
-                {
-                    "attestations": [
-                        {"bundle_url": f"https://example.test/{index}.json"}
-                        for index in range(100)
-                    ]
-                }
-            ),
-            stderr="",
+        assert command[:3] == ["gh", "attestation", "download"]
+        download_dir = Path(kwargs["cwd"])
+        bundle = download_dir / "sha256-test.jsonl"
+        bundle.write_text(
+            "".join(json.dumps({"bundle": index}) + "\n" for index in range(100)),
+            encoding="utf-8",
         )
+        return SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
 
     monkeypatch.setattr("external_monotonic_root.subprocess.run", fake_run)
 
