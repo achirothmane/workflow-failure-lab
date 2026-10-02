@@ -210,7 +210,8 @@ def test_changed_base_cannot_be_reused_as_cas_precondition():
     )
 
     assert result.acquired is False
-    assert result.reason.startswith("COORDINATION_BASE_CHANGED:")
+    assert result.reason.startswith("CAS_LOST:")
+    assert result.observed_sha == winner
 
 
 def test_coordination_ref_must_live_under_heads():
