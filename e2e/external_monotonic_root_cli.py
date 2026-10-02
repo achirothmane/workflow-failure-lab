@@ -12,10 +12,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from external_monotonic_root import (
+    build_root_anchor,
     build_root_record,
     read_root_record,
     root_record_digest,
     write_predicate,
+    write_root_anchor,
     write_root_record,
 )
 
@@ -42,6 +44,7 @@ def main() -> int:
     build.add_argument("--plan-sha", required=True)
     build.add_argument("--state", required=True, choices=["EXECUTABLE", "CLOSED"])
     build.add_argument("--record", required=True)
+    build.add_argument("--anchor", required=True)
     build.add_argument("--predicate", required=True)
 
     inspect = sub.add_parser("inspect")
@@ -60,11 +63,20 @@ def main() -> int:
             lifecycle_state=args.state,
         )
         digest = write_root_record(args.record, record)
-        write_predicate(args.predicate, record)
+        anchor = build_root_anchor(
+            repository=args.repository,
+            run_id=args.run_id,
+            decision_record_sha256=args.decision_sha,
+            effect_plan_sha256=args.plan_sha,
+        )
+        anchor_digest = write_root_anchor(args.anchor, anchor)
+        write_predicate(args.predicate, record, anchor=anchor)
 
         _write_output("root-record-path", str(Path(args.record)))
+        _write_output("root-anchor-path", str(Path(args.anchor)))
         _write_output("root-predicate-path", str(Path(args.predicate)))
         _write_output("root-record-sha256", digest)
+        _write_output("root-anchor-sha256", anchor_digest)
         _write_output("root-token-sha", str(record["fencing_token_sha"]))
         _write_output("root-epoch", str(record["epoch"]))
         _write_output("root-state", str(record["lifecycle_state"]))
@@ -73,8 +85,10 @@ def main() -> int:
             json.dumps(
                 {
                     "record": args.record,
+                    "anchor": args.anchor,
                     "predicate": args.predicate,
                     "sha256": digest,
+                    "anchor_sha256": anchor_digest,
                     "token": record["fencing_token_sha"],
                     "epoch": record["epoch"],
                     "state": record["lifecycle_state"],

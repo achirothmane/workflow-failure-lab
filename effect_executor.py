@@ -212,6 +212,9 @@ def main() -> int:
     external_root_record_path = str(
         os.environ.get("INPUT_EXTERNAL_MONOTONIC_ROOT_RECORD_PATH") or ""
     ).strip()
+    external_root_anchor_path = str(
+        os.environ.get("INPUT_EXTERNAL_MONOTONIC_ROOT_ANCHOR_PATH") or ""
+    ).strip()
     external_root_bundle_path = str(
         os.environ.get("INPUT_EXTERNAL_MONOTONIC_ROOT_BUNDLE_PATH") or ""
     ).strip()
@@ -224,6 +227,7 @@ def main() -> int:
     ).strip()
     external_root_guard_requested = bool(
         external_root_record_path
+        or external_root_anchor_path
         or external_root_bundle_path
         or external_root_signer_workflow
     )
@@ -233,13 +237,15 @@ def main() -> int:
     if external_root_guard_requested:
         if (
             not external_root_record_path
+            or not external_root_anchor_path
             or not external_root_bundle_path
             or not external_root_signer_workflow
             or not fencing_token_sha
         ):
             external_root_block_reason = (
-                "EXTERNAL_MONOTONIC_ROOT_BLOCK: root record, attestation bundle, "
-                "signer workflow, and presented fencing token must be supplied together"
+                "EXTERNAL_MONOTONIC_ROOT_BLOCK: root record, stable anchor, "
+                "attestation bundle, signer workflow, and presented fencing token "
+                "must be supplied together"
             )
         elif linearizable_block_reason is None:
             try:
@@ -247,6 +253,7 @@ def main() -> int:
                     api,
                     repo,
                     root_record_path=external_root_record_path,
+                    anchor_path=external_root_anchor_path,
                     attestation_bundle_path=external_root_bundle_path,
                     signer_workflow=external_root_signer_workflow,
                     predicate_type=external_root_predicate_type,
@@ -349,6 +356,7 @@ def main() -> int:
         "external-monotonic-root-enforced",
         "true" if external_root_guard_requested else "false",
     )
+    _write_output("external-monotonic-root-anchor-path", external_root_anchor_path)
     _write_output(
         "external-monotonic-root-token-sha",
         str(external_root_record.get("fencing_token_sha") or "")

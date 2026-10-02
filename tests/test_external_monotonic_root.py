@@ -8,13 +8,16 @@ import pytest
 
 from external_monotonic_root import (
     ExternalMonotonicRootError,
+    build_root_anchor,
     build_root_record,
     read_root_record,
     root_record_digest,
     verify_external_monotonic_root,
+    verify_latest_root_attestation,
     verify_root_binding,
     verify_sigstore_attestation,
     verify_token_not_below_root,
+    write_root_anchor,
     write_root_record,
 )
 
@@ -48,10 +51,45 @@ def _record(*, token: str = "a" * 40, epoch: int = 2, state: str = "EXECUTABLE")
     )
 
 
+def _anchor():
+    return build_root_anchor(
+        repository="owner/repo",
+        run_id=123,
+        decision_record_sha256="b" * 64,
+        effect_plan_sha256="c" * 64,
+    )
+
+
+def _verified(record, anchor, *, predicate_type="https://example.test/root/v1"):
+    return {
+        "verificationResult": {
+            "statement": {
+                "predicateType": predicate_type,
+                "predicate": {
+                    "purpose": "execution-fencing-high-water-mark",
+                    "schema_version": record["schema_version"],
+                    "repository": record["repository"],
+                    "run_id": record["run_id"],
+                    "epoch": record["epoch"],
+                    "lifecycle_state": record["lifecycle_state"],
+                    "fencing_token_sha": record["fencing_token_sha"],
+                    "root_record_sha256": root_record_digest(record),
+                    "anchor_record_sha256": root_record_digest(anchor),
+                },
+            }
+        }
+    }
+
+
 def test_root_record_is_digest_sealed_and_bound_to_effect(tmp_path: Path):
     record = _record()
     path = tmp_path / "root.json"
     digest = write_root_record(path, record)
+
+    anchor = _anchor()
+    anchor_path = tmp_path / "anchor.json"
+    anchor_digest = write_root_anchor(anchor_path, anchor)
+    assert anchor_digest == root_record_digest(anchor)
 
     loaded = read_root_record(path)
     assert digest == root_record_digest(loaded)
@@ -165,13 +203,20 @@ def test_external_root_rejects_token_below_attested_high_water_mark(
 ):
     record = _record(token="2" * 40, epoch=2)
     record_path = tmp_path / "root.json"
+    anchor_path = tmp_path / "anchor.json"
     bundle_path = tmp_path / "bundle.json"
+    anchor = _anchor()
     write_root_record(record_path, record)
+    write_root_anchor(anchor_path, anchor)
     bundle_path.write_text("{}\n", encoding="utf-8")
 
     monkeypatch.setattr(
         "external_monotonic_root.verify_sigstore_attestation",
         lambda **kwargs: None,
+    )
+    monkeypatch.setattr(
+        "external_monotonic_root.verify_sigstore_attestation_set",
+        lambda **kwargs: [_verified(record, anchor)],
     )
     api = FakeGitHubAPI(status="behind", ahead_by=0, behind_by=1)
 
@@ -183,6 +228,7 @@ def test_external_root_rejects_token_below_attested_high_water_mark(
             api,
             "owner/repo",
             root_record_path=record_path,
+            anchor_path=anchor_path,
             attestation_bundle_path=bundle_path,
             signer_workflow="owner/repo/.github/workflows/root.yml",
             predicate_type="https://example.test/root/v1",
@@ -199,13 +245,20 @@ def test_closed_root_still_acts_as_monotonic_high_water_mark(
 ):
     record = _record(token="4" * 40, epoch=4, state="CLOSED")
     record_path = tmp_path / "root.json"
+    anchor_path = tmp_path / "anchor.json"
     bundle_path = tmp_path / "bundle.json"
+    anchor = _anchor()
     write_root_record(record_path, record)
+    write_root_anchor(anchor_path, anchor)
     bundle_path.write_text("{}\n", encoding="utf-8")
 
     monkeypatch.setattr(
         "external_monotonic_root.verify_sigstore_attestation",
         lambda **kwargs: None,
+    )
+    monkeypatch.setattr(
+        "external_monotonic_root.verify_sigstore_attestation_set",
+        lambda **kwargs: [_verified(record, anchor)],
     )
     api = FakeGitHubAPI(status="behind", ahead_by=0, behind_by=1)
 
@@ -217,6 +270,7 @@ def test_closed_root_still_acts_as_monotonic_high_water_mark(
             api,
             "owner/repo",
             root_record_path=record_path,
+            anchor_path=anchor_path,
             attestation_bundle_path=bundle_path,
             signer_workflow="owner/repo/.github/workflows/root.yml",
             predicate_type="https://example.test/root/v1",
@@ -225,3 +279,43 @@ def test_closed_root_still_acts_as_monotonic_high_water_mark(
             decision_record_sha256="b" * 64,
             effect_plan_sha256="c" * 64,
         )
+
+def test_stable_anchor_is_identical_across_root_epochs():
+    anchor2 = _anchor()
+    anchor4 = _anchor()
+    assert root_record_digest(anchor2) == root_record_digest(anchor4)
+
+
+def test_valid_old_bundle_is_rejected_when_later_attested_epoch_exists():
+    anchor = _anchor()
+    root2 = _record(token="2" * 40, epoch=2, state="EXECUTABLE")
+    root4 = _record(token="4" * 40, epoch=4, state="CLOSED")
+
+    with pytest.raises(
+        ExternalMonotonicRootError,
+        match="STALE_EXTERNAL_ROOT_ATTESTATION: supplied_epoch=2 latest_epoch=4",
+    ):
+        verify_latest_root_attestation(
+            root2,
+            anchor,
+            [_verified(root2, anchor), _verified(root4, anchor)],
+            predicate_type="https://example.test/root/v1",
+        )
+
+
+def test_distinct_roots_at_same_max_epoch_fail_closed():
+    anchor = _anchor()
+    root4a = _record(token="4" * 40, epoch=4, state="CLOSED")
+    root4b = _record(token="5" * 40, epoch=4, state="CLOSED")
+
+    with pytest.raises(
+        ExternalMonotonicRootError,
+        match="EXTERNAL_ROOT_FORK_AT_MAX_EPOCH",
+    ):
+        verify_latest_root_attestation(
+            root4a,
+            anchor,
+            [_verified(root4a, anchor), _verified(root4b, anchor)],
+            predicate_type="https://example.test/root/v1",
+        )
+
