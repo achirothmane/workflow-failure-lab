@@ -1,0 +1,32 @@
+name: Live Audit Chain Replay Fixture
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/live-audit-chain-replay-fixture.yml'
+      - '.github/workflows/live-audit-chain-replay-controller.yml'
+      - 'tests/test_live_adversarial_audit_chain_workflows.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  transient:
+    name: Synthetic transient replay probe
+    runs-on: ubuntu-latest
+    steps:
+      - name: Emit one bounded transient failure
+        shell: bash
+        run: |
+          echo "fixture run_id=${GITHUB_RUN_ID} attempt=${GITHUB_RUN_ATTEMPT}"
+          if [ "${GITHUB_RUN_ATTEMPT}" = "1" ]; then
+            echo "curl: (6) Could not resolve host: replay-proof.invalid"
+            exit 1
+          fi
+
+          # Keep N+1 alive long enough for the N controller to replay the stale
+          # admitted plan against the now-advanced workflow state.
+          sleep 25
+          echo "replay fixture recovered on attempt ${GITHUB_RUN_ATTEMPT}"
