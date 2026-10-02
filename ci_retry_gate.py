@@ -26,8 +26,25 @@ from evidence_producer import produce_ci_evidence_bundle
 from ci_assumption_profile import build_ci_retry_assumption_state
 from ci_authority_profile import build_ci_authority_grant
 from decision_experience import build_decision_experience, render_decision_card
+from decision_history import (
+    DecisionHistoryError,
+    download_prior_audit_trail,
+    find_previous_decision_artifact,
+)
 from decision_identity import collect_decision_identities
-from decision_record import build_decision_record, write_decision_record
+from decision_record import (
+    build_decision_record,
+    decision_parent_ref,
+    write_decision_record,
+)
+from outcome_record import (
+    bind_parent_decision_to_attempt,
+    build_outcome_record,
+    build_reconciliation_record,
+    seal_audit_record,
+    write_outcome_record,
+    write_reconciliation_record,
+)
 from eba_integration_contract import (
     ContractViolation,
     build_ci_action_request,
@@ -1023,6 +1040,18 @@ def _decision_record_path(evidence_path: Path) -> Path:
     )
 
 
+def _outcome_record_path(evidence_path: Path) -> Path:
+    return evidence_path.with_name(
+        evidence_path.name.replace(".evidence.json", ".outcome-record.json")
+    )
+
+
+def _reconciliation_record_path(evidence_path: Path) -> Path:
+    return evidence_path.with_name(
+        evidence_path.name.replace(".evidence.json", ".reconciliation-record.json")
+    )
+
+
 def _run_evidence_gate_process(
     evidence_path: Path,
     evidence_sha256: str,
@@ -1694,6 +1723,68 @@ def main() -> int:
         run = api.get_run_attempt(repo, run_id, selected_run_attempt)
         run_attempt = selected_run_attempt
         jobs = api.get_jobs_attempt(repo, run_id, selected_run_attempt)
+
+    # Audit history is observation-only. Failure to discover, download, verify,
+    # or bind a prior DER never grants or removes current retry authority.
+    prior_decision: dict | None = None
+    prior_execution_receipt: dict | None = None
+    prior_parent_ref: dict | None = None
+    prior_jobs: list[dict] | None = None
+    prior_history_note = ""
+
+    if selected_run_attempt is None and run_attempt > 1:
+        try:
+            prior_artifact = find_previous_decision_artifact(
+                api,
+                repo,
+                run_id=run_id,
+                current_attempt=run_attempt,
+            )
+        except (DecisionHistoryError, RuntimeError) as exc:
+            prior_history_note = f"PRIOR_AUDIT_UNAVAILABLE: {redact(str(exc))}"
+        else:
+            if prior_artifact is None:
+                prior_history_note = "PRIOR_AUDIT_NOT_FOUND"
+            else:
+                try:
+                    prior_trail = download_prior_audit_trail(
+                        api,
+                        repo,
+                        prior_artifact,
+                    )
+                    bound, binding_reason = bind_parent_decision_to_attempt(
+                        parent_decision=prior_trail.decision_record,
+                        repository=repo,
+                        run_id=run_id,
+                        current_run=run,
+                        current_attempt=run_attempt,
+                    )
+                except (DecisionHistoryError, RuntimeError, ValueError) as exc:
+                    prior_history_note = f"PRIOR_AUDIT_UNTRUSTED: {redact(str(exc))}"
+                else:
+                    if not bound:
+                        prior_history_note = binding_reason
+                    else:
+                        prior_decision = prior_trail.decision_record
+                        prior_execution_receipt = prior_trail.execution_receipt
+                        prior_parent_ref = decision_parent_ref(prior_decision)
+                        try:
+                            prior_jobs = api.get_jobs_attempt(
+                                repo,
+                                run_id,
+                                run_attempt - 1,
+                            )
+                        except RuntimeError as exc:
+                            prior_history_note = (
+                                "PRIOR_ATTEMPT_JOBS_UNAVAILABLE: "
+                                + redact(str(exc))
+                            )
+                        else:
+                            prior_history_note = "PRIOR_AUDIT_BOUND"
+
+    if prior_history_note:
+        print(f"::notice::audit-history {prior_history_note}")
+
     failed_jobs = [job for job in jobs if str(job.get("conclusion") or "").lower() in FAILURE_CONCLUSIONS]
 
     assessments = assess_failed_jobs(api, repo, failed_jobs)
@@ -1706,6 +1797,41 @@ def main() -> int:
     )
     evidence_path = _evidence_artifact_path(repo, run_id, run_attempt)
     evidence_sha256 = write_evidence_artifact(evidence_path, evidence_bundle)
+
+    outcome_record_path: Path | None = None
+    reconciliation_record_path: Path | None = None
+    reconciliation_status = ""
+    if prior_decision is not None and prior_jobs is not None:
+        outcome_record = seal_audit_record(
+            build_outcome_record(
+                parent_decision=prior_decision,
+                current_run=run,
+                previous_jobs=prior_jobs,
+                current_jobs=jobs,
+                execution_receipt=prior_execution_receipt,
+            )
+        )
+        outcome_record_path = _outcome_record_path(evidence_path)
+        write_outcome_record(outcome_record_path, outcome_record)
+
+        reconciliation_record = seal_audit_record(
+            build_reconciliation_record(
+                parent_decision=prior_decision,
+                outcome_record=outcome_record,
+            )
+        )
+        reconciliation_record_path = _reconciliation_record_path(evidence_path)
+        write_reconciliation_record(
+            reconciliation_record_path,
+            reconciliation_record,
+        )
+        reconciliation_status = str(reconciliation_record["status"])
+        print(
+            "::notice::previous-decision-reconciliation "
+            f"status={reconciliation_status} "
+            f"parent_event_id={prior_decision['event_id']}"
+        )
+
     evidence_decision = _run_evidence_gate_process(
         evidence_path,
         evidence_sha256,
@@ -1870,6 +1996,7 @@ def main() -> int:
             run,
             rerun_will_be_requested=bool(mutation_admitted),
         ),
+        parent_decision=prior_parent_ref,
     )
     decision_record_path = _decision_record_path(evidence_path)
     decision_record_sha256 = write_decision_record(
@@ -1878,7 +2005,7 @@ def main() -> int:
     )
     decision_record_artifact_name = (
         f"ci-retry-gate-der-{run_id}-attempt-{run_attempt}-"
-        f"{decision_record_sha256[:12]}"
+        f"{decision_record_sha256}"
     )
 
     rerun_triggered = False
@@ -2022,6 +2149,16 @@ def main() -> int:
     _write_output("decision-event-id", str(decision_record["event_id"]))
     _write_output("authorization-path", str(decision_record["authorization_path"]))
     _write_output("decision-record-artifact-name", decision_record_artifact_name)
+    _write_output("eba-receipt-path", str(receipt_path))
+    _write_output(
+        "outcome-record-path",
+        str(outcome_record_path) if outcome_record_path is not None else "",
+    )
+    _write_output(
+        "reconciliation-record-path",
+        str(reconciliation_record_path) if reconciliation_record_path is not None else "",
+    )
+    _write_output("previous-reconciliation-status", reconciliation_status)
     _write_output(
         "eba-request-json",
         json.dumps(action_request, separators=(",", ":"), sort_keys=True),
