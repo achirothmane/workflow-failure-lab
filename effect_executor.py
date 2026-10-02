@@ -47,8 +47,9 @@ def _now_iso() -> str:
 def _write_output(name: str, value: str) -> None:
     path = os.environ.get("GITHUB_OUTPUT")
     if path:
+        safe_value = " ".join(str(value).splitlines())
         with open(path, "a", encoding="utf-8") as handle:
-            handle.write(f"{name}={value}\n")
+            handle.write(f"{name}={safe_value}\n")
 
 
 def _required(name: str) -> str:
@@ -263,8 +264,9 @@ def main() -> int:
                     effect_plan_sha256=plan_sha,
                 )
             except (ExternalMonotonicRootError, RuntimeError) as exc:
+                detail = " ".join(redact(str(exc)).split())
                 external_root_block_reason = (
-                    f"EXTERNAL_MONOTONIC_ROOT_BLOCK: {redact(str(exc))}"
+                    f"EXTERNAL_MONOTONIC_ROOT_BLOCK: {detail}"
                 )
 
     if mutation_admitted:
