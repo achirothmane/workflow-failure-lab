@@ -161,16 +161,14 @@ def build_candidate_commit(
     return candidate_sha
 
 
-def try_claim(
+def publish_candidate(
     api: GitHubAPI,
     repo: str,
     *,
     coordination_ref: str,
     expected_base_sha: str,
     owner_id: str,
-    epoch: int,
-    decision_record_sha256: str,
-    effect_plan_sha256: str,
+    candidate_sha: str,
 ) -> ClaimResult:
     observed_before = read_coordination_sha(api, repo, coordination_ref)
     if observed_before != expected_base_sha:
@@ -179,23 +177,13 @@ def try_claim(
             acquired=False,
             coordination_ref=coordination_ref,
             base_sha=expected_base_sha,
-            candidate_sha="",
+            candidate_sha=candidate_sha,
             observed_sha=observed_before,
             reason=(
                 "COORDINATION_BASE_CHANGED: "
                 f"expected {expected_base_sha}, observed {observed_before}"
             ),
         )
-
-    candidate_sha = build_candidate_commit(
-        api,
-        repo,
-        base_sha=expected_base_sha,
-        owner_id=owner_id,
-        epoch=epoch,
-        decision_record_sha256=decision_record_sha256,
-        effect_plan_sha256=effect_plan_sha256,
-    )
 
     ref_path = _ref_path(coordination_ref)
     try:
@@ -233,6 +221,51 @@ def try_claim(
         candidate_sha=candidate_sha,
         observed_sha=observed_after,
         reason="CAS_ACQUIRED",
+    )
+
+
+def try_claim(
+    api: GitHubAPI,
+    repo: str,
+    *,
+    coordination_ref: str,
+    expected_base_sha: str,
+    owner_id: str,
+    epoch: int,
+    decision_record_sha256: str,
+    effect_plan_sha256: str,
+) -> ClaimResult:
+    observed_before = read_coordination_sha(api, repo, coordination_ref)
+    if observed_before != expected_base_sha:
+        return ClaimResult(
+            owner_id=owner_id,
+            acquired=False,
+            coordination_ref=coordination_ref,
+            base_sha=expected_base_sha,
+            candidate_sha="",
+            observed_sha=observed_before,
+            reason=(
+                "COORDINATION_BASE_CHANGED: "
+                f"expected {expected_base_sha}, observed {observed_before}"
+            ),
+        )
+
+    candidate_sha = build_candidate_commit(
+        api,
+        repo,
+        base_sha=expected_base_sha,
+        owner_id=owner_id,
+        epoch=epoch,
+        decision_record_sha256=decision_record_sha256,
+        effect_plan_sha256=effect_plan_sha256,
+    )
+    return publish_candidate(
+        api,
+        repo,
+        coordination_ref=coordination_ref,
+        expected_base_sha=expected_base_sha,
+        owner_id=owner_id,
+        candidate_sha=candidate_sha,
     )
 
 
