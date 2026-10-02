@@ -601,8 +601,15 @@ def build_execution_receipt(
     authority_grant: dict[str, Any] | None = None,
     created_at: str | None = None,
     admitted_at: str | None = None,
+    execution_reason: str | None = None,
+    execution_outcome: str | None = None,
 ) -> dict[str, Any]:
     timestamp = created_at or _utc_now()
+    outcome = execution_outcome or ("SUCCEEDED" if rerun_triggered else "NOT_EXECUTED")
+    if outcome not in {"SUCCEEDED", "NOT_EXECUTED", "UNKNOWN"}:
+        raise ContractViolation("EXECUTION_RECEIPT_OUTCOME_INVALID")
+    if rerun_triggered and outcome != "SUCCEEDED":
+        raise ContractViolation("EXECUTION_RECEIPT_TRIGGER_OUTCOME_MISMATCH")
     if rerun_triggered:
         boundary_time = admitted_at or timestamp
         ensure_decision_allows_request(
@@ -623,19 +630,24 @@ def build_execution_receipt(
         "request_ref": action_request.get("id"),
         "decision_ref": decision_artifact.get("id"),
         "action_digest": action_digest(action_request),
-        "admitted_at": admitted_at if rerun_triggered else None,
+        "admitted_at": admitted_at if outcome in {"SUCCEEDED", "UNKNOWN"} else None,
         "started_at": timestamp,
         "finished_at": timestamp,
-        "outcome": "SUCCEEDED" if rerun_triggered else "NOT_EXECUTED",
+        "outcome": outcome,
+        "status_reason": execution_reason,
         "resource_changes": (
             [
                 {
                     "resource": action_request.get("action", {}).get("resource"),
                     "operation": "rerun_failed_jobs",
-                    "result": "dispatch-accepted",
+                    "result": (
+                        "dispatch-accepted"
+                        if outcome == "SUCCEEDED"
+                        else "dispatch-unknown"
+                    ),
                 }
             ]
-            if rerun_triggered
+            if outcome in {"SUCCEEDED", "UNKNOWN"}
             else []
         ),
         "actual_usage": {},
@@ -654,3 +666,63 @@ def write_contract_artifact(path: str | Path, artifact: dict[str, Any]) -> str:
     temporary.write_bytes(payload + b"\n")
     temporary.replace(target)
     return digest
+
+
+def verify_contract_artifact(
+    artifact: object,
+    *,
+    expected_sha256: str | None = None,
+    expected_kind: str | None = None,
+) -> dict[str, Any]:
+    """Verify canonical shape, embedded integrity, and optional external digest."""
+    if not isinstance(artifact, dict):
+        raise ContractViolation("CONTRACT_ARTIFACT_ROOT_INVALID")
+    _validate_canonical_value(artifact)
+
+    if expected_kind is not None and artifact.get("kind") != expected_kind:
+        raise ContractViolation("CONTRACT_ARTIFACT_KIND_MISMATCH")
+
+    integrity = artifact.get("integrity")
+    if not isinstance(integrity, dict):
+        raise ContractViolation("CONTRACT_ARTIFACT_INTEGRITY_MISSING")
+    if integrity.get("algorithm") != "sha256":
+        raise ContractViolation("CONTRACT_ARTIFACT_INTEGRITY_ALGORITHM_INVALID")
+
+    embedded = str(integrity.get("digest") or "").strip().lower()
+    if len(embedded) != 64 or any(ch not in "0123456789abcdef" for ch in embedded):
+        raise ContractViolation("CONTRACT_ARTIFACT_INTEGRITY_DIGEST_INVALID")
+
+    semantic = dict(artifact)
+    semantic.pop("integrity", None)
+    actual_semantic = hashlib.sha256(canonical_json_bytes(semantic)).hexdigest()
+    if actual_semantic != embedded:
+        raise ContractViolation("CONTRACT_ARTIFACT_INTEGRITY_MISMATCH")
+
+    if expected_sha256 is not None:
+        expected = expected_sha256.strip().lower()
+        actual_external = hashlib.sha256(canonical_json_bytes(artifact)).hexdigest()
+        if not expected or actual_external != expected:
+            raise ContractViolation("CONTRACT_ARTIFACT_EXTERNAL_DIGEST_MISMATCH")
+
+    return artifact
+
+
+def read_contract_artifact(
+    path: str | Path,
+    *,
+    expected_sha256: str | None = None,
+    expected_kind: str | None = None,
+) -> dict[str, Any]:
+    """Read strict canonical JSON and verify it before effect-boundary use."""
+    target = Path(path)
+    try:
+        raw = target.read_bytes()
+    except OSError as exc:
+        raise ContractViolation("CONTRACT_ARTIFACT_READ_FAILED") from exc
+
+    artifact = strict_json_loads(raw)
+    return verify_contract_artifact(
+        artifact,
+        expected_sha256=expected_sha256,
+        expected_kind=expected_kind,
+    )

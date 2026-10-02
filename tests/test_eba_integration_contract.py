@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import json
 
 import pytest
 
@@ -12,6 +13,8 @@ from eba_integration_contract import (
     build_decision_artifact,
     build_execution_receipt,
     ensure_decision_allows_request,
+    read_contract_artifact,
+    write_contract_artifact,
 )
 
 
@@ -135,3 +138,57 @@ def test_allow_with_mismatched_evidence_scope_becomes_block():
     assert decision["reason_codes"] == ["CONTEXT_MISMATCH"]
     with pytest.raises(ContractViolation, match="ALLOW"):
         ensure_decision_allows_request(decision, request, now="2026-09-27T16:00:02Z")
+
+
+def test_persisted_contract_artifact_verifies_embedded_and_external_digest(tmp_path):
+    request = _request()
+    path = tmp_path / "request.json"
+
+    digest = write_contract_artifact(path, request)
+    loaded = read_contract_artifact(
+        path,
+        expected_sha256=digest,
+        expected_kind="ActionRequest",
+    )
+
+    assert loaded["id"] == request["id"]
+
+
+def test_persisted_contract_artifact_rejects_resealed_or_mutated_content(tmp_path):
+    request = _request()
+    path = tmp_path / "request.json"
+    digest = write_contract_artifact(path, request)
+
+    tampered = json.loads(path.read_text(encoding="utf-8"))
+    tampered["context"]["run_id"] = 999
+    path.write_text(json.dumps(tampered), encoding="utf-8")
+
+    with pytest.raises(ContractViolation):
+        read_contract_artifact(
+            path,
+            expected_sha256=digest,
+            expected_kind="ActionRequest",
+        )
+
+
+def test_execution_receipt_can_represent_indeterminate_dispatch():
+    request = _request()
+    decision = build_decision_artifact(
+        action_request=request,
+        evidence_decision=_legacy(),
+        evidence_sha256="a" * 64,
+        created_at="2026-09-27T16:00:01Z",
+    )
+
+    receipt = build_execution_receipt(
+        action_request=request,
+        decision_artifact=decision,
+        rerun_triggered=False,
+        admitted_at="2026-09-27T16:00:02Z",
+        execution_outcome="UNKNOWN",
+        execution_reason="RERUN_DISPATCH_UNKNOWN: connection reset",
+    )
+
+    assert receipt["outcome"] == "UNKNOWN"
+    assert receipt["admitted_at"] == "2026-09-27T16:00:02Z"
+    assert receipt["resource_changes"][0]["result"] == "dispatch-unknown"
