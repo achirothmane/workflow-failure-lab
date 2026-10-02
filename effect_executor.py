@@ -23,6 +23,11 @@ from execution_lease import (
     verify_effect_ownership,
 )
 from linearizable_lease import LinearizableLeaseError, verify_fencing_token
+from external_monotonic_root import (
+    DEFAULT_PREDICATE_TYPE,
+    ExternalMonotonicRootError,
+    verify_external_monotonic_root,
+)
 from eba_integration_contract import (
     ASSUMPTION_KIND,
     AUTHORITY_KIND,
@@ -204,9 +209,62 @@ def main() -> int:
                     f"LINEARIZABLE_FENCE_BLOCK: {redact(str(exc))}"
                 )
 
+    external_root_record_path = str(
+        os.environ.get("INPUT_EXTERNAL_MONOTONIC_ROOT_RECORD_PATH") or ""
+    ).strip()
+    external_root_bundle_path = str(
+        os.environ.get("INPUT_EXTERNAL_MONOTONIC_ROOT_BUNDLE_PATH") or ""
+    ).strip()
+    external_root_signer_workflow = str(
+        os.environ.get("INPUT_EXTERNAL_MONOTONIC_ROOT_SIGNER_WORKFLOW") or ""
+    ).strip()
+    external_root_predicate_type = str(
+        os.environ.get("INPUT_EXTERNAL_MONOTONIC_ROOT_PREDICATE_TYPE")
+        or DEFAULT_PREDICATE_TYPE
+    ).strip()
+    external_root_guard_requested = bool(
+        external_root_record_path
+        or external_root_bundle_path
+        or external_root_signer_workflow
+    )
+    external_root_block_reason: str | None = None
+    external_root_record = None
+
+    if external_root_guard_requested:
+        if (
+            not external_root_record_path
+            or not external_root_bundle_path
+            or not external_root_signer_workflow
+            or not fencing_token_sha
+        ):
+            external_root_block_reason = (
+                "EXTERNAL_MONOTONIC_ROOT_BLOCK: root record, attestation bundle, "
+                "signer workflow, and presented fencing token must be supplied together"
+            )
+        elif linearizable_block_reason is None:
+            try:
+                external_root_record = verify_external_monotonic_root(
+                    api,
+                    repo,
+                    root_record_path=external_root_record_path,
+                    attestation_bundle_path=external_root_bundle_path,
+                    signer_workflow=external_root_signer_workflow,
+                    predicate_type=external_root_predicate_type,
+                    presented_token_sha=fencing_token_sha,
+                    run_id=int(plan["run_id"]),
+                    decision_record_sha256=decision_record_sha,
+                    effect_plan_sha256=plan_sha,
+                )
+            except (ExternalMonotonicRootError, RuntimeError) as exc:
+                external_root_block_reason = (
+                    f"EXTERNAL_MONOTONIC_ROOT_BLOCK: {redact(str(exc))}"
+                )
+
     if mutation_admitted:
         if linearizable_block_reason is not None:
             effect_reason = linearizable_block_reason
+        elif external_root_block_reason is not None:
+            effect_reason = external_root_block_reason
         elif lease_block_reason is not None:
             effect_reason = lease_block_reason
         elif decision_record.get("decision") != "ALLOW":
@@ -287,6 +345,28 @@ def main() -> int:
     _write_output("linearizable-coordination-ref", coordination_ref)
     _write_output("linearizable-fencing-token-sha", fencing_token_sha)
     _write_output("linearizable-witness-ref", witness_ref)
+    _write_output(
+        "external-monotonic-root-enforced",
+        "true" if external_root_guard_requested else "false",
+    )
+    _write_output(
+        "external-monotonic-root-token-sha",
+        str(external_root_record.get("fencing_token_sha") or "")
+        if isinstance(external_root_record, dict)
+        else "",
+    )
+    _write_output(
+        "external-monotonic-root-epoch",
+        str(external_root_record.get("epoch") or "")
+        if isinstance(external_root_record, dict)
+        else "",
+    )
+    _write_output(
+        "external-monotonic-root-state",
+        str(external_root_record.get("lifecycle_state") or "")
+        if isinstance(external_root_record, dict)
+        else "",
+    )
     _write_output("execution-lease-enforced", "true" if lease_guard_requested else "false")
     _write_output(
         "execution-lease-owner",
