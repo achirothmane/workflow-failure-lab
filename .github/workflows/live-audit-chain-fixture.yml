@@ -22,7 +22,7 @@ jobs:
         run: |
           echo "fixture run_id=${GITHUB_RUN_ID} attempt=${GITHUB_RUN_ATTEMPT}"
           if [ "${GITHUB_RUN_ATTEMPT}" = "1" ]; then
-            echo "curl: (28) Operation timed out after 1000 milliseconds with 0 bytes received"
+            echo "curl: (6) Could not resolve host: ci-retry-gate.invalid"
             exit 1
           fi
 
