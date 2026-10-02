@@ -1,0 +1,30 @@
+name: Live Audit Chain Receipt Loss Fixture
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/live-audit-chain-receipt-loss-fixture.yml'
+      - '.github/workflows/live-audit-chain-receipt-loss-controller.yml'
+      - 'tests/test_live_adversarial_audit_chain_workflows.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  transient:
+    name: Synthetic transient receipt-loss probe
+    runs-on: ubuntu-latest
+    steps:
+      - name: Emit one bounded transient failure
+        shell: bash
+        run: |
+          echo "fixture run_id=${GITHUB_RUN_ID} attempt=${GITHUB_RUN_ATTEMPT}"
+          if [ "${GITHUB_RUN_ATTEMPT}" = "1" ]; then
+            echo "curl: (6) Could not resolve host: receipt-loss.invalid"
+            exit 1
+          fi
+
+          sleep 10
+          echo "receipt-loss fixture recovered on attempt ${GITHUB_RUN_ATTEMPT}"
