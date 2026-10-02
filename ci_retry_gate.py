@@ -26,6 +26,8 @@ from evidence_producer import produce_ci_evidence_bundle
 from ci_assumption_profile import build_ci_retry_assumption_state
 from ci_authority_profile import build_ci_authority_grant
 from decision_experience import build_decision_experience, render_decision_card
+from decision_identity import collect_decision_identities
+from decision_record import build_decision_record, write_decision_record
 from eba_integration_contract import (
     ContractViolation,
     build_ci_action_request,
@@ -37,6 +39,7 @@ from eba_integration_contract import (
 
 TRANSIENT_CATEGORIES = {"RUNNER_INFRA", "DEPENDENCY_NETWORK"}
 FAILURE_CONCLUSIONS = {"failure", "timed_out"}
+PRODUCTION_POLICY_REF = "ci-retry-gate.production.v1"
 
 
 _SECRET_PATTERNS = [
@@ -1014,6 +1017,12 @@ def _evidence_artifact_path(repo: str, run_id: int, run_attempt: int) -> Path:
     return directory / f"{safe_repo}-run-{run_id}-attempt-{run_attempt}.evidence.json"
 
 
+def _decision_record_path(evidence_path: Path) -> Path:
+    return evidence_path.with_name(
+        evidence_path.name.replace(".evidence.json", ".decision-record.json")
+    )
+
+
 def _run_evidence_gate_process(
     evidence_path: Path,
     evidence_sha256: str,
@@ -1744,6 +1753,8 @@ def main() -> int:
             recovered = detect_cross_attempt_recovery(failed_jobs, later_jobs)
             recurrent = detect_cross_attempt_recurrence(failed_jobs, later_jobs)
             recovery_scope = f"attempt {selected_run_attempt + 1}"
+
+    # Conservative outer guards may only narrow the isolated gate's ALLOW.
     outer_guard_applied = False
     if failed_jobs and len(recovered) == len(failed_jobs):
         outer_guard_applied = True
@@ -1767,8 +1778,20 @@ def main() -> int:
             "NEXT_ATTEMPT_RECURRENCE: the same failed job identity failed again in "
             f"{recovery_scope} ({pairs}). A successful later attempt must not erase this recurrence."
         )
-    rerun_triggered = False
+
+    if outer_guard_applied:
+        evidence_decision["decision"] = "BLOCK"
+        evidence_decision["reasons"] = [reason]
+        if evidence_decision.get("contradictions"):
+            evidence_decision["evidence_status"] = "CONTRADICTED"
+            evidence_decision["confidence"] = "high"
+        else:
+            evidence_decision["evidence_status"] = "UNKNOWN"
+            evidence_decision["confidence"] = "unknown"
+
     execution_time: str | None = None
+    mutation_admitted = False
+
     if safe and auto_rerun:
         try:
             binding_valid, binding_reason = revalidate_rerun_subject_binding(
@@ -1788,14 +1811,29 @@ def main() -> int:
         if not binding_valid:
             safe = False
             reason = binding_reason
-            outer_guard_applied = True
+            evidence_decision["decision"] = "BLOCK"
+            evidence_decision["reasons"] = [reason]
+            evidence_decision["evidence_status"] = "UNKNOWN"
+            evidence_decision["confidence"] = "unknown"
         else:
+            execution_time = (
+                datetime.now(timezone.utc)
+                .isoformat(timespec="seconds")
+                .replace("+00:00", "Z")
+            )
+
+            # Rebuild the exact contract after all narrowing guards and before
+            # the effect boundary. This is the Decision checked at mutation time.
+            contract_decision = build_decision_artifact(
+                action_request=action_request,
+                evidence_decision=evidence_decision,
+                evidence_sha256=evidence_sha256,
+                assumption_states=[assumption_state],
+                authority_grant=authority_grant,
+                require_authority=True,
+                created_at=contract_timestamp,
+            )
             try:
-                execution_time = (
-                    datetime.now(timezone.utc)
-                    .isoformat(timespec="seconds")
-                    .replace("+00:00", "Z")
-                )
                 ensure_decision_allows_request(
                     contract_decision,
                     action_request,
@@ -1806,28 +1844,52 @@ def main() -> int:
             except ContractViolation as exc:
                 safe = False
                 reason = f"INTEGRATION_CONTRACT_BLOCK: {exc}."
-                outer_guard_applied = True
+                evidence_decision["decision"] = "BLOCK"
+                evidence_decision["reasons"] = [reason]
+                evidence_decision["evidence_status"] = "UNKNOWN"
+                evidence_decision["confidence"] = "unknown"
             else:
-                api.rerun_failed_jobs(repo, run_id)
-                rerun_triggered = True
+                mutation_admitted = True
 
-    historical = collect_historical_reliability(api, repo, run, failed_jobs)
+    # The Decision Evidence Record is immutable T1 audit evidence. Persist it
+    # after all decision-narrowing checks and before an optional mutation.
+    pre_effect_experience = build_decision_experience(
+        evidence_decision=evidence_decision,
+        assessments=assessments,
+        rerun_triggered=False,
+        run_attempt=run_attempt,
+        max_attempts=max_attempts,
+    )
+    decision_record = build_decision_record(
+        evidence_decision=evidence_decision,
+        evidence_bundle_sha256=evidence_sha256,
+        policy_ref=PRODUCTION_POLICY_REF,
+        authorization_path="POLICY",
+        next_action=str(pre_effect_experience["next_action"]),
+        identities=collect_decision_identities(
+            run,
+            rerun_will_be_requested=bool(mutation_admitted),
+        ),
+    )
+    decision_record_path = _decision_record_path(evidence_path)
+    decision_record_sha256 = write_decision_record(
+        decision_record_path,
+        decision_record,
+    )
+    decision_record_artifact_name = (
+        f"ci-retry-gate-der-{run_id}-attempt-{run_attempt}-"
+        f"{decision_record_sha256[:12]}"
+    )
 
-    # Recovery/recurrence checks are conservative outer guards. They may only
-    # narrow an ALLOW returned by the isolated gate; they can never create one.
-    if outer_guard_applied:
-        evidence_decision["decision"] = "BLOCK"
-        evidence_decision["reasons"] = [reason]
-        if evidence_decision.get("contradictions"):
-            evidence_decision["evidence_status"] = "CONTRADICTED"
-            evidence_decision["confidence"] = "high"
-        else:
-            evidence_decision["evidence_status"] = "UNKNOWN"
-            evidence_decision["confidence"] = "unknown"
+    rerun_triggered = False
+    if mutation_admitted:
+        api.rerun_failed_jobs(repo, run_id)
+        rerun_triggered = True
+
     evidence_decision["rerun_triggered"] = rerun_triggered
 
-    # Rebuild the public contract from the final narrowed decision. If execution
-    # occurred, this is identical to the Decision checked at the boundary.
+    # This public EBA decision is identical to the decision admitted at the
+    # boundary. BLOCK/report-only paths are rebuilt from the same final state.
     contract_decision = build_decision_artifact(
         action_request=action_request,
         evidence_decision=evidence_decision,
@@ -1845,6 +1907,8 @@ def main() -> int:
         rerun_triggered=rerun_triggered,
         admitted_at=execution_time,
     )
+
+    historical = collect_historical_reliability(api, repo, run, failed_jobs)
 
     request_path = evidence_path.with_name(
         evidence_path.name.replace(".evidence.json", ".eba-request.json")
@@ -1953,6 +2017,11 @@ def main() -> int:
     )
     _write_output("evidence-bundle-path", str(evidence_path))
     _write_output("evidence-bundle-sha256", evidence_sha256)
+    _write_output("decision-record-path", str(decision_record_path))
+    _write_output("decision-record-sha256", decision_record_sha256)
+    _write_output("decision-event-id", str(decision_record["event_id"]))
+    _write_output("authorization-path", str(decision_record["authorization_path"]))
+    _write_output("decision-record-artifact-name", decision_record_artifact_name)
     _write_output(
         "eba-request-json",
         json.dumps(action_request, separators=(",", ":"), sort_keys=True),
