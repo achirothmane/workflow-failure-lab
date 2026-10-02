@@ -1,0 +1,36 @@
+name: Live External Monotonic Root Fixture
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/live-external-monotonic-root-fixture.yml'
+      - '.github/workflows/live-external-monotonic-root-controller.yml'
+      - 'external_monotonic_root.py'
+      - 'effect_executor.py'
+      - 'e2e/external_monotonic_root_cli.py'
+      - 'e2e/linearizable_lease_cli.py'
+      - 'e2e/takeover_bundle_manifest.py'
+      - 'tests/test_external_monotonic_root.py'
+      - 'tests/test_live_external_monotonic_root_workflow.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  transient:
+    name: External-root transient probe
+    runs-on: ubuntu-latest
+    steps:
+      - name: Emit one bounded transient failure
+        shell: bash
+        run: |
+          echo "fixture run_id=${GITHUB_RUN_ID} attempt=${GITHUB_RUN_ATTEMPT}"
+          if [ "${GITHUB_RUN_ATTEMPT}" = "1" ]; then
+            echo "curl: (6) Could not resolve host: external-monotonic-root.invalid"
+            exit 1
+          fi
+
+          sleep 20
+          echo "external monotonic root fixture recovered on attempt ${GITHUB_RUN_ATTEMPT}"
