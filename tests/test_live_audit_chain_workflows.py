@@ -11,7 +11,7 @@ def test_live_fixture_is_bounded_to_one_synthetic_failure():
 
     assert 'name: Live Audit Chain Fixture' in text
     assert 'GITHUB_RUN_ATTEMPT}" = "1"' in text
-    assert "curl: (28) Operation timed out" in text
+    assert "curl: (6) Could not resolve host" in text
     assert "sleep 15" in text
     assert "workflow_dispatch:" in text
 
