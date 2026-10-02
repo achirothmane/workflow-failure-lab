@@ -1,0 +1,35 @@
+name: Live Lease Contention Fixture
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/live-lease-contention-fixture.yml'
+      - '.github/workflows/live-lease-contention-controller.yml'
+      - 'execution_lease.py'
+      - 'effect_executor.py'
+      - 'e2e/execution_lease_cli.py'
+      - 'e2e/takeover_bundle_manifest.py'
+      - 'tests/test_execution_lease.py'
+      - 'tests/test_live_lease_contention_workflow.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  transient:
+    name: Lease-contention transient probe
+    runs-on: ubuntu-latest
+    steps:
+      - name: Emit one bounded transient failure
+        shell: bash
+        run: |
+          echo "fixture run_id=${GITHUB_RUN_ID} attempt=${GITHUB_RUN_ATTEMPT}"
+          if [ "${GITHUB_RUN_ATTEMPT}" = "1" ]; then
+            echo "curl: (6) Could not resolve host: lease-contention.invalid"
+            exit 1
+          fi
+
+          sleep 20
+          echo "lease contention fixture recovered on attempt ${GITHUB_RUN_ATTEMPT}"

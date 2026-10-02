@@ -14,6 +14,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from execution_lease import (
+    build_contention_resolution_lease,
     build_execution_lease,
     build_takeover_lease,
     lease_digest,
@@ -74,6 +75,13 @@ def main() -> int:
     takeover.add_argument("--output", required=True)
     takeover.add_argument("--wait", action="store_true")
 
+    resolve = sub.add_parser("resolve")
+    resolve.add_argument("--contender", action="append", required=True)
+    resolve.add_argument("--owner", required=True)
+    resolve.add_argument("--ttl", required=True, type=int)
+    resolve.add_argument("--output", required=True)
+    resolve.add_argument("--wait", action="store_true")
+
     args = parser.parse_args()
 
     if args.command == "initial":
@@ -90,11 +98,25 @@ def main() -> int:
         _emit(args.output, lease)
         return 0
 
-    previous = read_execution_lease(args.previous)
+    if args.command == "takeover":
+        previous = read_execution_lease(args.previous)
+        if args.wait:
+            _wait_until_expired(previous)
+        lease = build_takeover_lease(
+            previous_lease=previous,
+            owner_id=args.owner,
+            issued_at=_now_iso(),
+            ttl_seconds=args.ttl,
+        )
+        _emit(args.output, lease)
+        return 0
+
+    contenders = [read_execution_lease(path) for path in args.contender]
     if args.wait:
-        _wait_until_expired(previous)
-    lease = build_takeover_lease(
-        previous_lease=previous,
+        for contender in contenders:
+            _wait_until_expired(contender)
+    lease = build_contention_resolution_lease(
+        contending_leases=contenders,
         owner_id=args.owner,
         issued_at=_now_iso(),
         ttl_seconds=args.ttl,
