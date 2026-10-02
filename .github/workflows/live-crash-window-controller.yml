@@ -1,0 +1,468 @@
+name: Live Crash Window Controller
+
+on:
+  workflow_run:
+    workflows:
+      - "Live Crash Before Effect Fixture"
+      - "Live Crash After Effect Fixture"
+      - "Live Ambiguous Transport Fixture"
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: write
+  checks: read
+
+jobs:
+  crash-before:
+    name: Crash before effect then takeover
+    if: ${{ github.event.workflow_run.name == 'Live Crash Before Effect Fixture' && github.event.workflow_run.repository.full_name == github.repository && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: gate
+        name: Build deferred admitted decision
+        if: ${{ github.event.workflow_run.run_attempt == 1 }}
+        shell: bash
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          INPUT_RUN_ID: ${{ github.event.workflow_run.id }}
+          INPUT_REPOSITORY: ${{ github.repository }}
+          INPUT_AUTO_RERUN: 'true'
+          INPUT_DEFER_EFFECT: 'true'
+          INPUT_MAX_ATTEMPTS: '2'
+          INPUT_COMMENT_ON_PR: 'false'
+        run: python3 ci_retry_gate.py
+
+      - name: Verify initial decision is admitted
+        if: ${{ github.event.workflow_run.run_attempt == 1 }}
+        shell: bash
+        env:
+          DECISION: ${{ steps.gate.outputs.decision }}
+          EVIDENCE_STATUS: ${{ steps.gate.outputs.evidence-status }}
+          MUTATION_ADMITTED: ${{ steps.gate.outputs.mutation-admitted }}
+        run: |
+          test "$DECISION" = "ALLOW"
+          test "$EVIDENCE_STATUS" = "SUFFICIENT"
+          test "$MUTATION_ADMITTED" = "true"
+
+      - name: Persist pre-effect audit trail
+        if: ${{ github.event.workflow_run.run_attempt == 1 }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.gate.outputs.decision-record-artifact-name }}
+          path: |
+            ${{ steps.gate.outputs.decision-record-path }}
+            ${{ steps.gate.outputs.effect-plan-path }}
+          if-no-files-found: error
+
+      - id: crash
+        name: Crash immediately before dispatch
+        if: ${{ github.event.workflow_run.run_attempt == 1 }}
+        continue-on-error: true
+        shell: bash
+        env:
+          FAULT_MODE: crash-before-dispatch
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          INPUT_EFFECT_PLAN_PATH: ${{ steps.gate.outputs.effect-plan-path }}
+          INPUT_EFFECT_PLAN_SHA256: ${{ steps.gate.outputs.effect-plan-sha256 }}
+          INPUT_DECISION_RECORD_PATH: ${{ steps.gate.outputs.decision-record-path }}
+          INPUT_DECISION_RECORD_SHA256: ${{ steps.gate.outputs.decision-record-sha256 }}
+          INPUT_EBA_REQUEST_PATH: ${{ steps.gate.outputs.eba-request-path }}
+          INPUT_EBA_REQUEST_SHA256: ${{ steps.gate.outputs.eba-request-sha256 }}
+          INPUT_EBA_ASSUMPTION_PATH: ${{ steps.gate.outputs.eba-assumption-path }}
+          INPUT_EBA_ASSUMPTION_SHA256: ${{ steps.gate.outputs.eba-assumption-sha256 }}
+          INPUT_EBA_AUTHORITY_PATH: ${{ steps.gate.outputs.eba-authority-path }}
+          INPUT_EBA_AUTHORITY_SHA256: ${{ steps.gate.outputs.eba-authority-sha256 }}
+          INPUT_EBA_DECISION_PATH: ${{ steps.gate.outputs.eba-decision-path }}
+          INPUT_EBA_DECISION_SHA256: ${{ steps.gate.outputs.eba-decision-sha256 }}
+          INPUT_EBA_RECEIPT_PATH: ${{ steps.gate.outputs.eba-receipt-path }}
+          INPUT_DECISION_EXPERIENCE_JSON: ${{ steps.gate.outputs.decision-experience-json }}
+        run: python3 e2e/fault_injected_effect_executor.py
+
+      - name: Verify pre-effect crash occurred
+        if: ${{ github.event.workflow_run.run_attempt == 1 }}
+        shell: bash
+        env:
+          CRASH_OUTCOME: ${{ steps.crash.outcome }}
+        run: test "$CRASH_OUTCOME" = "failure"
+
+      - id: takeover
+        name: Take over the same persisted plan
+        if: ${{ github.event.workflow_run.run_attempt == 1 }}
+        shell: bash
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          INPUT_EFFECT_PLAN_PATH: ${{ steps.gate.outputs.effect-plan-path }}
+          INPUT_EFFECT_PLAN_SHA256: ${{ steps.gate.outputs.effect-plan-sha256 }}
+          INPUT_DECISION_RECORD_PATH: ${{ steps.gate.outputs.decision-record-path }}
+          INPUT_DECISION_RECORD_SHA256: ${{ steps.gate.outputs.decision-record-sha256 }}
+          INPUT_EBA_REQUEST_PATH: ${{ steps.gate.outputs.eba-request-path }}
+          INPUT_EBA_REQUEST_SHA256: ${{ steps.gate.outputs.eba-request-sha256 }}
+          INPUT_EBA_ASSUMPTION_PATH: ${{ steps.gate.outputs.eba-assumption-path }}
+          INPUT_EBA_ASSUMPTION_SHA256: ${{ steps.gate.outputs.eba-assumption-sha256 }}
+          INPUT_EBA_AUTHORITY_PATH: ${{ steps.gate.outputs.eba-authority-path }}
+          INPUT_EBA_AUTHORITY_SHA256: ${{ steps.gate.outputs.eba-authority-sha256 }}
+          INPUT_EBA_DECISION_PATH: ${{ steps.gate.outputs.eba-decision-path }}
+          INPUT_EBA_DECISION_SHA256: ${{ steps.gate.outputs.eba-decision-sha256 }}
+          INPUT_EBA_RECEIPT_PATH: ${{ steps.gate.outputs.eba-receipt-path }}
+          INPUT_DECISION_EXPERIENCE_JSON: ${{ steps.gate.outputs.decision-experience-json }}
+        run: python3 effect_executor.py
+
+      - name: Verify takeover executed exactly one admitted effect
+        if: ${{ github.event.workflow_run.run_attempt == 1 }}
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.takeover.outputs.effect-outcome }}
+          TRIGGERED: ${{ steps.takeover.outputs.rerun-triggered }}
+        run: |
+          test "$OUTCOME" = "SUCCEEDED"
+          test "$TRIGGERED" = "true"
+
+      - name: Persist takeover execution receipt
+        if: ${{ github.event.workflow_run.run_attempt == 1 }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.gate.outputs.decision-record-artifact-name }}-receipt
+          path: ${{ steps.takeover.outputs.eba-receipt-path }}
+          if-no-files-found: error
+
+      - id: reconcile
+        name: Reconcile takeover result
+        if: ${{ github.event.workflow_run.run_attempt == 2 }}
+        uses: ./
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ github.event.workflow_run.id }}
+          repository: ${{ github.repository }}
+          auto-rerun: 'false'
+          selective-rerun: 'false'
+          history-runs: '1'
+
+      - name: Verify takeover recovery is attributable
+        if: ${{ github.event.workflow_run.run_attempt == 2 }}
+        shell: bash
+        env:
+          STATUS: ${{ steps.reconcile.outputs.previous-reconciliation-status }}
+        run: test "$STATUS" = "RECOVERED_AFTER_RERUN"
+
+      - name: Reject unexpected extra attempts
+        if: ${{ github.event.workflow_run.run_attempt > 2 }}
+        shell: bash
+        run: exit 1
+
+  crash-after:
+    name: Crash after effect then reject takeover replay
+    if: ${{ github.event.workflow_run.name == 'Live Crash After Effect Fixture' && github.event.workflow_run.repository.full_name == github.repository && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: gate
+        name: Build deferred admitted decision
+        if: ${{ github.event.workflow_run.run_attempt == 1 }}
+        shell: bash
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          INPUT_RUN_ID: ${{ github.event.workflow_run.id }}
+          INPUT_REPOSITORY: ${{ github.repository }}
+          INPUT_AUTO_RERUN: 'true'
+          INPUT_DEFER_EFFECT: 'true'
+          INPUT_MAX_ATTEMPTS: '2'
+          INPUT_COMMENT_ON_PR: 'false'
+        run: python3 ci_retry_gate.py
+
+      - name: Verify initial decision is admitted
+        if: ${{ github.event.workflow_run.run_attempt == 1 }}
+        shell: bash
+        env:
+          DECISION: ${{ steps.gate.outputs.decision }}
+          EVIDENCE_STATUS: ${{ steps.gate.outputs.evidence-status }}
+          MUTATION_ADMITTED: ${{ steps.gate.outputs.mutation-admitted }}
+        run: |
+          test "$DECISION" = "ALLOW"
+          test "$EVIDENCE_STATUS" = "SUFFICIENT"
+          test "$MUTATION_ADMITTED" = "true"
+
+      - name: Persist pre-effect audit trail
+        if: ${{ github.event.workflow_run.run_attempt == 1 }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.gate.outputs.decision-record-artifact-name }}
+          path: |
+            ${{ steps.gate.outputs.decision-record-path }}
+            ${{ steps.gate.outputs.effect-plan-path }}
+          if-no-files-found: error
+
+      - id: crash
+        name: Dispatch then crash before receipt
+        if: ${{ github.event.workflow_run.run_attempt == 1 }}
+        continue-on-error: true
+        shell: bash
+        env:
+          FAULT_MODE: crash-after-dispatch
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          INPUT_EFFECT_PLAN_PATH: ${{ steps.gate.outputs.effect-plan-path }}
+          INPUT_EFFECT_PLAN_SHA256: ${{ steps.gate.outputs.effect-plan-sha256 }}
+          INPUT_DECISION_RECORD_PATH: ${{ steps.gate.outputs.decision-record-path }}
+          INPUT_DECISION_RECORD_SHA256: ${{ steps.gate.outputs.decision-record-sha256 }}
+          INPUT_EBA_REQUEST_PATH: ${{ steps.gate.outputs.eba-request-path }}
+          INPUT_EBA_REQUEST_SHA256: ${{ steps.gate.outputs.eba-request-sha256 }}
+          INPUT_EBA_ASSUMPTION_PATH: ${{ steps.gate.outputs.eba-assumption-path }}
+          INPUT_EBA_ASSUMPTION_SHA256: ${{ steps.gate.outputs.eba-assumption-sha256 }}
+          INPUT_EBA_AUTHORITY_PATH: ${{ steps.gate.outputs.eba-authority-path }}
+          INPUT_EBA_AUTHORITY_SHA256: ${{ steps.gate.outputs.eba-authority-sha256 }}
+          INPUT_EBA_DECISION_PATH: ${{ steps.gate.outputs.eba-decision-path }}
+          INPUT_EBA_DECISION_SHA256: ${{ steps.gate.outputs.eba-decision-sha256 }}
+          INPUT_EBA_RECEIPT_PATH: ${{ steps.gate.outputs.eba-receipt-path }}
+          INPUT_DECISION_EXPERIENCE_JSON: ${{ steps.gate.outputs.decision-experience-json }}
+        run: python3 e2e/fault_injected_effect_executor.py
+
+      - name: Verify post-effect crash occurred
+        if: ${{ github.event.workflow_run.run_attempt == 1 }}
+        shell: bash
+        env:
+          CRASH_OUTCOME: ${{ steps.crash.outcome }}
+        run: test "$CRASH_OUTCOME" = "failure"
+
+      - name: Wait until the target exposes attempt 2
+        if: ${{ github.event.workflow_run.run_attempt == 1 }}
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TARGET_REPOSITORY: ${{ github.repository }}
+          TARGET_RUN_ID: ${{ github.event.workflow_run.id }}
+          TARGET_ATTEMPT: '2'
+          WAIT_TIMEOUT_SECONDS: '60'
+        run: python3 e2e/wait_for_run_attempt.py
+
+      - id: takeover
+        name: Take over with the stale persisted plan
+        if: ${{ github.event.workflow_run.run_attempt == 1 }}
+        shell: bash
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          INPUT_EFFECT_PLAN_PATH: ${{ steps.gate.outputs.effect-plan-path }}
+          INPUT_EFFECT_PLAN_SHA256: ${{ steps.gate.outputs.effect-plan-sha256 }}
+          INPUT_DECISION_RECORD_PATH: ${{ steps.gate.outputs.decision-record-path }}
+          INPUT_DECISION_RECORD_SHA256: ${{ steps.gate.outputs.decision-record-sha256 }}
+          INPUT_EBA_REQUEST_PATH: ${{ steps.gate.outputs.eba-request-path }}
+          INPUT_EBA_REQUEST_SHA256: ${{ steps.gate.outputs.eba-request-sha256 }}
+          INPUT_EBA_ASSUMPTION_PATH: ${{ steps.gate.outputs.eba-assumption-path }}
+          INPUT_EBA_ASSUMPTION_SHA256: ${{ steps.gate.outputs.eba-assumption-sha256 }}
+          INPUT_EBA_AUTHORITY_PATH: ${{ steps.gate.outputs.eba-authority-path }}
+          INPUT_EBA_AUTHORITY_SHA256: ${{ steps.gate.outputs.eba-authority-sha256 }}
+          INPUT_EBA_DECISION_PATH: ${{ steps.gate.outputs.eba-decision-path }}
+          INPUT_EBA_DECISION_SHA256: ${{ steps.gate.outputs.eba-decision-sha256 }}
+          INPUT_EBA_RECEIPT_PATH: ${{ runner.temp }}/crash-after-takeover.eba-receipt.json
+          INPUT_DECISION_EXPERIENCE_JSON: ${{ steps.gate.outputs.decision-experience-json }}
+        run: python3 effect_executor.py
+
+      - name: Verify takeover did not duplicate the effect
+        if: ${{ github.event.workflow_run.run_attempt == 1 }}
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.takeover.outputs.effect-outcome }}
+          TRIGGERED: ${{ steps.takeover.outputs.rerun-triggered }}
+          REASON: ${{ steps.takeover.outputs.effect-reason }}
+        run: |
+          test "$OUTCOME" = "NOT_EXECUTED"
+          test "$TRIGGERED" = "false"
+          case "$REASON" in
+            RERUN_SCOPE_CHANGED:*) ;;
+            *) echo "::error::unexpected takeover reason: $REASON"; exit 1 ;;
+          esac
+
+      - name: Persist no-duplicate takeover proof
+        if: ${{ github.event.workflow_run.run_attempt == 1 }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.gate.outputs.decision-record-artifact-name }}-crash-after-takeover-proof
+          path: ${{ steps.takeover.outputs.eba-receipt-path }}
+          if-no-files-found: error
+
+      - id: reconcile
+        name: Reconcile effect with missing original receipt
+        if: ${{ github.event.workflow_run.run_attempt == 2 }}
+        uses: ./
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ github.event.workflow_run.id }}
+          repository: ${{ github.repository }}
+          auto-rerun: 'false'
+          selective-rerun: 'false'
+          history-runs: '1'
+
+      - name: Verify crash-after effect is not falsely attributed
+        if: ${{ github.event.workflow_run.run_attempt == 2 }}
+        shell: bash
+        env:
+          STATUS: ${{ steps.reconcile.outputs.previous-reconciliation-status }}
+        run: test "$STATUS" = "SUBSEQUENT_ATTEMPT_EXTERNAL_OR_UNKNOWN"
+
+      - name: Reject unexpected extra attempts
+        if: ${{ github.event.workflow_run.run_attempt > 2 }}
+        shell: bash
+        run: exit 1
+
+  ambiguous-transport:
+    name: Preserve UNKNOWN after ambiguous transport
+    if: ${{ github.event.workflow_run.name == 'Live Ambiguous Transport Fixture' && github.event.workflow_run.repository.full_name == github.repository && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: gate
+        name: Build deferred admitted decision
+        if: ${{ github.event.workflow_run.run_attempt == 1 }}
+        shell: bash
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          INPUT_RUN_ID: ${{ github.event.workflow_run.id }}
+          INPUT_REPOSITORY: ${{ github.repository }}
+          INPUT_AUTO_RERUN: 'true'
+          INPUT_DEFER_EFFECT: 'true'
+          INPUT_MAX_ATTEMPTS: '2'
+          INPUT_COMMENT_ON_PR: 'false'
+        run: python3 ci_retry_gate.py
+
+      - name: Verify initial decision is admitted
+        if: ${{ github.event.workflow_run.run_attempt == 1 }}
+        shell: bash
+        env:
+          DECISION: ${{ steps.gate.outputs.decision }}
+          EVIDENCE_STATUS: ${{ steps.gate.outputs.evidence-status }}
+          MUTATION_ADMITTED: ${{ steps.gate.outputs.mutation-admitted }}
+        run: |
+          test "$DECISION" = "ALLOW"
+          test "$EVIDENCE_STATUS" = "SUFFICIENT"
+          test "$MUTATION_ADMITTED" = "true"
+
+      - name: Persist pre-effect audit trail
+        if: ${{ github.event.workflow_run.run_attempt == 1 }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.gate.outputs.decision-record-artifact-name }}
+          path: |
+            ${{ steps.gate.outputs.decision-record-path }}
+            ${{ steps.gate.outputs.effect-plan-path }}
+          if-no-files-found: error
+
+      - id: ambiguous
+        name: Dispatch then surface transport ambiguity
+        if: ${{ github.event.workflow_run.run_attempt == 1 }}
+        shell: bash
+        env:
+          FAULT_MODE: timeout-after-dispatch
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          INPUT_EFFECT_PLAN_PATH: ${{ steps.gate.outputs.effect-plan-path }}
+          INPUT_EFFECT_PLAN_SHA256: ${{ steps.gate.outputs.effect-plan-sha256 }}
+          INPUT_DECISION_RECORD_PATH: ${{ steps.gate.outputs.decision-record-path }}
+          INPUT_DECISION_RECORD_SHA256: ${{ steps.gate.outputs.decision-record-sha256 }}
+          INPUT_EBA_REQUEST_PATH: ${{ steps.gate.outputs.eba-request-path }}
+          INPUT_EBA_REQUEST_SHA256: ${{ steps.gate.outputs.eba-request-sha256 }}
+          INPUT_EBA_ASSUMPTION_PATH: ${{ steps.gate.outputs.eba-assumption-path }}
+          INPUT_EBA_ASSUMPTION_SHA256: ${{ steps.gate.outputs.eba-assumption-sha256 }}
+          INPUT_EBA_AUTHORITY_PATH: ${{ steps.gate.outputs.eba-authority-path }}
+          INPUT_EBA_AUTHORITY_SHA256: ${{ steps.gate.outputs.eba-authority-sha256 }}
+          INPUT_EBA_DECISION_PATH: ${{ steps.gate.outputs.eba-decision-path }}
+          INPUT_EBA_DECISION_SHA256: ${{ steps.gate.outputs.eba-decision-sha256 }}
+          INPUT_EBA_RECEIPT_PATH: ${{ steps.gate.outputs.eba-receipt-path }}
+          INPUT_DECISION_EXPERIENCE_JSON: ${{ steps.gate.outputs.decision-experience-json }}
+        run: python3 e2e/fault_injected_effect_executor.py
+
+      - name: Verify ambiguous transport remains UNKNOWN
+        if: ${{ github.event.workflow_run.run_attempt == 1 }}
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.ambiguous.outputs.effect-outcome }}
+          TRIGGERED: ${{ steps.ambiguous.outputs.rerun-triggered }}
+          REASON: ${{ steps.ambiguous.outputs.effect-reason }}
+        run: |
+          test "$OUTCOME" = "UNKNOWN"
+          test "$TRIGGERED" = "false"
+          case "$REASON" in
+            RERUN_DISPATCH_UNKNOWN:*) ;;
+            *) echo "::error::unexpected ambiguous outcome reason: $REASON"; exit 1 ;;
+          esac
+
+      - name: Persist UNKNOWN execution receipt
+        if: ${{ github.event.workflow_run.run_attempt == 1 }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.gate.outputs.decision-record-artifact-name }}-receipt
+          path: ${{ steps.ambiguous.outputs.eba-receipt-path }}
+          if-no-files-found: error
+
+      - name: Wait until the target exposes attempt 2
+        if: ${{ github.event.workflow_run.run_attempt == 1 }}
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TARGET_REPOSITORY: ${{ github.repository }}
+          TARGET_RUN_ID: ${{ github.event.workflow_run.id }}
+          TARGET_ATTEMPT: '2'
+          WAIT_TIMEOUT_SECONDS: '60'
+        run: python3 e2e/wait_for_run_attempt.py
+
+      - id: takeover
+        name: Retry the ambiguous effect only after state revalidation
+        if: ${{ github.event.workflow_run.run_attempt == 1 }}
+        shell: bash
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          INPUT_EFFECT_PLAN_PATH: ${{ steps.gate.outputs.effect-plan-path }}
+          INPUT_EFFECT_PLAN_SHA256: ${{ steps.gate.outputs.effect-plan-sha256 }}
+          INPUT_DECISION_RECORD_PATH: ${{ steps.gate.outputs.decision-record-path }}
+          INPUT_DECISION_RECORD_SHA256: ${{ steps.gate.outputs.decision-record-sha256 }}
+          INPUT_EBA_REQUEST_PATH: ${{ steps.gate.outputs.eba-request-path }}
+          INPUT_EBA_REQUEST_SHA256: ${{ steps.gate.outputs.eba-request-sha256 }}
+          INPUT_EBA_ASSUMPTION_PATH: ${{ steps.gate.outputs.eba-assumption-path }}
+          INPUT_EBA_ASSUMPTION_SHA256: ${{ steps.gate.outputs.eba-assumption-sha256 }}
+          INPUT_EBA_AUTHORITY_PATH: ${{ steps.gate.outputs.eba-authority-path }}
+          INPUT_EBA_AUTHORITY_SHA256: ${{ steps.gate.outputs.eba-authority-sha256 }}
+          INPUT_EBA_DECISION_PATH: ${{ steps.gate.outputs.eba-decision-path }}
+          INPUT_EBA_DECISION_SHA256: ${{ steps.gate.outputs.eba-decision-sha256 }}
+          INPUT_EBA_RECEIPT_PATH: ${{ runner.temp }}/ambiguous-takeover.eba-receipt.json
+          INPUT_DECISION_EXPERIENCE_JSON: ${{ steps.gate.outputs.decision-experience-json }}
+        run: python3 effect_executor.py
+
+      - name: Verify ambiguity does not permit a duplicate effect
+        if: ${{ github.event.workflow_run.run_attempt == 1 }}
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.takeover.outputs.effect-outcome }}
+          TRIGGERED: ${{ steps.takeover.outputs.rerun-triggered }}
+          REASON: ${{ steps.takeover.outputs.effect-reason }}
+        run: |
+          test "$OUTCOME" = "NOT_EXECUTED"
+          test "$TRIGGERED" = "false"
+          case "$REASON" in
+            RERUN_SCOPE_CHANGED:*) ;;
+            *) echo "::error::unexpected takeover reason: $REASON"; exit 1 ;;
+          esac
+
+      - id: reconcile
+        name: Reconcile ambiguous transport result
+        if: ${{ github.event.workflow_run.run_attempt == 2 }}
+        uses: ./
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ github.event.workflow_run.id }}
+          repository: ${{ github.repository }}
+          auto-rerun: 'false'
+          selective-rerun: 'false'
+          history-runs: '1'
+
+      - name: Verify UNKNOWN receipt cannot become confirmed attribution
+        if: ${{ github.event.workflow_run.run_attempt == 2 }}
+        shell: bash
+        env:
+          STATUS: ${{ steps.reconcile.outputs.previous-reconciliation-status }}
+        run: test "$STATUS" = "SUBSEQUENT_ATTEMPT_EXTERNAL_OR_UNKNOWN"
+
+      - name: Reject unexpected extra attempts
+        if: ${{ github.event.workflow_run.run_attempt > 2 }}
+        shell: bash
+        run: exit 1
