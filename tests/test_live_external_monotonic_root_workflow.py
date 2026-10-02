@@ -17,6 +17,8 @@ def test_controller_creates_public_sigstore_high_water_marks():
     assert "uses: actions/attest@v4" in text
     assert "Attest T2 root into Sigstore transparency log" in text
     assert "Attest CLOSED T4 high-water mark into Sigstore" in text
+    assert "root-anchor-path" in text
+    assert "--anchor" in text
 
 
 def test_attack_rewinds_both_local_records_not_just_one():
@@ -34,6 +36,7 @@ def test_external_root_fences_t1_after_double_local_compromise():
 
     assert "External root fences T1 despite double local compromise" in text
     assert "INPUT_EXTERNAL_MONOTONIC_ROOT_RECORD_PATH" in text
+    assert "INPUT_EXTERNAL_MONOTONIC_ROOT_ANCHOR_PATH" in text
     assert "INPUT_EXTERNAL_MONOTONIC_ROOT_BUNDLE_PATH" in text
     assert "INPUT_EXTERNAL_MONOTONIC_ROOT_SIGNER_WORKFLOW" in text
     assert "TOKEN_BELOW_EXTERNAL_MONOTONIC_ROOT:" in text
@@ -60,6 +63,25 @@ def test_closed_t4_root_blocks_resurrection_of_previous_executable_t3():
     assert "Restore local records to CLOSED T4" in text
 
 
+def test_valid_old_signed_root_is_rejected_after_closed_epoch_exists():
+    text = CONTROLLER.read_text(encoding="utf-8")
+
+    assert "Old signed T2 root cannot override CLOSED T4" in text
+    assert "Replay authentic old T2 root and bundle at Effect boundary" in text
+    assert "STALE_EXTERNAL_ROOT_ATTESTATION: supplied_epoch=2 latest_epoch=4" in text
+    assert "valid old signature cannot resurrect T2 authority" in text
+    assert 'test "$TRIGGERED" = "false"' in text
+
+
+def test_t2_and_t4_attest_the_same_stable_decision_anchor():
+    text = CONTROLLER.read_text(encoding="utf-8")
+
+    assert 'subject-path: ${{ steps.root.outputs.root-anchor-path }}' in text
+    assert 'subject-path: ${{ steps.closed-root.outputs.root-anchor-path }}' in text
+    assert 'root-t2/root-anchor.json' in text
+    assert 'root-t4/root-anchor.json' in text
+
+
 def test_effect_boundary_verifies_external_root_before_mutation():
     text = EXECUTOR.read_text(encoding="utf-8")
 
@@ -78,6 +100,9 @@ def test_external_root_verifier_checks_sigstore_and_git_ancestry():
     assert '"verify"' in text
     assert "--bundle" in text
     assert "--signer-workflow" in text
+    assert "--limit" in text
+    assert "STALE_EXTERNAL_ROOT_ATTESTATION" in text
+    assert "EXTERNAL_ROOT_FORK_AT_MAX_EPOCH" in text
     assert "--deny-self-hosted-runners" in text
     assert "/compare/{root}...{presented}" in text
     assert "TOKEN_BELOW_EXTERNAL_MONOTONIC_ROOT" in text
