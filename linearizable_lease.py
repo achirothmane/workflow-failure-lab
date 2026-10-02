@@ -102,10 +102,15 @@ def delete_coordination_ref(
     api.request("DELETE", f"/repos/{repo}/git/refs/{ref_path}")
 
 
-def _commit_tree_sha(api: GitHubAPI, repo: str, commit_sha: str) -> str:
+def _read_commit(api: GitHubAPI, repo: str, commit_sha: str) -> dict[str, Any]:
     payload = api.request("GET", f"/repos/{repo}/git/commits/{commit_sha}")
     if not isinstance(payload, dict):
-        raise LinearizableLeaseError("base commit response is not an object")
+        raise LinearizableLeaseError("commit response is not an object")
+    return payload
+
+
+def _commit_tree_sha(api: GitHubAPI, repo: str, commit_sha: str) -> str:
+    payload = _read_commit(api, repo, commit_sha)
     tree = payload.get("tree")
     if not isinstance(tree, dict):
         raise LinearizableLeaseError("base commit tree is missing")
@@ -113,6 +118,63 @@ def _commit_tree_sha(api: GitHubAPI, repo: str, commit_sha: str) -> str:
     if len(tree_sha) != 40:
         raise LinearizableLeaseError("base commit tree SHA is invalid")
     return tree_sha
+
+
+def read_fencing_token_metadata(
+    api: GitHubAPI,
+    repo: str,
+    fencing_token_sha: str,
+) -> dict[str, Any]:
+    payload = _read_commit(api, repo, fencing_token_sha)
+    message = str(payload.get("message") or "")
+    if "\n\n" not in message:
+        raise LinearizableLeaseError("FENCING_TOKEN_METADATA_MISSING")
+    _, raw = message.split("\n\n", 1)
+    try:
+        metadata = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise LinearizableLeaseError("FENCING_TOKEN_METADATA_INVALID") from exc
+    if not isinstance(metadata, dict):
+        raise LinearizableLeaseError("FENCING_TOKEN_METADATA_INVALID")
+    return metadata
+
+
+def build_tombstone_commit(
+    api: GitHubAPI,
+    repo: str,
+    *,
+    base_sha: str,
+    decision_record_sha256: str,
+    effect_plan_sha256: str,
+    reason: str,
+) -> str:
+    tree_sha = _commit_tree_sha(api, repo, base_sha)
+    metadata = {
+        "kind": "ci-retry-gate-linearizable-lease-closed",
+        "decision_record_sha256": str(decision_record_sha256),
+        "effect_plan_sha256": str(effect_plan_sha256),
+        "base_sha": str(base_sha),
+        "reason": str(reason),
+    }
+    message = (
+        "ci-retry-gate linearizable lease closed\n\n"
+        + json.dumps(metadata, sort_keys=True, separators=(",", ":"))
+    )
+    payload = api.request(
+        "POST",
+        f"/repos/{repo}/git/commits",
+        {
+            "message": message,
+            "tree": tree_sha,
+            "parents": [base_sha],
+        },
+    )
+    if not isinstance(payload, dict):
+        raise LinearizableLeaseError("tombstone commit response is not an object")
+    sha = str(payload.get("sha") or "").strip()
+    if len(sha) != 40:
+        raise LinearizableLeaseError("tombstone commit SHA is invalid")
+    return sha
 
 
 def build_candidate_commit(
@@ -260,12 +322,46 @@ def verify_fencing_token(
     *,
     coordination_ref: str,
     fencing_token_sha: str,
+    witness_ref: str | None = None,
+    expected_decision_record_sha256: str | None = None,
+    expected_effect_plan_sha256: str | None = None,
 ) -> None:
     token = str(fencing_token_sha).strip()
     if len(token) != 40:
         raise LinearizableLeaseError("fencing token SHA is invalid")
+
     observed = read_coordination_sha(api, repo, coordination_ref)
     if observed != token:
         raise LinearizableLeaseError(
             f"FENCING_TOKEN_STALE: expected {token}, observed {observed}"
         )
+
+    if witness_ref:
+        witness = read_coordination_sha(api, repo, witness_ref)
+        if witness != token:
+            raise LinearizableLeaseError(
+                "ABA_WITNESS_MISMATCH: "
+                f"coordination={observed}, witness={witness}, presented={token}"
+            )
+
+    metadata = read_fencing_token_metadata(api, repo, token)
+    if metadata.get("kind") != "ci-retry-gate-linearizable-lease":
+        raise LinearizableLeaseError(
+            f"FENCING_TOKEN_NOT_EXECUTABLE: kind={metadata.get('kind')!r}"
+        )
+
+    if expected_decision_record_sha256 is not None:
+        expected = str(expected_decision_record_sha256).strip().lower()
+        observed_decision = str(metadata.get("decision_record_sha256") or "").strip().lower()
+        if observed_decision != expected:
+            raise LinearizableLeaseError(
+                "FENCING_TOKEN_DECISION_BINDING_MISMATCH"
+            )
+
+    if expected_effect_plan_sha256 is not None:
+        expected = str(expected_effect_plan_sha256).strip().lower()
+        observed_plan = str(metadata.get("effect_plan_sha256") or "").strip().lower()
+        if observed_plan != expected:
+            raise LinearizableLeaseError(
+                "FENCING_TOKEN_EFFECT_PLAN_BINDING_MISMATCH"
+            )

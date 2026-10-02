@@ -174,7 +174,12 @@ def main() -> int:
     fencing_token_sha = str(
         os.environ.get("INPUT_LINEARIZABLE_FENCING_TOKEN_SHA") or ""
     ).strip()
-    linearizable_guard_requested = bool(coordination_ref or fencing_token_sha)
+    witness_ref = str(
+        os.environ.get("INPUT_LINEARIZABLE_WITNESS_REF") or ""
+    ).strip()
+    linearizable_guard_requested = bool(
+        coordination_ref or fencing_token_sha or witness_ref
+    )
     linearizable_block_reason: str | None = None
 
     if linearizable_guard_requested:
@@ -190,6 +195,9 @@ def main() -> int:
                     repo,
                     coordination_ref=coordination_ref,
                     fencing_token_sha=fencing_token_sha,
+                    witness_ref=witness_ref or None,
+                    expected_decision_record_sha256=decision_record_sha,
+                    expected_effect_plan_sha256=plan_sha,
                 )
             except (LinearizableLeaseError, RuntimeError) as exc:
                 linearizable_block_reason = (
@@ -278,6 +286,7 @@ def main() -> int:
     )
     _write_output("linearizable-coordination-ref", coordination_ref)
     _write_output("linearizable-fencing-token-sha", fencing_token_sha)
+    _write_output("linearizable-witness-ref", witness_ref)
     _write_output("execution-lease-enforced", "true" if lease_guard_requested else "false")
     _write_output(
         "execution-lease-owner",

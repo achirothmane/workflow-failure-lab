@@ -1,0 +1,525 @@
+name: Live ABA Token Resurrection Controller
+
+on:
+  workflow_run:
+    workflows: ["Live ABA Token Resurrection Fixture"]
+    types: [completed]
+
+permissions:
+  contents: write
+  actions: write
+  checks: read
+
+jobs:
+  seed:
+    name: Seed coordination and anti-ABA witness
+    if: ${{ github.event.workflow_run.run_attempt == 1 && github.event.workflow_run.repository.full_name == github.repository && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    outputs:
+      coordination-ref: ${{ steps.meta.outputs.coordination-ref }}
+      witness-ref: ${{ steps.meta.outputs.witness-ref }}
+      base-sha: ${{ steps.meta.outputs.base-sha }}
+      decision-sha: ${{ steps.gate.outputs.decision-record-sha256 }}
+      plan-sha: ${{ steps.gate.outputs.effect-plan-sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: gate
+        name: Build deferred admitted decision
+        shell: bash
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          INPUT_RUN_ID: ${{ github.event.workflow_run.id }}
+          INPUT_REPOSITORY: ${{ github.repository }}
+          INPUT_AUTO_RERUN: 'true'
+          INPUT_DEFER_EFFECT: 'true'
+          INPUT_MAX_ATTEMPTS: '2'
+          INPUT_COMMENT_ON_PR: 'false'
+        run: python3 ci_retry_gate.py
+
+      - name: Verify decision is admitted
+        shell: bash
+        env:
+          DECISION: ${{ steps.gate.outputs.decision }}
+          EVIDENCE_STATUS: ${{ steps.gate.outputs.evidence-status }}
+          MUTATION_ADMITTED: ${{ steps.gate.outputs.mutation-admitted }}
+        run: |
+          test "$DECISION" = "ALLOW"
+          test "$EVIDENCE_STATUS" = "SUFFICIENT"
+          test "$MUTATION_ADMITTED" = "true"
+
+      - name: Persist canonical DER
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.gate.outputs.decision-record-artifact-name }}
+          path: |
+            ${{ steps.gate.outputs.decision-record-path }}
+            ${{ steps.gate.outputs.effect-plan-path }}
+          if-no-files-found: error
+
+      - id: meta
+        name: Bind coordination records to target run
+        shell: bash
+        run: |
+          echo "coordination-ref=refs/heads/ci-retry-gate-aba/${{ github.event.workflow_run.id }}" >> "$GITHUB_OUTPUT"
+          echo "witness-ref=refs/heads/ci-retry-gate-aba-witness/${{ github.event.workflow_run.id }}" >> "$GITHUB_OUTPUT"
+          echo "base-sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Build durable execution bundle
+        shell: bash
+        env:
+          DECISION_RECORD_PATH: ${{ steps.gate.outputs.decision-record-path }}
+          EFFECT_PLAN_PATH: ${{ steps.gate.outputs.effect-plan-path }}
+          EBA_REQUEST_PATH: ${{ steps.gate.outputs.eba-request-path }}
+          EBA_ASSUMPTION_PATH: ${{ steps.gate.outputs.eba-assumption-path }}
+          EBA_AUTHORITY_PATH: ${{ steps.gate.outputs.eba-authority-path }}
+          EBA_DECISION_PATH: ${{ steps.gate.outputs.eba-decision-path }}
+          DECISION_RECORD_SHA256: ${{ steps.gate.outputs.decision-record-sha256 }}
+          EFFECT_PLAN_SHA256: ${{ steps.gate.outputs.effect-plan-sha256 }}
+          EBA_REQUEST_SHA256: ${{ steps.gate.outputs.eba-request-sha256 }}
+          EBA_ASSUMPTION_SHA256: ${{ steps.gate.outputs.eba-assumption-sha256 }}
+          EBA_AUTHORITY_SHA256: ${{ steps.gate.outputs.eba-authority-sha256 }}
+          EBA_DECISION_SHA256: ${{ steps.gate.outputs.eba-decision-sha256 }}
+          DECISION_RECORD_ARTIFACT_NAME: ${{ steps.gate.outputs.decision-record-artifact-name }}
+          DECISION_EXPERIENCE_JSON: ${{ steps.gate.outputs.decision-experience-json }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/aba-state"
+          python3 e2e/takeover_bundle_manifest.py write             --output "$RUNNER_TEMP/aba-state/manifest.json"             --bundle-dir "$RUNNER_TEMP/aba-state/bundle"
+
+      - name: Seed mutable coordination ref
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 e2e/linearizable_lease_cli.py             --repository "${{ github.repository }}"             --ref "${{ steps.meta.outputs.coordination-ref }}"             seed             --base-sha "${{ steps.meta.outputs.base-sha }}"
+
+      - name: Seed independent anti-ABA witness
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 e2e/linearizable_lease_cli.py             --repository "${{ github.repository }}"             --ref "${{ steps.meta.outputs.witness-ref }}"             seed             --base-sha "${{ steps.meta.outputs.base-sha }}"
+
+      - name: Persist durable execution bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: aba-resurrection-state-${{ github.event.workflow_run.id }}
+          path: ${{ runner.temp }}/aba-state
+          if-no-files-found: error
+
+  token1:
+    name: Acquire token T1 on both records
+    needs: seed
+    if: ${{ github.event.workflow_run.run_attempt == 1 }}
+    runs-on: ubuntu-latest
+    outputs:
+      token: ${{ steps.prepare.outputs.candidate-sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: prepare
+        name: Prepare executable T1
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 e2e/linearizable_lease_cli.py             --repository "${{ github.repository }}"             --ref "${{ needs.seed.outputs.coordination-ref }}"             prepare             --base-sha "${{ needs.seed.outputs.base-sha }}"             --owner worker-t1             --epoch 1             --decision-sha "${{ needs.seed.outputs.decision-sha }}"             --plan-sha "${{ needs.seed.outputs.plan-sha }}"             --result "$RUNNER_TEMP/t1.json"
+
+      - id: coord
+        name: Publish T1 to coordination
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 e2e/linearizable_lease_cli.py             --repository "${{ github.repository }}"             --ref "${{ needs.seed.outputs.coordination-ref }}"             publish             --base-sha "${{ needs.seed.outputs.base-sha }}"             --owner worker-t1             --candidate-sha "${{ steps.prepare.outputs.candidate-sha }}"             --result "$RUNNER_TEMP/t1-coord.json"
+
+      - id: witness
+        name: Publish T1 to witness
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 e2e/linearizable_lease_cli.py             --repository "${{ github.repository }}"             --ref "${{ needs.seed.outputs.witness-ref }}"             publish             --base-sha "${{ needs.seed.outputs.base-sha }}"             --owner worker-t1-witness             --candidate-sha "${{ steps.prepare.outputs.candidate-sha }}"             --result "$RUNNER_TEMP/t1-witness.json"
+
+      - name: Verify T1 is globally witnessed
+        shell: bash
+        env:
+          COORD: ${{ steps.coord.outputs.acquired }}
+          WITNESS: ${{ steps.witness.outputs.acquired }}
+        run: |
+          test "$COORD" = "true"
+          test "$WITNESS" = "true"
+
+  token2:
+    name: Advance lineage to token T2
+    needs: [seed, token1]
+    if: ${{ github.event.workflow_run.run_attempt == 1 }}
+    runs-on: ubuntu-latest
+    outputs:
+      token: ${{ steps.prepare.outputs.candidate-sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: prepare
+        name: Prepare executable T2 as child of T1
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 e2e/linearizable_lease_cli.py             --repository "${{ github.repository }}"             --ref "${{ needs.seed.outputs.coordination-ref }}"             prepare             --base-sha "${{ needs.token1.outputs.token }}"             --owner worker-t2             --epoch 2             --decision-sha "${{ needs.seed.outputs.decision-sha }}"             --plan-sha "${{ needs.seed.outputs.plan-sha }}"             --result "$RUNNER_TEMP/t2.json"
+
+      - id: coord
+        name: Advance coordination to T2
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 e2e/linearizable_lease_cli.py             --repository "${{ github.repository }}"             --ref "${{ needs.seed.outputs.coordination-ref }}"             publish             --base-sha "${{ needs.token1.outputs.token }}"             --owner worker-t2             --candidate-sha "${{ steps.prepare.outputs.candidate-sha }}"             --result "$RUNNER_TEMP/t2-coord.json"
+
+      - id: witness
+        name: Advance witness to T2
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 e2e/linearizable_lease_cli.py             --repository "${{ github.repository }}"             --ref "${{ needs.seed.outputs.witness-ref }}"             publish             --base-sha "${{ needs.token1.outputs.token }}"             --owner worker-t2-witness             --candidate-sha "${{ steps.prepare.outputs.candidate-sha }}"             --result "$RUNNER_TEMP/t2-witness.json"
+
+      - name: Verify T2 superseded T1
+        shell: bash
+        env:
+          COORD: ${{ steps.coord.outputs.acquired }}
+          WITNESS: ${{ steps.witness.outputs.acquired }}
+        run: |
+          test "$COORD" = "true"
+          test "$WITNESS" = "true"
+
+  rollback:
+    name: Non-force rollback to T1 is rejected
+    needs: [seed, token1, token2]
+    if: ${{ github.event.workflow_run.run_attempt == 1 }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: rollback
+        name: Attempt non-fast-forward T2 to T1 rollback
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 e2e/linearizable_lease_cli.py             --repository "${{ github.repository }}"             --ref "${{ needs.seed.outputs.coordination-ref }}"             publish             --base-sha "${{ needs.token2.outputs.token }}"             --owner stale-t1             --candidate-sha "${{ needs.token1.outputs.token }}"             --result "$RUNNER_TEMP/rollback.json"
+
+      - name: Verify ordinary rollback lost
+        shell: bash
+        env:
+          ACQUIRED: ${{ steps.rollback.outputs.acquired }}
+          REASON: ${{ steps.rollback.outputs.reason }}
+          OBSERVED: ${{ steps.rollback.outputs.observed-sha }}
+        run: |
+          test "$ACQUIRED" = "false"
+          test "$OBSERVED" = "${{ needs.token2.outputs.token }}"
+          case "$REASON" in CAS_LOST:*) ;; *) echo "::error::rollback did not fail closed: $REASON"; exit 1 ;; esac
+
+  resurrect:
+    name: Simulate delete and recreate ABA at T1
+    needs: [seed, token1, token2, rollback]
+    if: ${{ github.event.workflow_run.run_attempt == 1 }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Delete only the mutable coordination record
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 e2e/linearizable_lease_cli.py             --repository "${{ github.repository }}"             --ref "${{ needs.seed.outputs.coordination-ref }}"             delete
+
+      - name: Recreate coordination at superseded T1
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 e2e/linearizable_lease_cli.py             --repository "${{ github.repository }}"             --ref "${{ needs.seed.outputs.coordination-ref }}"             seed             --base-sha "${{ needs.token1.outputs.token }}"
+
+      - id: coord
+        name: Read resurrected coordination token
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 e2e/linearizable_lease_cli.py             --repository "${{ github.repository }}"             --ref "${{ needs.seed.outputs.coordination-ref }}"             read
+
+      - id: witness
+        name: Read durable witness high-water mark
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 e2e/linearizable_lease_cli.py             --repository "${{ github.repository }}"             --ref "${{ needs.seed.outputs.witness-ref }}"             read
+
+      - name: Prove the ABA state exists
+        shell: bash
+        env:
+          COORD: ${{ steps.coord.outputs.coordination-sha }}
+          WITNESS: ${{ steps.witness.outputs.coordination-sha }}
+        run: |
+          test "$COORD" = "${{ needs.token1.outputs.token }}"
+          test "$WITNESS" = "${{ needs.token2.outputs.token }}"
+          test "$COORD" != "$WITNESS"
+
+  stale-t1:
+    name: Resurrected T1 is fenced by witness
+    needs: [seed, token1, token2, resurrect]
+    if: ${{ github.event.workflow_run.run_attempt == 1 }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: aba-resurrection-state-${{ github.event.workflow_run.id }}
+          path: ${{ runner.temp }}/aba-state
+
+      - name: Restore durable execution bundle
+        shell: bash
+        run: |
+          python3 e2e/takeover_bundle_manifest.py export             --manifest "$RUNNER_TEMP/aba-state/manifest.json"             --bundle-dir "$RUNNER_TEMP/aba-state/bundle"
+
+      - id: stale
+        name: Present resurrected T1 at effect boundary
+        shell: bash
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          INPUT_EFFECT_PLAN_PATH: ${{ env.TAKEOVER_EFFECT_PLAN_PATH }}
+          INPUT_EFFECT_PLAN_SHA256: ${{ env.TAKEOVER_EFFECT_PLAN_SHA256 }}
+          INPUT_DECISION_RECORD_PATH: ${{ env.TAKEOVER_DECISION_RECORD_PATH }}
+          INPUT_DECISION_RECORD_SHA256: ${{ env.TAKEOVER_DECISION_RECORD_SHA256 }}
+          INPUT_EBA_REQUEST_PATH: ${{ env.TAKEOVER_EBA_REQUEST_PATH }}
+          INPUT_EBA_REQUEST_SHA256: ${{ env.TAKEOVER_EBA_REQUEST_SHA256 }}
+          INPUT_EBA_ASSUMPTION_PATH: ${{ env.TAKEOVER_EBA_ASSUMPTION_PATH }}
+          INPUT_EBA_ASSUMPTION_SHA256: ${{ env.TAKEOVER_EBA_ASSUMPTION_SHA256 }}
+          INPUT_EBA_AUTHORITY_PATH: ${{ env.TAKEOVER_EBA_AUTHORITY_PATH }}
+          INPUT_EBA_AUTHORITY_SHA256: ${{ env.TAKEOVER_EBA_AUTHORITY_SHA256 }}
+          INPUT_EBA_DECISION_PATH: ${{ env.TAKEOVER_EBA_DECISION_PATH }}
+          INPUT_EBA_DECISION_SHA256: ${{ env.TAKEOVER_EBA_DECISION_SHA256 }}
+          INPUT_EBA_RECEIPT_PATH: ${{ runner.temp }}/resurrected-t1.eba-receipt.json
+          INPUT_DECISION_EXPERIENCE_JSON: ${{ env.TAKEOVER_DECISION_EXPERIENCE_JSON }}
+          INPUT_LINEARIZABLE_COORDINATION_REF: ${{ needs.seed.outputs.coordination-ref }}
+          INPUT_LINEARIZABLE_WITNESS_REF: ${{ needs.seed.outputs.witness-ref }}
+          INPUT_LINEARIZABLE_FENCING_TOKEN_SHA: ${{ needs.token1.outputs.token }}
+        run: python3 effect_executor.py
+
+      - name: Verify resurrection did not restore Effect authority
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.stale.outputs.effect-outcome }}
+          TRIGGERED: ${{ steps.stale.outputs.rerun-triggered }}
+          REASON: ${{ steps.stale.outputs.effect-reason }}
+        run: |
+          test "$OUTCOME" = "NOT_EXECUTED"
+          test "$TRIGGERED" = "false"
+          case "$REASON" in
+            "LINEARIZABLE_FENCE_BLOCK: ABA_WITNESS_MISMATCH:"*) ;;
+            *) echo "::error::ABA resurrection was not caught: $REASON"; exit 1 ;;
+          esac
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aba-resurrection-stale-t1-proof-${{ github.event.workflow_run.id }}
+          path: ${{ runner.temp }}/resurrected-t1.eba-receipt.json
+          if-no-files-found: error
+
+  recover-and-execute:
+    name: Advance beyond ABA and execute T3 once
+    needs: [seed, token1, token2, stale-t1]
+    if: ${{ github.event.workflow_run.run_attempt == 1 }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: aba-resurrection-state-${{ github.event.workflow_run.id }}
+          path: ${{ runner.temp }}/aba-state
+
+      - name: Restore durable execution bundle
+        shell: bash
+        run: |
+          python3 e2e/takeover_bundle_manifest.py export             --manifest "$RUNNER_TEMP/aba-state/manifest.json"             --bundle-dir "$RUNNER_TEMP/aba-state/bundle"
+
+      - id: t3
+        name: Prepare T3 from witnessed T2 lineage
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 e2e/linearizable_lease_cli.py             --repository "${{ github.repository }}"             --ref "${{ needs.seed.outputs.coordination-ref }}"             prepare             --base-sha "${{ needs.token2.outputs.token }}"             --owner recovery-t3             --epoch 3             --decision-sha "${{ needs.seed.outputs.decision-sha }}"             --plan-sha "${{ needs.seed.outputs.plan-sha }}"             --result "$RUNNER_TEMP/t3.json"
+
+      - id: coord
+        name: Fast-forward resurrected coordination past T2 to T3
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 e2e/linearizable_lease_cli.py             --repository "${{ github.repository }}"             --ref "${{ needs.seed.outputs.coordination-ref }}"             publish             --base-sha "${{ needs.token1.outputs.token }}"             --owner recovery-t3             --candidate-sha "${{ steps.t3.outputs.candidate-sha }}"             --result "$RUNNER_TEMP/t3-coord.json"
+
+      - id: witness
+        name: Advance witness from T2 to T3
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 e2e/linearizable_lease_cli.py             --repository "${{ github.repository }}"             --ref "${{ needs.seed.outputs.witness-ref }}"             publish             --base-sha "${{ needs.token2.outputs.token }}"             --owner recovery-t3-witness             --candidate-sha "${{ steps.t3.outputs.candidate-sha }}"             --result "$RUNNER_TEMP/t3-witness.json"
+
+      - name: Verify lineage convergence at T3
+        shell: bash
+        env:
+          COORD: ${{ steps.coord.outputs.acquired }}
+          WITNESS: ${{ steps.witness.outputs.acquired }}
+        run: |
+          test "$COORD" = "true"
+          test "$WITNESS" = "true"
+
+      - id: effect
+        name: Execute only with converged T3 fencing token
+        shell: bash
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          INPUT_EFFECT_PLAN_PATH: ${{ env.TAKEOVER_EFFECT_PLAN_PATH }}
+          INPUT_EFFECT_PLAN_SHA256: ${{ env.TAKEOVER_EFFECT_PLAN_SHA256 }}
+          INPUT_DECISION_RECORD_PATH: ${{ env.TAKEOVER_DECISION_RECORD_PATH }}
+          INPUT_DECISION_RECORD_SHA256: ${{ env.TAKEOVER_DECISION_RECORD_SHA256 }}
+          INPUT_EBA_REQUEST_PATH: ${{ env.TAKEOVER_EBA_REQUEST_PATH }}
+          INPUT_EBA_REQUEST_SHA256: ${{ env.TAKEOVER_EBA_REQUEST_SHA256 }}
+          INPUT_EBA_ASSUMPTION_PATH: ${{ env.TAKEOVER_EBA_ASSUMPTION_PATH }}
+          INPUT_EBA_ASSUMPTION_SHA256: ${{ env.TAKEOVER_EBA_ASSUMPTION_SHA256 }}
+          INPUT_EBA_AUTHORITY_PATH: ${{ env.TAKEOVER_EBA_AUTHORITY_PATH }}
+          INPUT_EBA_AUTHORITY_SHA256: ${{ env.TAKEOVER_EBA_AUTHORITY_SHA256 }}
+          INPUT_EBA_DECISION_PATH: ${{ env.TAKEOVER_EBA_DECISION_PATH }}
+          INPUT_EBA_DECISION_SHA256: ${{ env.TAKEOVER_EBA_DECISION_SHA256 }}
+          INPUT_EBA_RECEIPT_PATH: ${{ runner.temp }}/aba-t3-winner.eba-receipt.json
+          INPUT_DECISION_EXPERIENCE_JSON: ${{ env.TAKEOVER_DECISION_EXPERIENCE_JSON }}
+          INPUT_LINEARIZABLE_COORDINATION_REF: ${{ needs.seed.outputs.coordination-ref }}
+          INPUT_LINEARIZABLE_WITNESS_REF: ${{ needs.seed.outputs.witness-ref }}
+          INPUT_LINEARIZABLE_FENCING_TOKEN_SHA: ${{ steps.t3.outputs.candidate-sha }}
+        run: python3 effect_executor.py
+
+      - name: Verify T3 is the only executable token
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.effect.outputs.effect-outcome }}
+          TRIGGERED: ${{ steps.effect.outputs.rerun-triggered }}
+        run: |
+          test "$OUTCOME" = "SUCCEEDED"
+          test "$TRIGGERED" = "true"
+
+      - name: Persist authoritative T3 receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.TAKEOVER_DECISION_RECORD_ARTIFACT_NAME }}-receipt
+          path: ${{ runner.temp }}/aba-t3-winner.eba-receipt.json
+          if-no-files-found: error
+
+      - id: tombstone
+        name: Prepare non-executable closed tombstone T4
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 e2e/linearizable_lease_cli.py             --repository "${{ github.repository }}"             --ref "${{ needs.seed.outputs.coordination-ref }}"             prepare-tombstone             --base-sha "${{ steps.t3.outputs.candidate-sha }}"             --decision-sha "${{ needs.seed.outputs.decision-sha }}"             --plan-sha "${{ needs.seed.outputs.plan-sha }}"             --reason "effect-dispatched-awaiting-reconciliation"             --result "$RUNNER_TEMP/t4-closed.json"
+
+      - name: Close coordination lineage at T4
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 e2e/linearizable_lease_cli.py             --repository "${{ github.repository }}"             --ref "${{ needs.seed.outputs.coordination-ref }}"             publish             --base-sha "${{ steps.t3.outputs.candidate-sha }}"             --owner closer             --candidate-sha "${{ steps.tombstone.outputs.candidate-sha }}"             --result "$RUNNER_TEMP/t4-coord.json"
+
+      - name: Close witness lineage at T4
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 e2e/linearizable_lease_cli.py             --repository "${{ github.repository }}"             --ref "${{ needs.seed.outputs.witness-ref }}"             publish             --base-sha "${{ steps.t3.outputs.candidate-sha }}"             --owner closer-witness             --candidate-sha "${{ steps.tombstone.outputs.candidate-sha }}"             --result "$RUNNER_TEMP/t4-witness.json"
+
+      - id: closed
+        name: Present closed T4 as if it were executable
+        shell: bash
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          INPUT_EFFECT_PLAN_PATH: ${{ env.TAKEOVER_EFFECT_PLAN_PATH }}
+          INPUT_EFFECT_PLAN_SHA256: ${{ env.TAKEOVER_EFFECT_PLAN_SHA256 }}
+          INPUT_DECISION_RECORD_PATH: ${{ env.TAKEOVER_DECISION_RECORD_PATH }}
+          INPUT_DECISION_RECORD_SHA256: ${{ env.TAKEOVER_DECISION_RECORD_SHA256 }}
+          INPUT_EBA_REQUEST_PATH: ${{ env.TAKEOVER_EBA_REQUEST_PATH }}
+          INPUT_EBA_REQUEST_SHA256: ${{ env.TAKEOVER_EBA_REQUEST_SHA256 }}
+          INPUT_EBA_ASSUMPTION_PATH: ${{ env.TAKEOVER_EBA_ASSUMPTION_PATH }}
+          INPUT_EBA_ASSUMPTION_SHA256: ${{ env.TAKEOVER_EBA_ASSUMPTION_SHA256 }}
+          INPUT_EBA_AUTHORITY_PATH: ${{ env.TAKEOVER_EBA_AUTHORITY_PATH }}
+          INPUT_EBA_AUTHORITY_SHA256: ${{ env.TAKEOVER_EBA_AUTHORITY_SHA256 }}
+          INPUT_EBA_DECISION_PATH: ${{ env.TAKEOVER_EBA_DECISION_PATH }}
+          INPUT_EBA_DECISION_SHA256: ${{ env.TAKEOVER_EBA_DECISION_SHA256 }}
+          INPUT_EBA_RECEIPT_PATH: ${{ runner.temp }}/closed-t4.eba-receipt.json
+          INPUT_DECISION_EXPERIENCE_JSON: ${{ env.TAKEOVER_DECISION_EXPERIENCE_JSON }}
+          INPUT_LINEARIZABLE_COORDINATION_REF: ${{ needs.seed.outputs.coordination-ref }}
+          INPUT_LINEARIZABLE_WITNESS_REF: ${{ needs.seed.outputs.witness-ref }}
+          INPUT_LINEARIZABLE_FENCING_TOKEN_SHA: ${{ steps.tombstone.outputs.candidate-sha }}
+        run: python3 effect_executor.py
+
+      - name: Verify CLOSED token cannot resurrect Effect authority
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.closed.outputs.effect-outcome }}
+          TRIGGERED: ${{ steps.closed.outputs.rerun-triggered }}
+          REASON: ${{ steps.closed.outputs.effect-reason }}
+        run: |
+          test "$OUTCOME" = "NOT_EXECUTED"
+          test "$TRIGGERED" = "false"
+          case "$REASON" in
+            "LINEARIZABLE_FENCE_BLOCK: FENCING_TOKEN_NOT_EXECUTABLE:"*) ;;
+            *) echo "::error::closed tombstone was executable: $REASON"; exit 1 ;;
+          esac
+
+      - name: Persist durable anti-ABA closure proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: aba-resurrection-closed-proof-${{ github.event.workflow_run.id }}
+          path: |
+            ${{ runner.temp }}/closed-t4.eba-receipt.json
+            ${{ runner.temp }}/t4-closed.json
+          if-no-files-found: error
+
+  reconcile:
+    name: Reconcile anti-ABA execution
+    if: ${{ github.event.workflow_run.run_attempt == 2 && github.event.workflow_run.repository.full_name == github.repository && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: reconcile
+        uses: ./
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ github.event.workflow_run.id }}
+          repository: ${{ github.repository }}
+          auto-rerun: 'false'
+          selective-rerun: 'false'
+          history-runs: '1'
+
+      - name: Verify one anti-ABA effect is attributable
+        shell: bash
+        env:
+          STATUS: ${{ steps.reconcile.outputs.previous-reconciliation-status }}
+        run: test "$STATUS" = "RECOVERED_AFTER_RERUN"
+
+      - name: Preserve tombstoned refs as durable high-water marks
+        shell: bash
+        run: |
+          echo "coordination and witness refs intentionally retained after CLOSED reconciliation"
+          echo "deleting both would remove the anti-resurrection high-water mark"
+
+  reject-extra-attempts:
+    name: Reject extra ABA attempts
+    if: ${{ github.event.workflow_run.run_attempt > 2 }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: exit 1
