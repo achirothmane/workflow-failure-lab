@@ -136,6 +136,53 @@ def find_previous_decision_artifact(
     return matches[0]
 
 
+def find_matching_receipt_artifact(
+    api: Any,
+    repo: str,
+    decision_artifact: DecisionArtifactRef,
+    *,
+    max_pages: int = 5,
+) -> int | None:
+    """Find the unique receipt artifact paired with one DER artifact."""
+    expected_name = decision_artifact.name + "-receipt"
+    matches: list[int] = []
+
+    for page in range(1, max_pages + 1):
+        payload = api.request(
+            "GET",
+            f"/repos/{repo}/actions/artifacts?per_page=100&page={page}",
+        )
+        if not isinstance(payload, dict):
+            raise DecisionHistoryError("GitHub artifacts API returned a non-object payload")
+        artifacts = payload.get("artifacts")
+        if not isinstance(artifacts, list):
+            raise DecisionHistoryError("GitHub artifacts API omitted artifacts array")
+
+        for item in artifacts:
+            if not isinstance(item, dict):
+                continue
+            if bool(item.get("expired")):
+                continue
+            if str(item.get("name") or "") != expected_name:
+                continue
+            try:
+                matches.append(int(item.get("id")))
+            except (TypeError, ValueError):
+                continue
+
+        if len(artifacts) < 100:
+            break
+
+    if not matches:
+        return None
+    if len(matches) != 1:
+        raise DecisionHistoryError(
+            f"ambiguous execution receipt history: found {len(matches)} artifacts "
+            f"named {expected_name!r}"
+        )
+    return matches[0]
+
+
 def _verify_receipt_integrity(receipt: object) -> dict[str, Any]:
     if not isinstance(receipt, dict):
         raise DecisionHistoryError("execution receipt root must be an object")
@@ -220,6 +267,42 @@ def download_prior_audit_trail(
         except (UnicodeDecodeError, json.JSONDecodeError, KeyError) as exc:
             raise DecisionHistoryError("prior execution receipt is invalid JSON") from exc
         receipt = _verify_receipt_integrity(raw_receipt)
+    else:
+        receipt_artifact_id = find_matching_receipt_artifact(
+            api,
+            repo,
+            artifact,
+        )
+        if receipt_artifact_id is not None:
+            raw_receipt_zip = api.request_bytes(
+                "GET",
+                f"/repos/{repo}/actions/artifacts/{receipt_artifact_id}/zip",
+            )
+            try:
+                receipt_archive = zipfile.ZipFile(io.BytesIO(raw_receipt_zip))
+            except zipfile.BadZipFile as exc:
+                raise DecisionHistoryError(
+                    "prior execution receipt artifact is not a valid ZIP"
+                ) from exc
+            external_receipt_names = [
+                name
+                for name in receipt_archive.namelist()
+                if name.endswith(".eba-receipt.json") and not name.endswith("/")
+            ]
+            if len(external_receipt_names) != 1:
+                raise DecisionHistoryError(
+                    "expected exactly one execution receipt in receipt artifact, "
+                    f"found {len(external_receipt_names)}"
+                )
+            try:
+                raw_receipt = json.loads(
+                    receipt_archive.read(external_receipt_names[0]).decode("utf-8")
+                )
+            except (UnicodeDecodeError, json.JSONDecodeError, KeyError) as exc:
+                raise DecisionHistoryError(
+                    "prior external execution receipt is invalid JSON"
+                ) from exc
+            receipt = _verify_receipt_integrity(raw_receipt)
 
     return PriorAuditTrail(
         artifact=artifact,
