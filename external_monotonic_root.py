@@ -12,6 +12,10 @@ import hashlib
 import json
 import os
 import subprocess
+import tempfile
+import urllib.error
+import urllib.parse
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +24,8 @@ from ci_retry_gate import GitHubAPI, redact
 
 ROOT_SCHEMA = "ci-retry-gate.external-monotonic-root.v1"
 ANCHOR_SCHEMA = "ci-retry-gate.external-monotonic-root-anchor.v1"
-MAX_ATTESTATIONS = 1000
+MAX_ATTESTATIONS = 100
+MAX_BUNDLE_BYTES = 4 * 1024 * 1024
 DEFAULT_PREDICATE_TYPE = (
     "https://github.com/achirothmane/workflow-failure-lab/"
     "attestations/external-monotonic-root/v1"
@@ -29,6 +34,10 @@ DEFAULT_PREDICATE_TYPE = (
 
 class ExternalMonotonicRootError(ValueError):
     """Raised when the independent high-water mark cannot be trusted."""
+
+
+def _compact_error(value: object) -> str:
+    return " ".join(redact(str(value)).split())
 
 
 def _canonical_bytes(value: dict[str, Any]) -> bytes:
@@ -286,7 +295,7 @@ def verify_sigstore_attestation(
     repository: str,
     signer_workflow: str,
     predicate_type: str = DEFAULT_PREDICATE_TYPE,
-) -> None:
+) -> list[dict[str, Any]]:
     record_path = str(Path(root_record_path))
     bundle = str(Path(bundle_path))
     signer = str(signer_workflow).strip()
@@ -336,7 +345,7 @@ def verify_sigstore_attestation(
         ) from exc
 
     if completed.returncode != 0:
-        detail = redact((completed.stderr or completed.stdout or "").strip())
+        detail = _compact_error(completed.stderr or completed.stdout or "")
         raise ExternalMonotonicRootError(
             f"SIGSTORE_ATTESTATION_INVALID: {detail or 'verification failed'}"
         )
@@ -351,6 +360,7 @@ def verify_sigstore_attestation(
         raise ExternalMonotonicRootError(
             "SIGSTORE_ATTESTATION_INVALID: no verified attestation"
         )
+    return result
 
 
 def verify_sigstore_attestation_set(
@@ -360,32 +370,30 @@ def verify_sigstore_attestation_set(
     signer_workflow: str,
     predicate_type: str = DEFAULT_PREDICATE_TYPE,
 ) -> list[dict[str, Any]]:
-    subject = str(Path(anchor_path))
+    subject = Path(anchor_path)
     signer = str(signer_workflow).strip()
     predicate = str(predicate_type).strip()
-    if not Path(subject).is_file():
+    if not subject.is_file():
         raise ExternalMonotonicRootError("external root anchor file is missing")
     if not signer:
         raise ExternalMonotonicRootError("external root signer workflow is required")
     if not predicate:
         raise ExternalMonotonicRootError("external root predicate type is required")
 
+    subject_digest = hashlib.sha256(subject.read_bytes()).hexdigest()
+    encoded_predicate = urllib.parse.quote(predicate, safe="")
+    endpoint = (
+        f"/repos/{repository}/attestations/sha256:{subject_digest}"
+        f"?per_page={MAX_ATTESTATIONS}&predicate_type={encoded_predicate}"
+    )
     command = [
         "gh",
-        "attestation",
-        "verify",
-        subject,
-        "--repo",
-        repository,
-        "--predicate-type",
-        predicate,
-        "--signer-workflow",
-        signer,
-        "--deny-self-hosted-runners",
-        "--format",
-        "json",
-        "--limit",
-        str(MAX_ATTESTATIONS),
+        "api",
+        "-H",
+        "Accept: application/vnd.github+json",
+        "-H",
+        "X-GitHub-Api-Version: 2026-03-10",
+        endpoint,
     ]
     env = os.environ.copy()
     if env.get("GITHUB_TOKEN") and not env.get("GH_TOKEN"):
@@ -402,31 +410,85 @@ def verify_sigstore_attestation_set(
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise ExternalMonotonicRootError(
-            f"could not resolve external root attestation set: {exc}"
+            f"could not list external root attestations: {_compact_error(exc)}"
         ) from exc
 
     if completed.returncode != 0:
-        detail = redact((completed.stderr or completed.stdout or "").strip())
+        detail = _compact_error(completed.stderr or completed.stdout or "")
         raise ExternalMonotonicRootError(
-            f"SIGSTORE_ATTESTATION_SET_INVALID: {detail or 'verification failed'}"
+            f"GITHUB_ATTESTATION_DISCOVERY_FAILED: "
+            f"{detail or 'repository attestation lookup failed'}"
         )
 
     try:
-        result = json.loads(completed.stdout or "[]")
+        payload = json.loads(completed.stdout or "{}")
     except json.JSONDecodeError as exc:
         raise ExternalMonotonicRootError(
-            "SIGSTORE_ATTESTATION_SET_INVALID: verifier returned invalid JSON"
+            "GITHUB_ATTESTATION_DISCOVERY_FAILED: API returned invalid JSON"
         ) from exc
-    if not isinstance(result, list) or not result:
+    if not isinstance(payload, dict):
         raise ExternalMonotonicRootError(
-            "SIGSTORE_ATTESTATION_SET_INVALID: no verified attestation"
+            "GITHUB_ATTESTATION_DISCOVERY_FAILED: API returned non-object JSON"
         )
-    if len(result) >= MAX_ATTESTATIONS:
+
+    attestations = payload.get("attestations")
+    if not isinstance(attestations, list) or not attestations:
+        raise ExternalMonotonicRootError(
+            "NO_TRUSTED_EXTERNAL_ROOT_ATTESTATION"
+        )
+    if len(attestations) >= MAX_ATTESTATIONS:
         raise ExternalMonotonicRootError(
             "EXTERNAL_ROOT_ATTESTATION_SET_TRUNCATED"
         )
-    return result
 
+    verified: list[dict[str, Any]] = []
+    with tempfile.TemporaryDirectory(prefix="external-root-attestations-") as tmp:
+        for index, entry in enumerate(attestations):
+            if not isinstance(entry, dict):
+                raise ExternalMonotonicRootError(
+                    "GITHUB_ATTESTATION_DISCOVERY_FAILED: malformed attestation entry"
+                )
+            bundle_url = str(entry.get("bundle_url") or "").strip()
+            parsed = urllib.parse.urlparse(bundle_url)
+            if parsed.scheme != "https" or not parsed.netloc:
+                raise ExternalMonotonicRootError(
+                    "GITHUB_ATTESTATION_DISCOVERY_FAILED: invalid bundle URL"
+                )
+
+            request = urllib.request.Request(
+                bundle_url,
+                headers={"User-Agent": "ci-retry-gate-external-root"},
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=30) as response:
+                    bundle_bytes = response.read(MAX_BUNDLE_BYTES + 1)
+            except (OSError, urllib.error.URLError) as exc:
+                raise ExternalMonotonicRootError(
+                    "ATTESTATION_BUNDLE_DOWNLOAD_FAILED: "
+                    f"{type(exc).__name__}"
+                ) from exc
+            if len(bundle_bytes) > MAX_BUNDLE_BYTES:
+                raise ExternalMonotonicRootError(
+                    "ATTESTATION_BUNDLE_TOO_LARGE"
+                )
+
+            bundle_path = Path(tmp) / f"bundle-{index}.json"
+            bundle_path.write_bytes(bundle_bytes)
+            verified.extend(
+                verify_sigstore_attestation(
+                    root_record_path=subject,
+                    bundle_path=bundle_path,
+                    repository=repository,
+                    signer_workflow=signer,
+                    predicate_type=predicate,
+                )
+            )
+
+    if not verified:
+        raise ExternalMonotonicRootError(
+            "NO_TRUSTED_EXTERNAL_ROOT_ATTESTATION"
+        )
+    return verified
 
 def verify_anchor_binding(
     anchor: dict[str, Any],
