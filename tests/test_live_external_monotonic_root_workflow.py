@@ -50,11 +50,14 @@ def test_descendant_t3_may_execute_above_t2_root():
     assert 'test "$ROOT_EPOCH" = "2"' in text
 
 
-def test_closed_t4_root_blocks_resurrection_of_previous_executable_t3():
+def test_closed_t4_root_is_terminal_for_old_and_new_executable_tokens():
     text = CONTROLLER.read_text(encoding="utf-8")
 
     assert "Build CLOSED T4 external root record" in text
     assert "--state CLOSED" in text
+    assert "Forge executable T5 as descendant of CLOSED T4" in text
+    assert "Present executable descendant T5 above CLOSED T4 root" in text
+    assert "EXTERNAL_MONOTONIC_ROOT_BLOCK: EXTERNAL_ROOT_CLOSED:" in text
     assert "Compromise both local records back to executable T3" in text
     assert "CLOSED external root prevents T3 resurrection" in text
     assert "Restore local records to CLOSED T4" in text
@@ -81,6 +84,7 @@ def test_external_root_verifier_checks_sigstore_and_git_ancestry():
     assert "--deny-self-hosted-runners" in text
     assert "/compare/{root}...{presented}" in text
     assert "TOKEN_BELOW_EXTERNAL_MONOTONIC_ROOT" in text
+    assert "EXTERNAL_ROOT_CLOSED" in text
 
 
 def test_fixture_is_bounded_to_one_rerun():

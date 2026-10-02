@@ -193,9 +193,11 @@ def test_external_root_rejects_token_below_attested_high_water_mark(
         )
 
 
-def test_closed_root_still_acts_as_monotonic_high_water_mark(
+@pytest.mark.parametrize("presented", ["3" * 40, "4" * 40, "5" * 40])
+def test_closed_root_is_terminal_even_for_equal_or_descendant_tokens(
     tmp_path: Path,
     monkeypatch,
+    presented: str,
 ):
     record = _record(token="4" * 40, epoch=4, state="CLOSED")
     record_path = tmp_path / "root.json"
@@ -207,11 +209,11 @@ def test_closed_root_still_acts_as_monotonic_high_water_mark(
         "external_monotonic_root.verify_sigstore_attestation",
         lambda **kwargs: None,
     )
-    api = FakeGitHubAPI(status="behind", ahead_by=0, behind_by=1)
+    api = FakeGitHubAPI(status="ahead", ahead_by=1, behind_by=0)
 
     with pytest.raises(
         ExternalMonotonicRootError,
-        match="TOKEN_BELOW_EXTERNAL_MONOTONIC_ROOT",
+        match="EXTERNAL_ROOT_CLOSED",
     ):
         verify_external_monotonic_root(
             api,
@@ -220,8 +222,10 @@ def test_closed_root_still_acts_as_monotonic_high_water_mark(
             attestation_bundle_path=bundle_path,
             signer_workflow="owner/repo/.github/workflows/root.yml",
             predicate_type="https://example.test/root/v1",
-            presented_token_sha="3" * 40,
+            presented_token_sha=presented,
             run_id=123,
             decision_record_sha256="b" * 64,
             effect_plan_sha256="c" * 64,
         )
+
+    assert api.calls == []
