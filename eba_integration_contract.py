@@ -654,3 +654,63 @@ def write_contract_artifact(path: str | Path, artifact: dict[str, Any]) -> str:
     temporary.write_bytes(payload + b"\n")
     temporary.replace(target)
     return digest
+
+
+def verify_contract_artifact(
+    artifact: object,
+    *,
+    expected_sha256: str | None = None,
+    expected_kind: str | None = None,
+) -> dict[str, Any]:
+    """Verify canonical shape, embedded integrity, and optional external digest."""
+    if not isinstance(artifact, dict):
+        raise ContractViolation("CONTRACT_ARTIFACT_ROOT_INVALID")
+    _validate_canonical_value(artifact)
+
+    if expected_kind is not None and artifact.get("kind") != expected_kind:
+        raise ContractViolation("CONTRACT_ARTIFACT_KIND_MISMATCH")
+
+    integrity = artifact.get("integrity")
+    if not isinstance(integrity, dict):
+        raise ContractViolation("CONTRACT_ARTIFACT_INTEGRITY_MISSING")
+    if integrity.get("algorithm") != "sha256":
+        raise ContractViolation("CONTRACT_ARTIFACT_INTEGRITY_ALGORITHM_INVALID")
+
+    embedded = str(integrity.get("digest") or "").strip().lower()
+    if len(embedded) != 64 or any(ch not in "0123456789abcdef" for ch in embedded):
+        raise ContractViolation("CONTRACT_ARTIFACT_INTEGRITY_DIGEST_INVALID")
+
+    semantic = dict(artifact)
+    semantic.pop("integrity", None)
+    actual_semantic = hashlib.sha256(canonical_json_bytes(semantic)).hexdigest()
+    if actual_semantic != embedded:
+        raise ContractViolation("CONTRACT_ARTIFACT_INTEGRITY_MISMATCH")
+
+    if expected_sha256 is not None:
+        expected = expected_sha256.strip().lower()
+        actual_external = hashlib.sha256(canonical_json_bytes(artifact)).hexdigest()
+        if not expected or actual_external != expected:
+            raise ContractViolation("CONTRACT_ARTIFACT_EXTERNAL_DIGEST_MISMATCH")
+
+    return artifact
+
+
+def read_contract_artifact(
+    path: str | Path,
+    *,
+    expected_sha256: str | None = None,
+    expected_kind: str | None = None,
+) -> dict[str, Any]:
+    """Read strict canonical JSON and verify it before effect-boundary use."""
+    target = Path(path)
+    try:
+        raw = target.read_bytes()
+    except OSError as exc:
+        raise ContractViolation("CONTRACT_ARTIFACT_READ_FAILED") from exc
+
+    artifact = strict_json_loads(raw)
+    return verify_contract_artifact(
+        artifact,
+        expected_sha256=expected_sha256,
+        expected_kind=expected_kind,
+    )
