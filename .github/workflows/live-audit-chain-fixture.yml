@@ -1,0 +1,32 @@
+name: Live Audit Chain Fixture
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/live-audit-chain-fixture.yml'
+      - '.github/workflows/live-audit-chain-controller.yml'
+      - 'tests/test_live_audit_chain_workflows.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  transient:
+    name: Synthetic transient probe
+    runs-on: ubuntu-latest
+    steps:
+      - name: Emit one bounded transient failure
+        shell: bash
+        run: |
+          echo "fixture run_id=${GITHUB_RUN_ID} attempt=${GITHUB_RUN_ATTEMPT}"
+          if [ "${GITHUB_RUN_ATTEMPT}" = "1" ]; then
+            echo "curl: (28) Operation timed out after 1000 milliseconds with 0 bytes received"
+            exit 1
+          fi
+
+          # Give the attempt-N controller enough time to persist its post-effect
+          # receipt before this N+1 attempt completes and triggers reconciliation.
+          sleep 15
+          echo "synthetic transient recovered on attempt ${GITHUB_RUN_ATTEMPT}"
