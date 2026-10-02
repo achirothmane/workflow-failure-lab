@@ -170,21 +170,6 @@ def publish_candidate(
     owner_id: str,
     candidate_sha: str,
 ) -> ClaimResult:
-    observed_before = read_coordination_sha(api, repo, coordination_ref)
-    if observed_before != expected_base_sha:
-        return ClaimResult(
-            owner_id=owner_id,
-            acquired=False,
-            coordination_ref=coordination_ref,
-            base_sha=expected_base_sha,
-            candidate_sha=candidate_sha,
-            observed_sha=observed_before,
-            reason=(
-                "COORDINATION_BASE_CHANGED: "
-                f"expected {expected_base_sha}, observed {observed_before}"
-            ),
-        )
-
     ref_path = _ref_path(coordination_ref)
     try:
         api.request(
