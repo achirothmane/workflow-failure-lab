@@ -339,6 +339,11 @@ def verify_external_monotonic_root(
         decision_record_sha256=decision_record_sha256,
         effect_plan_sha256=effect_plan_sha256,
     )
+    if str(record["lifecycle_state"]).strip().upper() == "CLOSED":
+        raise ExternalMonotonicRootError(
+            "EXTERNAL_ROOT_CLOSED: "
+            f"epoch={record['epoch']} token={record['fencing_token_sha']}"
+        )
     verify_token_not_below_root(
         api,
         repo,
