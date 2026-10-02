@@ -174,13 +174,13 @@ jobs:
         shell: bash
         run: |
           mkdir -p "$RUNNER_TEMP/root-t2"
-          python3 e2e/external_monotonic_root_cli.py build             --repository "${{ github.repository }}"             --run-id "${{ github.event.workflow_run.id }}"             --epoch 2             --token "${{ steps.t2.outputs.candidate-sha }}"             --decision-sha "${{ needs.seed.outputs.decision-sha }}"             --plan-sha "${{ needs.seed.outputs.plan-sha }}"             --state EXECUTABLE             --record "$RUNNER_TEMP/root-t2/root-record.json"             --predicate "$RUNNER_TEMP/root-t2/predicate.json"
+          python3 e2e/external_monotonic_root_cli.py build             --repository "${{ github.repository }}"             --run-id "${{ github.event.workflow_run.id }}"             --epoch 2             --token "${{ steps.t2.outputs.candidate-sha }}"             --decision-sha "${{ needs.seed.outputs.decision-sha }}"             --plan-sha "${{ needs.seed.outputs.plan-sha }}"             --state EXECUTABLE             --record "$RUNNER_TEMP/root-t2/root-record.json"             --anchor "$RUNNER_TEMP/root-t2/root-anchor.json"             --predicate "$RUNNER_TEMP/root-t2/predicate.json"
 
       - id: attest
         name: Attest T2 root into Sigstore transparency log
         uses: actions/attest@v4
         with:
-          subject-path: ${{ steps.root.outputs.root-record-path }}
+          subject-path: ${{ steps.root.outputs.root-anchor-path }}
           predicate-type: ${{ env.EXTERNAL_ROOT_PREDICATE_TYPE }}
           predicate-path: ${{ steps.root.outputs.root-predicate-path }}
 
@@ -292,6 +292,7 @@ jobs:
           INPUT_LINEARIZABLE_WITNESS_REF: ${{ needs.seed.outputs.witness-ref }}
           INPUT_LINEARIZABLE_FENCING_TOKEN_SHA: ${{ needs.establish-t2.outputs.token1 }}
           INPUT_EXTERNAL_MONOTONIC_ROOT_RECORD_PATH: ${{ runner.temp }}/root-t2/root-record.json
+          INPUT_EXTERNAL_MONOTONIC_ROOT_ANCHOR_PATH: ${{ runner.temp }}/root-t2/root-anchor.json
           INPUT_EXTERNAL_MONOTONIC_ROOT_BUNDLE_PATH: ${{ runner.temp }}/root-t2/attestation-bundle.json
           INPUT_EXTERNAL_MONOTONIC_ROOT_SIGNER_WORKFLOW: ${{ env.EXTERNAL_ROOT_SIGNER_WORKFLOW }}
           INPUT_EXTERNAL_MONOTONIC_ROOT_PREDICATE_TYPE: ${{ env.EXTERNAL_ROOT_PREDICATE_TYPE }}
@@ -388,6 +389,7 @@ jobs:
           INPUT_LINEARIZABLE_WITNESS_REF: ${{ needs.seed.outputs.witness-ref }}
           INPUT_LINEARIZABLE_FENCING_TOKEN_SHA: ${{ steps.t3.outputs.candidate-sha }}
           INPUT_EXTERNAL_MONOTONIC_ROOT_RECORD_PATH: ${{ runner.temp }}/root-t2/root-record.json
+          INPUT_EXTERNAL_MONOTONIC_ROOT_ANCHOR_PATH: ${{ runner.temp }}/root-t2/root-anchor.json
           INPUT_EXTERNAL_MONOTONIC_ROOT_BUNDLE_PATH: ${{ runner.temp }}/root-t2/attestation-bundle.json
           INPUT_EXTERNAL_MONOTONIC_ROOT_SIGNER_WORKFLOW: ${{ env.EXTERNAL_ROOT_SIGNER_WORKFLOW }}
           INPUT_EXTERNAL_MONOTONIC_ROOT_PREDICATE_TYPE: ${{ env.EXTERNAL_ROOT_PREDICATE_TYPE }}
@@ -438,13 +440,13 @@ jobs:
         shell: bash
         run: |
           mkdir -p "$RUNNER_TEMP/root-t4"
-          python3 e2e/external_monotonic_root_cli.py build             --repository "${{ github.repository }}"             --run-id "${{ github.event.workflow_run.id }}"             --epoch 4             --token "${{ steps.t4.outputs.candidate-sha }}"             --decision-sha "${{ needs.seed.outputs.decision-sha }}"             --plan-sha "${{ needs.seed.outputs.plan-sha }}"             --state CLOSED             --record "$RUNNER_TEMP/root-t4/root-record.json"             --predicate "$RUNNER_TEMP/root-t4/predicate.json"
+          python3 e2e/external_monotonic_root_cli.py build             --repository "${{ github.repository }}"             --run-id "${{ github.event.workflow_run.id }}"             --epoch 4             --token "${{ steps.t4.outputs.candidate-sha }}"             --decision-sha "${{ needs.seed.outputs.decision-sha }}"             --plan-sha "${{ needs.seed.outputs.plan-sha }}"             --state CLOSED             --record "$RUNNER_TEMP/root-t4/root-record.json"             --anchor "$RUNNER_TEMP/root-t4/root-anchor.json"             --predicate "$RUNNER_TEMP/root-t4/predicate.json"
 
       - id: attest-closed
         name: Attest CLOSED T4 high-water mark into Sigstore
         uses: actions/attest@v4
         with:
-          subject-path: ${{ steps.closed-root.outputs.root-record-path }}
+          subject-path: ${{ steps.closed-root.outputs.root-anchor-path }}
           predicate-type: ${{ env.EXTERNAL_ROOT_PREDICATE_TYPE }}
           predicate-path: ${{ steps.closed-root.outputs.root-predicate-path }}
 
@@ -530,6 +532,7 @@ jobs:
           INPUT_LINEARIZABLE_WITNESS_REF: ${{ needs.seed.outputs.witness-ref }}
           INPUT_LINEARIZABLE_FENCING_TOKEN_SHA: ${{ needs.recover-close.outputs.token3 }}
           INPUT_EXTERNAL_MONOTONIC_ROOT_RECORD_PATH: ${{ runner.temp }}/root-t4/root-record.json
+          INPUT_EXTERNAL_MONOTONIC_ROOT_ANCHOR_PATH: ${{ runner.temp }}/root-t4/root-anchor.json
           INPUT_EXTERNAL_MONOTONIC_ROOT_BUNDLE_PATH: ${{ runner.temp }}/root-t4/attestation-bundle.json
           INPUT_EXTERNAL_MONOTONIC_ROOT_SIGNER_WORKFLOW: ${{ env.EXTERNAL_ROOT_SIGNER_WORKFLOW }}
           INPUT_EXTERNAL_MONOTONIC_ROOT_PREDICATE_TYPE: ${{ env.EXTERNAL_ROOT_PREDICATE_TYPE }}
@@ -561,6 +564,96 @@ jobs:
         with:
           name: external-monotonic-root-stale-t3-proof-${{ github.event.workflow_run.id }}
           path: ${{ runner.temp }}/external-root-stale-t3.eba-receipt.json
+          if-no-files-found: error
+
+  stale-signed-root-replay:
+    name: Old signed T2 root cannot override CLOSED T4
+    needs: [seed, establish-t2, recover-close, stale-t3]
+    if: ${{ github.event.workflow_run.run_attempt == 1 }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: external-monotonic-root-state-${{ github.event.workflow_run.id }}
+          path: ${{ runner.temp }}/external-root-state
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: external-monotonic-root-t2-${{ github.event.workflow_run.id }}
+          path: ${{ runner.temp }}/root-t2
+
+      - name: Restore deferred-effect manifest
+        shell: bash
+        run: |
+          python3 e2e/takeover_bundle_manifest.py export             --manifest "$RUNNER_TEMP/external-root-state/manifest.json"             --bundle-dir "$RUNNER_TEMP/external-root-state/bundle"
+
+      - name: Rewind both local records from CLOSED T4 to old executable T2
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 e2e/linearizable_lease_cli.py             --repository "${{ github.repository }}"             --ref "${{ needs.seed.outputs.coordination-ref }}" delete
+          python3 e2e/linearizable_lease_cli.py             --repository "${{ github.repository }}"             --ref "${{ needs.seed.outputs.witness-ref }}" delete
+          python3 e2e/linearizable_lease_cli.py             --repository "${{ github.repository }}"             --ref "${{ needs.seed.outputs.coordination-ref }}"             seed --base-sha "${{ needs.establish-t2.outputs.token2 }}"
+          python3 e2e/linearizable_lease_cli.py             --repository "${{ github.repository }}"             --ref "${{ needs.seed.outputs.witness-ref }}"             seed --base-sha "${{ needs.establish-t2.outputs.token2 }}"
+
+      - id: stale-root
+        name: Replay authentic old T2 root and bundle at Effect boundary
+        shell: bash
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          INPUT_EFFECT_PLAN_PATH: ${{ env.TAKEOVER_EFFECT_PLAN_PATH }}
+          INPUT_EFFECT_PLAN_SHA256: ${{ env.TAKEOVER_EFFECT_PLAN_SHA256 }}
+          INPUT_DECISION_RECORD_PATH: ${{ env.TAKEOVER_DECISION_RECORD_PATH }}
+          INPUT_DECISION_RECORD_SHA256: ${{ env.TAKEOVER_DECISION_RECORD_SHA256 }}
+          INPUT_EBA_REQUEST_PATH: ${{ env.TAKEOVER_EBA_REQUEST_PATH }}
+          INPUT_EBA_REQUEST_SHA256: ${{ env.TAKEOVER_EBA_REQUEST_SHA256 }}
+          INPUT_EBA_ASSUMPTION_PATH: ${{ env.TAKEOVER_EBA_ASSUMPTION_PATH }}
+          INPUT_EBA_ASSUMPTION_SHA256: ${{ env.TAKEOVER_EBA_ASSUMPTION_SHA256 }}
+          INPUT_EBA_AUTHORITY_PATH: ${{ env.TAKEOVER_EBA_AUTHORITY_PATH }}
+          INPUT_EBA_AUTHORITY_SHA256: ${{ env.TAKEOVER_EBA_AUTHORITY_SHA256 }}
+          INPUT_EBA_DECISION_PATH: ${{ env.TAKEOVER_EBA_DECISION_PATH }}
+          INPUT_EBA_DECISION_SHA256: ${{ env.TAKEOVER_EBA_DECISION_SHA256 }}
+          INPUT_EBA_RECEIPT_PATH: ${{ runner.temp }}/stale-signed-root-replay.eba-receipt.json
+          INPUT_DECISION_EXPERIENCE_JSON: ${{ env.TAKEOVER_DECISION_EXPERIENCE_JSON }}
+          INPUT_LINEARIZABLE_COORDINATION_REF: ${{ needs.seed.outputs.coordination-ref }}
+          INPUT_LINEARIZABLE_WITNESS_REF: ${{ needs.seed.outputs.witness-ref }}
+          INPUT_LINEARIZABLE_FENCING_TOKEN_SHA: ${{ needs.establish-t2.outputs.token2 }}
+          INPUT_EXTERNAL_MONOTONIC_ROOT_RECORD_PATH: ${{ runner.temp }}/root-t2/root-record.json
+          INPUT_EXTERNAL_MONOTONIC_ROOT_ANCHOR_PATH: ${{ runner.temp }}/root-t2/root-anchor.json
+          INPUT_EXTERNAL_MONOTONIC_ROOT_BUNDLE_PATH: ${{ runner.temp }}/root-t2/attestation-bundle.json
+          INPUT_EXTERNAL_MONOTONIC_ROOT_SIGNER_WORKFLOW: ${{ env.EXTERNAL_ROOT_SIGNER_WORKFLOW }}
+          INPUT_EXTERNAL_MONOTONIC_ROOT_PREDICATE_TYPE: ${{ env.EXTERNAL_ROOT_PREDICATE_TYPE }}
+        run: python3 effect_executor.py
+
+      - name: Verify valid old signature cannot resurrect T2 authority
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.stale-root.outputs.effect-outcome }}
+          TRIGGERED: ${{ steps.stale-root.outputs.rerun-triggered }}
+          REASON: ${{ steps.stale-root.outputs.effect-reason }}
+        run: |
+          test "$OUTCOME" = "NOT_EXECUTED"
+          test "$TRIGGERED" = "false"
+          case "$REASON" in
+            "EXTERNAL_MONOTONIC_ROOT_BLOCK: STALE_EXTERNAL_ROOT_ATTESTATION: supplied_epoch=2 latest_epoch=4") ;;
+            *) echo "::error::valid stale T2 attestation regained authority: $REASON"; exit 1 ;;
+          esac
+
+      - name: Restore both local records to CLOSED T4
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 e2e/linearizable_lease_cli.py             --repository "${{ github.repository }}"             --ref "${{ needs.seed.outputs.coordination-ref }}"             publish             --base-sha "${{ needs.establish-t2.outputs.token2 }}"             --owner replay-restore-t4             --candidate-sha "${{ needs.recover-close.outputs.token4 }}"             --result "$RUNNER_TEMP/replay-restore-coord.json"
+          python3 e2e/linearizable_lease_cli.py             --repository "${{ github.repository }}"             --ref "${{ needs.seed.outputs.witness-ref }}"             publish             --base-sha "${{ needs.establish-t2.outputs.token2 }}"             --owner replay-restore-t4-witness             --candidate-sha "${{ needs.recover-close.outputs.token4 }}"             --result "$RUNNER_TEMP/replay-restore-witness.json"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: external-monotonic-root-stale-signed-replay-proof-${{ github.event.workflow_run.id }}
+          path: ${{ runner.temp }}/stale-signed-root-replay.eba-receipt.json
           if-no-files-found: error
 
   reconcile:
