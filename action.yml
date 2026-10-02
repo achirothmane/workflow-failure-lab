@@ -171,6 +171,18 @@ outputs:
   evidence-bundle-sha256:
     description: 'SHA-256 digest of the canonical EvidenceBundle used by the isolated authorization gate.'
     value: ${{ steps.gate.outputs.evidence-bundle-sha256 }}
+  decision-record-path:
+    description: 'Filesystem path to the immutable Decision Evidence Record created before an optional retry mutation.'
+    value: ${{ steps.gate.outputs.decision-record-path }}
+  decision-record-sha256:
+    description: 'Canonical SHA-256 digest of the Decision Evidence Record semantic payload.'
+    value: ${{ steps.gate.outputs.decision-record-sha256 }}
+  decision-event-id:
+    description: 'Unique event identifier for the Decision Evidence Record.'
+    value: ${{ steps.gate.outputs.decision-event-id }}
+  authorization-path:
+    description: 'Authority path recorded for the decision, currently POLICY for production decisions.'
+    value: ${{ steps.gate.outputs.authorization-path }}
   eba-request-json:
     description: 'Evidence-before-Action v0.1 ActionRequest bound to the exact CI rerun subject.'
     value: ${{ steps.gate.outputs.eba-request-json }}
@@ -708,6 +720,14 @@ runs:
         INPUT_MAX_ATTEMPTS: ${{ inputs.max-attempts }}
         INPUT_COMMENT_ON_PR: ${{ inputs.comment-on-pr }}
       run: python3 "$GITHUB_ACTION_PATH/ci_retry_gate.py"
+
+    - name: Upload decision audit trail
+      if: ${{ always() && steps.gate.outputs.decision-record-path != '' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.gate.outputs.decision-record-artifact-name }}
+        path: ${{ steps.gate.outputs.decision-record-path }}
+        if-no-files-found: error
 
     - id: selective
       name: Selectively rerun safe failed jobs
