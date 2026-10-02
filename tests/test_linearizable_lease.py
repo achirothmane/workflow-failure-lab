@@ -7,6 +7,7 @@ import pytest
 from linearizable_lease import (
     LinearizableLeaseError,
     build_candidate_commit,
+    build_tombstone_commit,
     create_coordination_ref,
     publish_candidate,
     read_coordination_sha,
@@ -18,7 +19,11 @@ class FakeGitHubAPI:
     def __init__(self):
         self.refs: dict[str, str] = {}
         self.commits: dict[str, dict] = {
-            "a" * 40: {"tree": {"sha": "1" * 40}, "parents": []}
+            "a" * 40: {
+                "tree": {"sha": "1" * 40},
+                "parents": [],
+                "message": "base",
+            }
         }
         self.counter = 0
 
@@ -49,6 +54,7 @@ class FakeGitHubAPI:
             self.commits[sha] = {
                 "tree": {"sha": payload["tree"]},
                 "parents": [{"sha": payload["parents"][0]}],
+                "message": payload["message"],
             }
             return {"sha": sha}
 
@@ -155,6 +161,8 @@ def test_fencing_token_tracks_current_coordination_ref():
         repo,
         coordination_ref=ref,
         fencing_token_sha=candidate,
+        expected_decision_record_sha256="b" * 64,
+        expected_effect_plan_sha256="c" * 64,
     )
 
     with pytest.raises(LinearizableLeaseError, match="FENCING_TOKEN_STALE"):
@@ -223,4 +231,177 @@ def test_coordination_ref_must_live_under_heads():
             "owner/repo",
             "refs/tags/not-allowed",
             "a" * 40,
+        )
+
+
+
+def test_delete_recreate_of_coordination_ref_cannot_resurrect_old_token_with_witness():
+    api = FakeGitHubAPI()
+    repo = "owner/repo"
+    coord = "refs/heads/ci-retry-gate-linearizable/123"
+    witness = "refs/heads/ci-retry-gate-linearizable-witness/123"
+    base = "a" * 40
+
+    create_coordination_ref(api, repo, coord, base)
+    create_coordination_ref(api, repo, witness, base)
+
+    token1 = build_candidate_commit(
+        api,
+        repo,
+        base_sha=base,
+        owner_id="worker-a",
+        epoch=1,
+        decision_record_sha256="b" * 64,
+        effect_plan_sha256="c" * 64,
+    )
+    assert publish_candidate(
+        api,
+        repo,
+        coordination_ref=coord,
+        expected_base_sha=base,
+        owner_id="worker-a",
+        candidate_sha=token1,
+    ).acquired
+    assert publish_candidate(
+        api,
+        repo,
+        coordination_ref=witness,
+        expected_base_sha=base,
+        owner_id="worker-a-witness",
+        candidate_sha=token1,
+    ).acquired
+
+    token2 = build_candidate_commit(
+        api,
+        repo,
+        base_sha=token1,
+        owner_id="worker-b",
+        epoch=2,
+        decision_record_sha256="b" * 64,
+        effect_plan_sha256="c" * 64,
+    )
+    assert publish_candidate(
+        api,
+        repo,
+        coordination_ref=coord,
+        expected_base_sha=token1,
+        owner_id="worker-b",
+        candidate_sha=token2,
+    ).acquired
+    assert publish_candidate(
+        api,
+        repo,
+        coordination_ref=witness,
+        expected_base_sha=token1,
+        owner_id="worker-b-witness",
+        candidate_sha=token2,
+    ).acquired
+
+    # Simulate the stronger ABA attack: delete the mutable coordination record
+    # and recreate it at the previously valid token1. The durable witness is not
+    # rewound.
+    api.refs.pop(coord)
+    create_coordination_ref(api, repo, coord, token1)
+
+    with pytest.raises(LinearizableLeaseError, match="ABA_WITNESS_MISMATCH"):
+        verify_fencing_token(
+            api,
+            repo,
+            coordination_ref=coord,
+            witness_ref=witness,
+            fencing_token_sha=token1,
+            expected_decision_record_sha256="b" * 64,
+            expected_effect_plan_sha256="c" * 64,
+        )
+
+
+def test_fencing_token_is_bound_to_exact_decision_and_effect_plan():
+    api = FakeGitHubAPI()
+    repo = "owner/repo"
+    ref = "refs/heads/ci-retry-gate-linearizable/123"
+    base = "a" * 40
+
+    create_coordination_ref(api, repo, ref, base)
+    token = build_candidate_commit(
+        api,
+        repo,
+        base_sha=base,
+        owner_id="winner",
+        epoch=1,
+        decision_record_sha256="b" * 64,
+        effect_plan_sha256="c" * 64,
+    )
+    assert publish_candidate(
+        api,
+        repo,
+        coordination_ref=ref,
+        expected_base_sha=base,
+        owner_id="winner",
+        candidate_sha=token,
+    ).acquired
+
+    with pytest.raises(
+        LinearizableLeaseError,
+        match="FENCING_TOKEN_DECISION_BINDING_MISMATCH",
+    ):
+        verify_fencing_token(
+            api,
+            repo,
+            coordination_ref=ref,
+            fencing_token_sha=token,
+            expected_decision_record_sha256="d" * 64,
+            expected_effect_plan_sha256="c" * 64,
+        )
+
+
+def test_closed_tombstone_can_never_be_used_as_effect_authority():
+    api = FakeGitHubAPI()
+    repo = "owner/repo"
+    ref = "refs/heads/ci-retry-gate-linearizable/123"
+    base = "a" * 40
+
+    create_coordination_ref(api, repo, ref, base)
+    token = build_candidate_commit(
+        api,
+        repo,
+        base_sha=base,
+        owner_id="winner",
+        epoch=1,
+        decision_record_sha256="b" * 64,
+        effect_plan_sha256="c" * 64,
+    )
+    assert publish_candidate(
+        api,
+        repo,
+        coordination_ref=ref,
+        expected_base_sha=base,
+        owner_id="winner",
+        candidate_sha=token,
+    ).acquired
+
+    tombstone = build_tombstone_commit(
+        api,
+        repo,
+        base_sha=token,
+        decision_record_sha256="b" * 64,
+        effect_plan_sha256="c" * 64,
+        reason="reconciliation-closed",
+    )
+    assert publish_candidate(
+        api,
+        repo,
+        coordination_ref=ref,
+        expected_base_sha=token,
+        owner_id="closer",
+        candidate_sha=tombstone,
+    ).acquired
+
+    with pytest.raises(LinearizableLeaseError, match="FENCING_TOKEN_NOT_EXECUTABLE"):
+        verify_fencing_token(
+            api,
+            repo,
+            coordination_ref=ref,
+            fencing_token_sha=tombstone,
+            expected_decision_record_sha256="b" * 64,
+            expected_effect_plan_sha256="c" * 64,
         )
