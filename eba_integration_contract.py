@@ -630,7 +630,7 @@ def build_execution_receipt(
         "request_ref": action_request.get("id"),
         "decision_ref": decision_artifact.get("id"),
         "action_digest": action_digest(action_request),
-        "admitted_at": admitted_at if rerun_triggered else None,
+        "admitted_at": admitted_at if outcome in {"SUCCEEDED", "UNKNOWN"} else None,
         "started_at": timestamp,
         "finished_at": timestamp,
         "outcome": outcome,
