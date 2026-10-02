@@ -15,6 +15,7 @@ if str(ROOT) not in sys.path:
 from ci_retry_gate import GitHubAPI
 from linearizable_lease import (
     build_candidate_commit,
+    build_tombstone_commit,
     create_coordination_ref,
     delete_coordination_ref,
     publish_candidate,
@@ -68,6 +69,13 @@ def main() -> int:
     publish.add_argument("--candidate-sha", required=True)
     publish.add_argument("--result", required=True)
 
+    tombstone = sub.add_parser("prepare-tombstone")
+    tombstone.add_argument("--base-sha", required=True)
+    tombstone.add_argument("--decision-sha", required=True)
+    tombstone.add_argument("--plan-sha", required=True)
+    tombstone.add_argument("--reason", required=True)
+    tombstone.add_argument("--result", required=True)
+
     sub.add_parser("read")
     sub.add_parser("delete")
 
@@ -94,6 +102,32 @@ def main() -> int:
     if args.command == "delete":
         delete_coordination_ref(api, args.repository, args.ref)
         print("coordination ref deleted")
+        return 0
+
+    if args.command == "prepare-tombstone":
+        candidate_sha = build_tombstone_commit(
+            api,
+            args.repository,
+            base_sha=args.base_sha,
+            decision_record_sha256=args.decision_sha,
+            effect_plan_sha256=args.plan_sha,
+            reason=args.reason,
+        )
+        prepared = {
+            "coordination_ref": args.ref,
+            "base_sha": args.base_sha,
+            "candidate_sha": candidate_sha,
+            "kind": "closed",
+        }
+        path = Path(args.result)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(prepared, sort_keys=True, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        _write_output("candidate-sha", candidate_sha)
+        _write_output("base-sha", args.base_sha)
+        print(json.dumps(prepared, sort_keys=True))
         return 0
 
     if args.command == "prepare":
