@@ -69,7 +69,6 @@ def _emit_summary(*, outcome: str, reason: str) -> None:
 def main() -> int:
     try:
         token = _required("INPUT_GITHUB_TOKEN")
-        repo = _required("INPUT_REPOSITORY")
         plan_path = _required("INPUT_EFFECT_PLAN_PATH")
         plan_sha = _required("INPUT_EFFECT_PLAN_SHA256")
         decision_record_path = _required("INPUT_DECISION_RECORD_PATH")
@@ -85,6 +84,7 @@ def main() -> int:
         receipt_path = _required("INPUT_EBA_RECEIPT_PATH")
 
         plan = read_effect_plan(plan_path, expected_sha256=plan_sha)
+        repo = str(plan["repository"])
         decision_record = read_decision_record(
             decision_record_path,
             expected_sha256=decision_record_sha,
