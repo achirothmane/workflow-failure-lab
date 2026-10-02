@@ -15,6 +15,13 @@ from pathlib import Path
 from ci_retry_gate import GitHubAPI, revalidate_rerun_subject_binding, redact
 from decision_record import DecisionRecordError, read_decision_record
 from effect_plan import EffectPlanError, read_effect_plan
+from execution_lease import (
+    ExecutionLeaseError,
+    lease_digest,
+    load_registry,
+    read_execution_lease,
+    verify_effect_ownership,
+)
 from eba_integration_contract import (
     ASSUMPTION_KIND,
     AUTHORITY_KIND,
@@ -127,8 +134,41 @@ def main() -> int:
     effect_reason = "MUTATION_NOT_ADMITTED"
     admitted_at: str | None = None
 
+    lease = None
+    lease_block_reason: str | None = None
+    lease_path = str(os.environ.get("INPUT_EXECUTION_LEASE_PATH") or "").strip()
+    lease_registry_dir = str(
+        os.environ.get("INPUT_EXECUTION_LEASE_REGISTRY_DIR") or ""
+    ).strip()
+    executor_id = str(os.environ.get("INPUT_EXECUTOR_ID") or "").strip()
+    lease_guard_requested = bool(lease_path or lease_registry_dir or executor_id)
+
+    if lease_guard_requested:
+        if not lease_path or not lease_registry_dir or not executor_id:
+            lease_block_reason = (
+                "EXECUTION_LEASE_BLOCK: lease path, registry directory, and executor ID "
+                "must be supplied together"
+            )
+        else:
+            try:
+                lease = read_execution_lease(lease_path)
+                verify_effect_ownership(
+                    candidate_lease=lease,
+                    registry_leases=load_registry(lease_registry_dir),
+                    expected_owner_id=executor_id,
+                    decision_record_sha256=decision_record_sha,
+                    effect_plan_sha256=plan_sha,
+                    repository=repo,
+                    run_id=int(plan["run_id"]),
+                    now=_now_iso(),
+                )
+            except ExecutionLeaseError as exc:
+                lease_block_reason = f"EXECUTION_LEASE_BLOCK: {redact(str(exc))}"
+
     if mutation_admitted:
-        if decision_record.get("decision") != "ALLOW":
+        if lease_block_reason is not None:
+            effect_reason = lease_block_reason
+        elif decision_record.get("decision") != "ALLOW":
             effect_reason = "DECISION_RECORD_NOT_ALLOW"
         else:
             api = GitHubAPI(token, os.environ.get("GITHUB_API_URL", "https://api.github.com"))
@@ -200,6 +240,19 @@ def main() -> int:
     _write_output("rerun-triggered", "true" if rerun_triggered else "false")
     _write_output("effect-outcome", receipt_outcome)
     _write_output("effect-reason", effect_reason)
+    _write_output("execution-lease-enforced", "true" if lease_guard_requested else "false")
+    _write_output(
+        "execution-lease-owner",
+        str(lease.get("owner_id") or "") if isinstance(lease, dict) else "",
+    )
+    _write_output(
+        "execution-lease-epoch",
+        str(lease.get("epoch") or "") if isinstance(lease, dict) else "",
+    )
+    _write_output(
+        "execution-lease-sha256",
+        lease_digest(lease) if isinstance(lease, dict) else "",
+    )
     _write_output("eba-receipt-path", str(Path(receipt_path)))
     _write_output("eba-receipt-sha256", receipt_sha)
     _write_output(
