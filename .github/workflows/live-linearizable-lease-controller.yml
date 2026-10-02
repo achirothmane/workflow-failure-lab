@@ -1,0 +1,395 @@
+name: Live Linearizable Lease CAS Controller
+
+on:
+  workflow_run:
+    workflows: ["Live Linearizable Lease CAS Fixture"]
+    types: [completed]
+
+permissions:
+  contents: write
+  actions: write
+  checks: read
+
+jobs:
+  seed:
+    name: Seed durable decision and coordination ref
+    if: ${{ github.event.workflow_run.run_attempt == 1 && github.event.workflow_run.repository.full_name == github.repository && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    outputs:
+      coordination-ref: ${{ steps.meta.outputs.coordination-ref }}
+      base-sha: ${{ steps.meta.outputs.base-sha }}
+      decision-sha: ${{ steps.gate.outputs.decision-record-sha256 }}
+      plan-sha: ${{ steps.gate.outputs.effect-plan-sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: gate
+        name: Build deferred admitted decision
+        shell: bash
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          INPUT_RUN_ID: ${{ github.event.workflow_run.id }}
+          INPUT_REPOSITORY: ${{ github.repository }}
+          INPUT_AUTO_RERUN: 'true'
+          INPUT_DEFER_EFFECT: 'true'
+          INPUT_MAX_ATTEMPTS: '2'
+          INPUT_COMMENT_ON_PR: 'false'
+        run: python3 ci_retry_gate.py
+
+      - name: Verify decision is admitted
+        shell: bash
+        env:
+          DECISION: ${{ steps.gate.outputs.decision }}
+          EVIDENCE_STATUS: ${{ steps.gate.outputs.evidence-status }}
+          MUTATION_ADMITTED: ${{ steps.gate.outputs.mutation-admitted }}
+        run: |
+          test "$DECISION" = "ALLOW"
+          test "$EVIDENCE_STATUS" = "SUFFICIENT"
+          test "$MUTATION_ADMITTED" = "true"
+
+      - name: Persist canonical DER
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.gate.outputs.decision-record-artifact-name }}
+          path: |
+            ${{ steps.gate.outputs.decision-record-path }}
+            ${{ steps.gate.outputs.effect-plan-path }}
+          if-no-files-found: error
+
+      - id: meta
+        name: Bind one coordination record to the target run
+        shell: bash
+        run: |
+          echo "coordination-ref=refs/heads/ci-retry-gate-linearizable/${{ github.event.workflow_run.id }}" >> "$GITHUB_OUTPUT"
+          echo "base-sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Build durable execution bundle
+        shell: bash
+        env:
+          DECISION_RECORD_PATH: ${{ steps.gate.outputs.decision-record-path }}
+          EFFECT_PLAN_PATH: ${{ steps.gate.outputs.effect-plan-path }}
+          EBA_REQUEST_PATH: ${{ steps.gate.outputs.eba-request-path }}
+          EBA_ASSUMPTION_PATH: ${{ steps.gate.outputs.eba-assumption-path }}
+          EBA_AUTHORITY_PATH: ${{ steps.gate.outputs.eba-authority-path }}
+          EBA_DECISION_PATH: ${{ steps.gate.outputs.eba-decision-path }}
+          DECISION_RECORD_SHA256: ${{ steps.gate.outputs.decision-record-sha256 }}
+          EFFECT_PLAN_SHA256: ${{ steps.gate.outputs.effect-plan-sha256 }}
+          EBA_REQUEST_SHA256: ${{ steps.gate.outputs.eba-request-sha256 }}
+          EBA_ASSUMPTION_SHA256: ${{ steps.gate.outputs.eba-assumption-sha256 }}
+          EBA_AUTHORITY_SHA256: ${{ steps.gate.outputs.eba-authority-sha256 }}
+          EBA_DECISION_SHA256: ${{ steps.gate.outputs.eba-decision-sha256 }}
+          DECISION_RECORD_ARTIFACT_NAME: ${{ steps.gate.outputs.decision-record-artifact-name }}
+          DECISION_EXPERIENCE_JSON: ${{ steps.gate.outputs.decision-experience-json }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/linearizable-state"
+          python3 e2e/takeover_bundle_manifest.py write             --output "$RUNNER_TEMP/linearizable-state/manifest.json"             --bundle-dir "$RUNNER_TEMP/linearizable-state/bundle"
+
+      - name: Seed coordination ref
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 e2e/linearizable_lease_cli.py             --repository "${{ github.repository }}"             --ref "${{ steps.meta.outputs.coordination-ref }}"             seed             --base-sha "${{ steps.meta.outputs.base-sha }}"
+
+      - name: Persist durable execution bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: linearizable-lease-state-${{ github.event.workflow_run.id }}
+          path: ${{ runner.temp }}/linearizable-state
+          if-no-files-found: error
+
+  prepare-b:
+    name: Prepare claimant B sibling candidate
+    needs: seed
+    if: ${{ github.event.workflow_run.run_attempt == 1 }}
+    runs-on: ubuntu-latest
+    outputs:
+      candidate-sha: ${{ steps.prepare.outputs.candidate-sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: prepare
+        name: Create B candidate from exact base
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 e2e/linearizable_lease_cli.py             --repository "${{ github.repository }}"             --ref "${{ needs.seed.outputs.coordination-ref }}"             prepare             --base-sha "${{ needs.seed.outputs.base-sha }}"             --owner claimant-b             --epoch 2             --decision-sha "${{ needs.seed.outputs.decision-sha }}"             --plan-sha "${{ needs.seed.outputs.plan-sha }}"             --result "$RUNNER_TEMP/claimant-b-prepared.json"
+
+  prepare-c:
+    name: Prepare claimant C sibling candidate
+    needs: seed
+    if: ${{ github.event.workflow_run.run_attempt == 1 }}
+    runs-on: ubuntu-latest
+    outputs:
+      candidate-sha: ${{ steps.prepare.outputs.candidate-sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: prepare
+        name: Create C candidate from exact base
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 e2e/linearizable_lease_cli.py             --repository "${{ github.repository }}"             --ref "${{ needs.seed.outputs.coordination-ref }}"             prepare             --base-sha "${{ needs.seed.outputs.base-sha }}"             --owner claimant-c             --epoch 2             --decision-sha "${{ needs.seed.outputs.decision-sha }}"             --plan-sha "${{ needs.seed.outputs.plan-sha }}"             --result "$RUNNER_TEMP/claimant-c-prepared.json"
+
+  publish-b:
+    name: Claimant B CAS publishes sibling
+    needs: [seed, prepare-b, prepare-c]
+    if: ${{ github.event.workflow_run.run_attempt == 1 }}
+    runs-on: ubuntu-latest
+    outputs:
+      acquired: ${{ steps.publish.outputs.acquired }}
+      candidate-sha: ${{ steps.publish.outputs.candidate-sha }}
+      observed-sha: ${{ steps.publish.outputs.observed-sha }}
+      reason: ${{ steps.publish.outputs.reason }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: publish
+        name: Atomically publish B candidate
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 e2e/linearizable_lease_cli.py             --repository "${{ github.repository }}"             --ref "${{ needs.seed.outputs.coordination-ref }}"             publish             --base-sha "${{ needs.seed.outputs.base-sha }}"             --owner claimant-b             --candidate-sha "${{ needs.prepare-b.outputs.candidate-sha }}"             --result "$RUNNER_TEMP/claimant-b-cas.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linearizable-claim-b-${{ github.event.workflow_run.id }}
+          path: ${{ runner.temp }}/claimant-b-cas.json
+          if-no-files-found: error
+
+  publish-c:
+    name: Claimant C CAS publishes sibling
+    needs: [seed, prepare-b, prepare-c]
+    if: ${{ github.event.workflow_run.run_attempt == 1 }}
+    runs-on: ubuntu-latest
+    outputs:
+      acquired: ${{ steps.publish.outputs.acquired }}
+      candidate-sha: ${{ steps.publish.outputs.candidate-sha }}
+      observed-sha: ${{ steps.publish.outputs.observed-sha }}
+      reason: ${{ steps.publish.outputs.reason }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: publish
+        name: Atomically publish C candidate
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 e2e/linearizable_lease_cli.py             --repository "${{ github.repository }}"             --ref "${{ needs.seed.outputs.coordination-ref }}"             publish             --base-sha "${{ needs.seed.outputs.base-sha }}"             --owner claimant-c             --candidate-sha "${{ needs.prepare-c.outputs.candidate-sha }}"             --result "$RUNNER_TEMP/claimant-c-cas.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linearizable-claim-c-${{ github.event.workflow_run.id }}
+          path: ${{ runner.temp }}/claimant-c-cas.json
+          if-no-files-found: error
+
+  arbitrate:
+    name: Prove exactly one CAS winner
+    needs: [seed, prepare-b, prepare-c, publish-b, publish-c]
+    if: ${{ github.event.workflow_run.run_attempt == 1 }}
+    runs-on: ubuntu-latest
+    outputs:
+      coordination-ref: ${{ needs.seed.outputs.coordination-ref }}
+      winner-owner: ${{ steps.result.outputs.winner-owner }}
+      winner-token: ${{ steps.result.outputs.winner-token }}
+      loser-owner: ${{ steps.result.outputs.loser-owner }}
+      loser-token: ${{ steps.result.outputs.loser-token }}
+    steps:
+      - id: result
+        name: Assert one winner and one fenced sibling
+        shell: bash
+        env:
+          B_ACQUIRED: ${{ needs.publish-b.outputs.acquired }}
+          B_TOKEN: ${{ needs.publish-b.outputs.candidate-sha }}
+          B_OBSERVED: ${{ needs.publish-b.outputs.observed-sha }}
+          B_REASON: ${{ needs.publish-b.outputs.reason }}
+          C_ACQUIRED: ${{ needs.publish-c.outputs.acquired }}
+          C_TOKEN: ${{ needs.publish-c.outputs.candidate-sha }}
+          C_OBSERVED: ${{ needs.publish-c.outputs.observed-sha }}
+          C_REASON: ${{ needs.publish-c.outputs.reason }}
+          PREPARED_B: ${{ needs.prepare-b.outputs.candidate-sha }}
+          PREPARED_C: ${{ needs.prepare-c.outputs.candidate-sha }}
+        run: |
+          test -n "$PREPARED_B"
+          test -n "$PREPARED_C"
+          test "$PREPARED_B" != "$PREPARED_C"
+          test "$B_TOKEN" = "$PREPARED_B"
+          test "$C_TOKEN" = "$PREPARED_C"
+
+          if [ "$B_ACQUIRED" = "true" ] && [ "$C_ACQUIRED" = "false" ]; then
+            test "$B_REASON" = "CAS_ACQUIRED"
+            case "$C_REASON" in CAS_LOST:*) ;; *) echo "::error::C did not lose CAS: $C_REASON"; exit 1 ;; esac
+            test "$C_OBSERVED" = "$B_TOKEN"
+            echo "winner-owner=claimant-b" >> "$GITHUB_OUTPUT"
+            echo "winner-token=$B_TOKEN" >> "$GITHUB_OUTPUT"
+            echo "loser-owner=claimant-c" >> "$GITHUB_OUTPUT"
+            echo "loser-token=$C_TOKEN" >> "$GITHUB_OUTPUT"
+          elif [ "$C_ACQUIRED" = "true" ] && [ "$B_ACQUIRED" = "false" ]; then
+            test "$C_REASON" = "CAS_ACQUIRED"
+            case "$B_REASON" in CAS_LOST:*) ;; *) echo "::error::B did not lose CAS: $B_REASON"; exit 1 ;; esac
+            test "$B_OBSERVED" = "$C_TOKEN"
+            echo "winner-owner=claimant-c" >> "$GITHUB_OUTPUT"
+            echo "winner-token=$C_TOKEN" >> "$GITHUB_OUTPUT"
+            echo "loser-owner=claimant-b" >> "$GITHUB_OUTPUT"
+            echo "loser-token=$B_TOKEN" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::CAS must have exactly one winner: B=$B_ACQUIRED C=$C_ACQUIRED"
+            exit 1
+          fi
+
+  loser-fenced:
+    name: Losing claimant is fenced before target mutation
+    needs: [seed, arbitrate]
+    if: ${{ github.event.workflow_run.run_attempt == 1 }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: linearizable-lease-state-${{ github.event.workflow_run.id }}
+          path: ${{ runner.temp }}/linearizable-state
+
+      - name: Restore deferred-effect manifest
+        shell: bash
+        run: |
+          python3 e2e/takeover_bundle_manifest.py export             --manifest "$RUNNER_TEMP/linearizable-state/manifest.json"             --bundle-dir "$RUNNER_TEMP/linearizable-state/bundle"
+
+      - id: loser
+        name: Present losing fencing token at effect boundary
+        shell: bash
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          INPUT_EFFECT_PLAN_PATH: ${{ env.TAKEOVER_EFFECT_PLAN_PATH }}
+          INPUT_EFFECT_PLAN_SHA256: ${{ env.TAKEOVER_EFFECT_PLAN_SHA256 }}
+          INPUT_DECISION_RECORD_PATH: ${{ env.TAKEOVER_DECISION_RECORD_PATH }}
+          INPUT_DECISION_RECORD_SHA256: ${{ env.TAKEOVER_DECISION_RECORD_SHA256 }}
+          INPUT_EBA_REQUEST_PATH: ${{ env.TAKEOVER_EBA_REQUEST_PATH }}
+          INPUT_EBA_REQUEST_SHA256: ${{ env.TAKEOVER_EBA_REQUEST_SHA256 }}
+          INPUT_EBA_ASSUMPTION_PATH: ${{ env.TAKEOVER_EBA_ASSUMPTION_PATH }}
+          INPUT_EBA_ASSUMPTION_SHA256: ${{ env.TAKEOVER_EBA_ASSUMPTION_SHA256 }}
+          INPUT_EBA_AUTHORITY_PATH: ${{ env.TAKEOVER_EBA_AUTHORITY_PATH }}
+          INPUT_EBA_AUTHORITY_SHA256: ${{ env.TAKEOVER_EBA_AUTHORITY_SHA256 }}
+          INPUT_EBA_DECISION_PATH: ${{ env.TAKEOVER_EBA_DECISION_PATH }}
+          INPUT_EBA_DECISION_SHA256: ${{ env.TAKEOVER_EBA_DECISION_SHA256 }}
+          INPUT_EBA_RECEIPT_PATH: ${{ runner.temp }}/linearizable-loser.eba-receipt.json
+          INPUT_DECISION_EXPERIENCE_JSON: ${{ env.TAKEOVER_DECISION_EXPERIENCE_JSON }}
+          INPUT_LINEARIZABLE_COORDINATION_REF: ${{ needs.arbitrate.outputs.coordination-ref }}
+          INPUT_LINEARIZABLE_FENCING_TOKEN_SHA: ${{ needs.arbitrate.outputs.loser-token }}
+        run: python3 effect_executor.py
+
+      - name: Verify loser has no Effect authority
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.loser.outputs.effect-outcome }}
+          TRIGGERED: ${{ steps.loser.outputs.rerun-triggered }}
+          REASON: ${{ steps.loser.outputs.effect-reason }}
+          TOKEN: ${{ steps.loser.outputs.linearizable-fencing-token-sha }}
+        run: |
+          test "$OUTCOME" = "NOT_EXECUTED"
+          test "$TRIGGERED" = "false"
+          test "$TOKEN" = "${{ needs.arbitrate.outputs.loser-token }}"
+          case "$REASON" in
+            "LINEARIZABLE_FENCE_BLOCK: FENCING_TOKEN_STALE:"*) ;;
+            *) echo "::error::unexpected loser result: $REASON"; exit 1 ;;
+          esac
+
+      - name: Persist losing-token fencing proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: linearizable-loser-proof-${{ github.event.workflow_run.id }}
+          path: ${{ runner.temp }}/linearizable-loser.eba-receipt.json
+          if-no-files-found: error
+
+  winner-effect:
+    name: CAS winner executes exactly one effect
+    needs: [seed, arbitrate, loser-fenced]
+    if: ${{ github.event.workflow_run.run_attempt == 1 }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: linearizable-lease-state-${{ github.event.workflow_run.id }}
+          path: ${{ runner.temp }}/linearizable-state
+
+      - name: Restore deferred-effect manifest
+        shell: bash
+        run: |
+          python3 e2e/takeover_bundle_manifest.py export             --manifest "$RUNNER_TEMP/linearizable-state/manifest.json"             --bundle-dir "$RUNNER_TEMP/linearizable-state/bundle"
+
+      - id: winner
+        name: Present winning fencing token at effect boundary
+        shell: bash
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          INPUT_EFFECT_PLAN_PATH: ${{ env.TAKEOVER_EFFECT_PLAN_PATH }}
+          INPUT_EFFECT_PLAN_SHA256: ${{ env.TAKEOVER_EFFECT_PLAN_SHA256 }}
+          INPUT_DECISION_RECORD_PATH: ${{ env.TAKEOVER_DECISION_RECORD_PATH }}
+          INPUT_DECISION_RECORD_SHA256: ${{ env.TAKEOVER_DECISION_RECORD_SHA256 }}
+          INPUT_EBA_REQUEST_PATH: ${{ env.TAKEOVER_EBA_REQUEST_PATH }}
+          INPUT_EBA_REQUEST_SHA256: ${{ env.TAKEOVER_EBA_REQUEST_SHA256 }}
+          INPUT_EBA_ASSUMPTION_PATH: ${{ env.TAKEOVER_EBA_ASSUMPTION_PATH }}
+          INPUT_EBA_ASSUMPTION_SHA256: ${{ env.TAKEOVER_EBA_ASSUMPTION_SHA256 }}
+          INPUT_EBA_AUTHORITY_PATH: ${{ env.TAKEOVER_EBA_AUTHORITY_PATH }}
+          INPUT_EBA_AUTHORITY_SHA256: ${{ env.TAKEOVER_EBA_AUTHORITY_SHA256 }}
+          INPUT_EBA_DECISION_PATH: ${{ env.TAKEOVER_EBA_DECISION_PATH }}
+          INPUT_EBA_DECISION_SHA256: ${{ env.TAKEOVER_EBA_DECISION_SHA256 }}
+          INPUT_EBA_RECEIPT_PATH: ${{ runner.temp }}/linearizable-winner.eba-receipt.json
+          INPUT_DECISION_EXPERIENCE_JSON: ${{ env.TAKEOVER_DECISION_EXPERIENCE_JSON }}
+          INPUT_LINEARIZABLE_COORDINATION_REF: ${{ needs.arbitrate.outputs.coordination-ref }}
+          INPUT_LINEARIZABLE_FENCING_TOKEN_SHA: ${{ needs.arbitrate.outputs.winner-token }}
+        run: python3 effect_executor.py
+
+      - name: Verify only CAS winner executed
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.winner.outputs.effect-outcome }}
+          TRIGGERED: ${{ steps.winner.outputs.rerun-triggered }}
+          TOKEN: ${{ steps.winner.outputs.linearizable-fencing-token-sha }}
+        run: |
+          test "$OUTCOME" = "SUCCEEDED"
+          test "$TRIGGERED" = "true"
+          test "$TOKEN" = "${{ needs.arbitrate.outputs.winner-token }}"
+
+      - name: Persist authoritative winning receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.TAKEOVER_DECISION_RECORD_ARTIFACT_NAME }}-receipt
+          path: ${{ runner.temp }}/linearizable-winner.eba-receipt.json
+          if-no-files-found: error
+
+  reconcile:
+    name: Reconcile single-winner CAS result
+    if: ${{ github.event.workflow_run.run_attempt == 2 && github.event.workflow_run.repository.full_name == github.repository && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: reconcile
+        uses: ./
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ github.event.workflow_run.id }}
+          repository: ${{ github.repository }}
+          auto-rerun: 'false'
+          selective-rerun: 'false'
+          history-runs: '1'
+
+      - name: Verify exactly one linearizable effect is attributable
+        shell: bash
+        env:
+          STATUS: ${{ steps.reconcile.outputs.previous-reconciliation-status }}
+        run: test "$STATUS" = "RECOVERED_AFTER_RERUN"
+
+      - name: Delete coordination ref after closed reconciliation
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 e2e/linearizable_lease_cli.py             --repository "${{ github.repository }}"             --ref "refs/heads/ci-retry-gate-linearizable/${{ github.event.workflow_run.id }}"             delete
+
+  reject-extra-attempts:
+    name: Reject extra linearizable lease attempts
+    if: ${{ github.event.workflow_run.run_attempt > 2 }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: exit 1
