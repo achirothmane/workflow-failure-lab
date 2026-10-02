@@ -22,6 +22,7 @@ from execution_lease import (
     read_execution_lease,
     verify_effect_ownership,
 )
+from linearizable_lease import LinearizableLeaseError, verify_fencing_token
 from eba_integration_contract import (
     ASSUMPTION_KIND,
     AUTHORITY_KIND,
@@ -134,6 +135,8 @@ def main() -> int:
     effect_reason = "MUTATION_NOT_ADMITTED"
     admitted_at: str | None = None
 
+    api = GitHubAPI(token, os.environ.get("GITHUB_API_URL", "https://api.github.com"))
+
     lease = None
     lease_block_reason: str | None = None
     lease_path = str(os.environ.get("INPUT_EXECUTION_LEASE_PATH") or "").strip()
@@ -165,13 +168,42 @@ def main() -> int:
             except ExecutionLeaseError as exc:
                 lease_block_reason = f"EXECUTION_LEASE_BLOCK: {redact(str(exc))}"
 
+    coordination_ref = str(
+        os.environ.get("INPUT_LINEARIZABLE_COORDINATION_REF") or ""
+    ).strip()
+    fencing_token_sha = str(
+        os.environ.get("INPUT_LINEARIZABLE_FENCING_TOKEN_SHA") or ""
+    ).strip()
+    linearizable_guard_requested = bool(coordination_ref or fencing_token_sha)
+    linearizable_block_reason: str | None = None
+
+    if linearizable_guard_requested:
+        if not coordination_ref or not fencing_token_sha:
+            linearizable_block_reason = (
+                "LINEARIZABLE_FENCE_BLOCK: coordination ref and fencing token "
+                "must be supplied together"
+            )
+        else:
+            try:
+                verify_fencing_token(
+                    api,
+                    repo,
+                    coordination_ref=coordination_ref,
+                    fencing_token_sha=fencing_token_sha,
+                )
+            except (LinearizableLeaseError, RuntimeError) as exc:
+                linearizable_block_reason = (
+                    f"LINEARIZABLE_FENCE_BLOCK: {redact(str(exc))}"
+                )
+
     if mutation_admitted:
-        if lease_block_reason is not None:
+        if linearizable_block_reason is not None:
+            effect_reason = linearizable_block_reason
+        elif lease_block_reason is not None:
             effect_reason = lease_block_reason
         elif decision_record.get("decision") != "ALLOW":
             effect_reason = "DECISION_RECORD_NOT_ALLOW"
         else:
-            api = GitHubAPI(token, os.environ.get("GITHUB_API_URL", "https://api.github.com"))
             evidence_decision = {
                 "scope": dict(plan["scope"]),
             }
@@ -240,6 +272,12 @@ def main() -> int:
     _write_output("rerun-triggered", "true" if rerun_triggered else "false")
     _write_output("effect-outcome", receipt_outcome)
     _write_output("effect-reason", effect_reason)
+    _write_output(
+        "linearizable-fence-enforced",
+        "true" if linearizable_guard_requested else "false",
+    )
+    _write_output("linearizable-coordination-ref", coordination_ref)
+    _write_output("linearizable-fencing-token-sha", fencing_token_sha)
     _write_output("execution-lease-enforced", "true" if lease_guard_requested else "false")
     _write_output(
         "execution-lease-owner",
