@@ -1332,7 +1332,7 @@ def _write_output(name: str, value: str) -> None:
             handle.write(f"{name}={value}\n")
 
 
-def render_report(repo: str, run_id: int, run_attempt: int, assessments: list[JobAssessment], safe: bool, reason: str, rerun_triggered: bool, recovered: dict[int, str] | None = None, historical: dict | None = None, recurrent: dict[int, str] | None = None, decision_experience: dict | None = None) -> str:
+def render_report(repo: str, run_id: int, run_attempt: int, assessments: list[JobAssessment], safe: bool, reason: str, rerun_triggered: bool, recovered: dict[int, str] | None = None, historical: dict | None = None, recurrent: dict[int, str] | None = None, decision_experience: dict | None = None, effect_deferred: bool = False, mutation_admitted: bool = False) -> str:
     wasted = round(sum(item.duration_minutes for item in assessments), 2)
     lines = [
         "<!-- ci-retry-gate-report -->",
@@ -1415,7 +1415,13 @@ def render_report(repo: str, run_id: int, run_attempt: int, assessments: list[Jo
             lines.append("Side-effect signals:")
             for evidence in item.side_effect_evidence:
                 lines.append(f"- `{evidence.replace('`', "'")}`")
-    lines.extend(["", f"Automatic rerun triggered: **{'yes' if rerun_triggered else 'no'}**"])
+    if effect_deferred and mutation_admitted:
+        lines.extend([
+            "",
+            "Automatic rerun: **pending durable audit upload and effect revalidation**",
+        ])
+    else:
+        lines.extend(["", f"Automatic rerun triggered: **{'yes' if rerun_triggered else 'no'}**"])
     return "\n".join(lines) + "\n"
 
 
@@ -2096,6 +2102,8 @@ def main() -> int:
         historical,
         recurrent,
         decision_experience,
+        effect_deferred=defer_effect,
+        mutation_admitted=mutation_admitted,
     )
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
