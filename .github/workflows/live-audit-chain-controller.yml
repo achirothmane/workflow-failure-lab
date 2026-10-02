@@ -1,0 +1,67 @@
+name: Live Audit Chain Controller
+
+on:
+  workflow_run:
+    workflows: ["Live Audit Chain Fixture"]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: write
+  checks: read
+
+jobs:
+  govern-and-reconcile:
+    name: Govern and reconcile fixture attempt
+    if: ${{ github.event.workflow_run.repository.full_name == github.repository && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: gate
+        name: Run CI Retry Gate against completed fixture attempt
+        uses: ./
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ github.event.workflow_run.id }}
+          repository: ${{ github.repository }}
+          max-attempts: '2'
+          history-runs: '1'
+          comment-on-pr: 'false'
+          selective-rerun: 'false'
+          auto-rerun: ${{ github.event.workflow_run.run_attempt == 1 && 'true' || 'false' }}
+
+      - name: Verify attempt-1 durable decision and admitted effect
+        if: ${{ github.event.workflow_run.run_attempt == 1 }}
+        shell: bash
+        env:
+          DECISION: ${{ steps.gate.outputs.decision }}
+          EVIDENCE_STATUS: ${{ steps.gate.outputs.evidence-status }}
+          DER_SHA256: ${{ steps.gate.outputs.decision-record-sha256 }}
+          EFFECT_OUTCOME: ${{ steps.gate.outputs.effect-outcome }}
+          RERUN_TRIGGERED: ${{ steps.gate.outputs.rerun-triggered }}
+        run: |
+          test "$DECISION" = "ALLOW"
+          test "$EVIDENCE_STATUS" = "SUFFICIENT"
+          test -n "$DER_SHA256"
+          test "$EFFECT_OUTCOME" = "SUCCEEDED"
+          test "$RERUN_TRIGGERED" = "true"
+
+      - name: Verify attempt-2 outcome and reconciliation
+        if: ${{ github.event.workflow_run.run_attempt == 2 }}
+        shell: bash
+        env:
+          STATUS: ${{ steps.gate.outputs.previous-reconciliation-status }}
+          OUTCOME_PATH: ${{ steps.gate.outputs.outcome-record-path }}
+          RECONCILIATION_PATH: ${{ steps.gate.outputs.reconciliation-record-path }}
+        run: |
+          test "$STATUS" = "RECOVERED_AFTER_RERUN"
+          test -n "$OUTCOME_PATH"
+          test -n "$RECONCILIATION_PATH"
+
+      - name: Reject unexpected extra attempts
+        if: ${{ github.event.workflow_run.run_attempt > 2 }}
+        shell: bash
+        run: |
+          echo "::error::live audit-chain fixture exceeded the two-attempt contract"
+          exit 1
