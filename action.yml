@@ -183,6 +183,15 @@ outputs:
   authorization-path:
     description: 'Authority path recorded for the decision, currently POLICY for production decisions.'
     value: ${{ steps.gate.outputs.authorization-path }}
+  outcome-record-path:
+    description: 'Filesystem path to the immutable OutcomeRecord when a verified prior decision is observed in the next attempt.'
+    value: ${{ steps.gate.outputs.outcome-record-path }}
+  reconciliation-record-path:
+    description: 'Filesystem path to the immutable ReconciliationRecord for a verified prior decision/outcome pair.'
+    value: ${{ steps.gate.outputs.reconciliation-record-path }}
+  previous-reconciliation-status:
+    description: 'Observed reconciliation status for the verified previous attempt, or empty when no trustworthy parent chain is available.'
+    value: ${{ steps.gate.outputs.previous-reconciliation-status }}
   eba-request-json:
     description: 'Evidence-before-Action v0.1 ActionRequest bound to the exact CI rerun subject.'
     value: ${{ steps.gate.outputs.eba-request-json }}
@@ -726,7 +735,11 @@ runs:
       uses: actions/upload-artifact@v4
       with:
         name: ${{ steps.gate.outputs.decision-record-artifact-name }}
-        path: ${{ steps.gate.outputs.decision-record-path }}
+        path: |
+          ${{ steps.gate.outputs.decision-record-path }}
+          ${{ steps.gate.outputs.eba-receipt-path }}
+          ${{ steps.gate.outputs.outcome-record-path }}
+          ${{ steps.gate.outputs.reconciliation-record-path }}
         if-no-files-found: error
 
     - id: selective
