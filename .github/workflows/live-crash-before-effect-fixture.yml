@@ -1,0 +1,32 @@
+name: Live Crash Before Effect Fixture
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/live-crash-before-effect-fixture.yml'
+      - '.github/workflows/live-crash-window-controller.yml'
+      - 'e2e/fault_injected_effect_executor.py'
+      - 'e2e/wait_for_run_attempt.py'
+      - 'tests/test_live_crash_window_workflows.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  transient:
+    name: Crash-before transient probe
+    runs-on: ubuntu-latest
+    steps:
+      - name: Emit one bounded transient failure
+        shell: bash
+        run: |
+          echo "fixture run_id=${GITHUB_RUN_ID} attempt=${GITHUB_RUN_ATTEMPT}"
+          if [ "${GITHUB_RUN_ATTEMPT}" = "1" ]; then
+            echo "curl: (6) Could not resolve host: crash-before.invalid"
+            exit 1
+          fi
+
+          sleep 15
+          echo "crash-before fixture recovered on attempt ${GITHUB_RUN_ATTEMPT}"
