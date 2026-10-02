@@ -340,6 +340,10 @@ def test_attestation_set_discovery_uses_repo_api_then_offline_verification(
     tmp_path: Path,
     monkeypatch,
 ):
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.setenv("INPUT_GITHUB_TOKEN", "effect-token")
+
     anchor = _anchor()
     anchor_path = tmp_path / "anchor.json"
     write_root_anchor(anchor_path, anchor)
@@ -349,6 +353,7 @@ def test_attestation_set_discovery_uses_repo_api_then_offline_verification(
 
     def fake_run(command, **kwargs):
         calls.append(list(command))
+        assert kwargs["env"]["GH_TOKEN"] == "effect-token"
         if command[:2] == ["gh", "api"]:
             assert "/attestations/sha256:" in command[-1]
             assert "per_page=100" in command[-1]
