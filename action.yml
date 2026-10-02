@@ -133,8 +133,8 @@ outputs:
     description: 'Human-readable explanation for the ALLOW/BLOCK decision.'
     value: ${{ steps.gate.outputs.reason }}
   decision-experience-json:
-    description: 'Descriptive-only v1 decision/value artifact with next action and evidence-bounded runtime metrics.'
-    value: ${{ steps.gate.outputs.decision-experience-json }}
+    description: 'Descriptive-only v1 decision/value artifact with next action and final effect outcome.'
+    value: ${{ steps.effect.outputs.decision-experience-json }}
   next-action:
     description: 'Deterministic operator next action such as RERUN_ALLOWED, COLLECT_MORE_EVIDENCE, or INVESTIGATE_REGRESSION.'
     value: ${{ steps.gate.outputs.next-action }}
@@ -217,17 +217,23 @@ outputs:
     description: 'SHA-256 digest of the canonical EBA Decision artifact.'
     value: ${{ steps.gate.outputs.eba-decision-sha256 }}
   eba-receipt-json:
-    description: 'Evidence-before-Action v0.1 ExecutionReceipt; SUCCEEDED means rerun dispatch was accepted, not that the later CI rerun passed.'
-    value: ${{ steps.gate.outputs.eba-receipt-json }}
+    description: 'Evidence-before-Action v0.1 ExecutionReceipt produced after durable decision upload; SUCCEEDED means rerun dispatch was accepted, not that the later CI rerun passed.'
+    value: ${{ steps.effect.outputs.eba-receipt-json }}
   eba-receipt-sha256:
-    description: 'SHA-256 digest of the canonical EBA ExecutionReceipt artifact.'
-    value: ${{ steps.gate.outputs.eba-receipt-sha256 }}
+    description: 'SHA-256 digest of the final canonical EBA ExecutionReceipt artifact.'
+    value: ${{ steps.effect.outputs.eba-receipt-sha256 }}
   safe-to-rerun:
     description: 'true only when every failed job is a high-confidence transient failure and no side-effect signal is present.'
     value: ${{ steps.gate.outputs.safe-to-rerun }}
   rerun-triggered:
-    description: 'true when legacy auto-rerun was enabled and a rerun was triggered.'
-    value: ${{ steps.gate.outputs.rerun-triggered }}
+    description: 'true only when the deferred effect boundary confirmed GitHub accepted the rerun dispatch.'
+    value: ${{ steps.effect.outputs.rerun-triggered }}
+  effect-outcome:
+    description: 'Final deferred effect outcome: SUCCEEDED, NOT_EXECUTED, or UNKNOWN.'
+    value: ${{ steps.effect.outputs.effect-outcome }}
+  effect-reason:
+    description: 'Reason associated with the final deferred effect outcome.'
+    value: ${{ steps.effect.outputs.effect-reason }}
   failed-jobs:
     description: 'Number of failed jobs assessed in the current run.'
     value: ${{ steps.gate.outputs.failed-jobs }}
@@ -726,20 +732,51 @@ runs:
         INPUT_RUN_ATTEMPT: ${{ inputs.run-attempt }}
         INPUT_REPOSITORY: ${{ inputs.repository }}
         INPUT_AUTO_RERUN: ${{ inputs.auto-rerun }}
+        INPUT_DEFER_EFFECT: 'true'
         INPUT_MAX_ATTEMPTS: ${{ inputs.max-attempts }}
         INPUT_COMMENT_ON_PR: ${{ inputs.comment-on-pr }}
       run: python3 "$GITHUB_ACTION_PATH/ci_retry_gate.py"
 
-    - name: Upload decision audit trail
+    - name: Upload pre-effect decision audit trail
       if: ${{ always() && steps.gate.outputs.decision-record-path != '' }}
       uses: actions/upload-artifact@v4
       with:
         name: ${{ steps.gate.outputs.decision-record-artifact-name }}
         path: |
           ${{ steps.gate.outputs.decision-record-path }}
-          ${{ steps.gate.outputs.eba-receipt-path }}
+          ${{ steps.gate.outputs.effect-plan-path }}
           ${{ steps.gate.outputs.outcome-record-path }}
           ${{ steps.gate.outputs.reconciliation-record-path }}
+        if-no-files-found: error
+
+    - id: effect
+      name: Execute admitted rerun after durable audit upload
+      if: ${{ success() && steps.gate.outputs.effect-plan-path != '' }}
+      shell: bash
+      env:
+        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
+        INPUT_EFFECT_PLAN_PATH: ${{ steps.gate.outputs.effect-plan-path }}
+        INPUT_EFFECT_PLAN_SHA256: ${{ steps.gate.outputs.effect-plan-sha256 }}
+        INPUT_DECISION_RECORD_PATH: ${{ steps.gate.outputs.decision-record-path }}
+        INPUT_DECISION_RECORD_SHA256: ${{ steps.gate.outputs.decision-record-sha256 }}
+        INPUT_EBA_REQUEST_PATH: ${{ steps.gate.outputs.eba-request-path }}
+        INPUT_EBA_REQUEST_SHA256: ${{ steps.gate.outputs.eba-request-sha256 }}
+        INPUT_EBA_ASSUMPTION_PATH: ${{ steps.gate.outputs.eba-assumption-path }}
+        INPUT_EBA_ASSUMPTION_SHA256: ${{ steps.gate.outputs.eba-assumption-sha256 }}
+        INPUT_EBA_AUTHORITY_PATH: ${{ steps.gate.outputs.eba-authority-path }}
+        INPUT_EBA_AUTHORITY_SHA256: ${{ steps.gate.outputs.eba-authority-sha256 }}
+        INPUT_EBA_DECISION_PATH: ${{ steps.gate.outputs.eba-decision-path }}
+        INPUT_EBA_DECISION_SHA256: ${{ steps.gate.outputs.eba-decision-sha256 }}
+        INPUT_EBA_RECEIPT_PATH: ${{ steps.gate.outputs.eba-receipt-path }}
+        INPUT_DECISION_EXPERIENCE_JSON: ${{ steps.gate.outputs.decision-experience-json }}
+      run: python3 "$GITHUB_ACTION_PATH/effect_executor.py"
+
+    - name: Upload execution receipt
+      if: ${{ always() && steps.effect.outputs.eba-receipt-path != '' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.gate.outputs.decision-record-artifact-name }}-receipt
+        path: ${{ steps.effect.outputs.eba-receipt-path }}
         if-no-files-found: error
 
     - id: selective
