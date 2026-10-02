@@ -1,0 +1,409 @@
+name: Live Lease Contention Controller
+
+on:
+  workflow_run:
+    workflows: ["Live Lease Contention Fixture"]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: write
+  checks: read
+
+jobs:
+  owner-a:
+    name: Owner A persists epoch 1 then exits
+    if: ${{ github.event.workflow_run.run_attempt == 1 && github.event.workflow_run.repository.full_name == github.repository && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: gate
+        name: Build deferred admitted decision
+        shell: bash
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          INPUT_RUN_ID: ${{ github.event.workflow_run.id }}
+          INPUT_REPOSITORY: ${{ github.repository }}
+          INPUT_AUTO_RERUN: 'true'
+          INPUT_DEFER_EFFECT: 'true'
+          INPUT_MAX_ATTEMPTS: '2'
+          INPUT_COMMENT_ON_PR: 'false'
+        run: python3 ci_retry_gate.py
+
+      - name: Verify decision is admitted
+        shell: bash
+        env:
+          DECISION: ${{ steps.gate.outputs.decision }}
+          EVIDENCE_STATUS: ${{ steps.gate.outputs.evidence-status }}
+          MUTATION_ADMITTED: ${{ steps.gate.outputs.mutation-admitted }}
+        run: |
+          test "$DECISION" = "ALLOW"
+          test "$EVIDENCE_STATUS" = "SUFFICIENT"
+          test "$MUTATION_ADMITTED" = "true"
+
+      - name: Persist canonical DER
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.gate.outputs.decision-record-artifact-name }}
+          path: |
+            ${{ steps.gate.outputs.decision-record-path }}
+            ${{ steps.gate.outputs.effect-plan-path }}
+          if-no-files-found: error
+
+      - id: lease-a
+        name: Owner A acquires epoch 1
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/contention-state/leases"
+          python3 e2e/execution_lease_cli.py initial             --owner owner-a             --decision-sha "${{ steps.gate.outputs.decision-record-sha256 }}"             --plan-sha "${{ steps.gate.outputs.effect-plan-sha256 }}"             --repository "${{ github.repository }}"             --run-id "${{ github.event.workflow_run.id }}"             --ttl 8             --output "$RUNNER_TEMP/contention-state/leases/a.execution-lease.json"
+
+      - name: Build durable contention bundle
+        shell: bash
+        env:
+          DECISION_RECORD_PATH: ${{ steps.gate.outputs.decision-record-path }}
+          EFFECT_PLAN_PATH: ${{ steps.gate.outputs.effect-plan-path }}
+          EBA_REQUEST_PATH: ${{ steps.gate.outputs.eba-request-path }}
+          EBA_ASSUMPTION_PATH: ${{ steps.gate.outputs.eba-assumption-path }}
+          EBA_AUTHORITY_PATH: ${{ steps.gate.outputs.eba-authority-path }}
+          EBA_DECISION_PATH: ${{ steps.gate.outputs.eba-decision-path }}
+          DECISION_RECORD_SHA256: ${{ steps.gate.outputs.decision-record-sha256 }}
+          EFFECT_PLAN_SHA256: ${{ steps.gate.outputs.effect-plan-sha256 }}
+          EBA_REQUEST_SHA256: ${{ steps.gate.outputs.eba-request-sha256 }}
+          EBA_ASSUMPTION_SHA256: ${{ steps.gate.outputs.eba-assumption-sha256 }}
+          EBA_AUTHORITY_SHA256: ${{ steps.gate.outputs.eba-authority-sha256 }}
+          EBA_DECISION_SHA256: ${{ steps.gate.outputs.eba-decision-sha256 }}
+          DECISION_RECORD_ARTIFACT_NAME: ${{ steps.gate.outputs.decision-record-artifact-name }}
+          DECISION_EXPERIENCE_JSON: ${{ steps.gate.outputs.decision-experience-json }}
+        run: |
+          python3 e2e/takeover_bundle_manifest.py write             --output "$RUNNER_TEMP/contention-state/manifest.json"             --bundle-dir "$RUNNER_TEMP/contention-state/bundle"
+
+      - name: Persist owner A state
+        uses: actions/upload-artifact@v4
+        with:
+          name: lease-contention-state-${{ github.event.workflow_run.id }}
+          path: ${{ runner.temp }}/contention-state
+          if-no-files-found: error
+
+  claimant-b:
+    name: Claimant B independently claims epoch 2
+    needs: owner-a
+    if: ${{ github.event.workflow_run.run_attempt == 1 }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: lease-contention-state-${{ github.event.workflow_run.id }}
+          path: ${{ runner.temp }}/contention-state
+
+      - id: lease-b
+        name: Build contender B from epoch 1
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/claim-b"
+          python3 e2e/execution_lease_cli.py takeover             --previous "$RUNNER_TEMP/contention-state/leases/a.execution-lease.json"             --owner claimant-b             --ttl 30             --wait             --output "$RUNNER_TEMP/claim-b/b.execution-lease.json"
+
+      - name: Verify claimant B got epoch 2
+        shell: bash
+        env:
+          OWNER: ${{ steps.lease-b.outputs.lease-owner }}
+          EPOCH: ${{ steps.lease-b.outputs.lease-epoch }}
+        run: |
+          test "$OWNER" = "claimant-b"
+          test "$EPOCH" = "2"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lease-contention-claim-b-${{ github.event.workflow_run.id }}
+          path: ${{ runner.temp }}/claim-b/b.execution-lease.json
+          if-no-files-found: error
+
+  claimant-c:
+    name: Claimant C independently claims epoch 2
+    needs: owner-a
+    if: ${{ github.event.workflow_run.run_attempt == 1 }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: lease-contention-state-${{ github.event.workflow_run.id }}
+          path: ${{ runner.temp }}/contention-state
+
+      - id: lease-c
+        name: Build contender C from epoch 1
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/claim-c"
+          python3 e2e/execution_lease_cli.py takeover             --previous "$RUNNER_TEMP/contention-state/leases/a.execution-lease.json"             --owner claimant-c             --ttl 30             --wait             --output "$RUNNER_TEMP/claim-c/c.execution-lease.json"
+
+      - name: Verify claimant C got epoch 2
+        shell: bash
+        env:
+          OWNER: ${{ steps.lease-c.outputs.lease-owner }}
+          EPOCH: ${{ steps.lease-c.outputs.lease-epoch }}
+        run: |
+          test "$OWNER" = "claimant-c"
+          test "$EPOCH" = "2"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lease-contention-claim-c-${{ github.event.workflow_run.id }}
+          path: ${{ runner.temp }}/claim-c/c.execution-lease.json
+          if-no-files-found: error
+
+  contention-fence:
+    name: Same-epoch contention fences both claimants
+    needs: [claimant-b, claimant-c]
+    if: ${{ github.event.workflow_run.run_attempt == 1 }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: lease-contention-state-${{ github.event.workflow_run.id }}
+          path: ${{ runner.temp }}/contention-state
+      - uses: actions/download-artifact@v4
+        with:
+          name: lease-contention-claim-b-${{ github.event.workflow_run.id }}
+          path: ${{ runner.temp }}/claim-b
+      - uses: actions/download-artifact@v4
+        with:
+          name: lease-contention-claim-c-${{ github.event.workflow_run.id }}
+          path: ${{ runner.temp }}/claim-c
+
+      - name: Restore bundle and conflicting registry
+        shell: bash
+        run: |
+          python3 e2e/takeover_bundle_manifest.py export             --manifest "$RUNNER_TEMP/contention-state/manifest.json"             --bundle-dir "$RUNNER_TEMP/contention-state/bundle"
+          mkdir -p "$RUNNER_TEMP/lease-registry"
+          cp "$RUNNER_TEMP/contention-state/leases/a.execution-lease.json" "$RUNNER_TEMP/lease-registry/"
+          cp "$RUNNER_TEMP/claim-b/b.execution-lease.json" "$RUNNER_TEMP/lease-registry/"
+          cp "$RUNNER_TEMP/claim-c/c.execution-lease.json" "$RUNNER_TEMP/lease-registry/"
+
+      - name: Verify epoch 2 contenders are distinct and still active
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from datetime import datetime, timezone
+          from execution_lease import lease_digest, read_execution_lease
+
+          b = read_execution_lease("$RUNNER_TEMP/claim-b/b.execution-lease.json")
+          c = read_execution_lease("$RUNNER_TEMP/claim-c/c.execution-lease.json")
+          assert b["epoch"] == c["epoch"] == 2
+          assert b["owner_id"] != c["owner_id"]
+          assert lease_digest(b) != lease_digest(c)
+          now = datetime.now(timezone.utc)
+          for lease in (b, c):
+              expiry = datetime.fromisoformat(lease["expires_at"].replace("Z", "+00:00"))
+              assert now < expiry, f"{lease['owner_id']} expired before contention proof"
+          print("active same-epoch contention confirmed")
+          PY
+
+      - id: b-attempt
+        name: Claimant B attempts effect under conflicted epoch
+        shell: bash
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          INPUT_EFFECT_PLAN_PATH: ${{ env.TAKEOVER_EFFECT_PLAN_PATH }}
+          INPUT_EFFECT_PLAN_SHA256: ${{ env.TAKEOVER_EFFECT_PLAN_SHA256 }}
+          INPUT_DECISION_RECORD_PATH: ${{ env.TAKEOVER_DECISION_RECORD_PATH }}
+          INPUT_DECISION_RECORD_SHA256: ${{ env.TAKEOVER_DECISION_RECORD_SHA256 }}
+          INPUT_EBA_REQUEST_PATH: ${{ env.TAKEOVER_EBA_REQUEST_PATH }}
+          INPUT_EBA_REQUEST_SHA256: ${{ env.TAKEOVER_EBA_REQUEST_SHA256 }}
+          INPUT_EBA_ASSUMPTION_PATH: ${{ env.TAKEOVER_EBA_ASSUMPTION_PATH }}
+          INPUT_EBA_ASSUMPTION_SHA256: ${{ env.TAKEOVER_EBA_ASSUMPTION_SHA256 }}
+          INPUT_EBA_AUTHORITY_PATH: ${{ env.TAKEOVER_EBA_AUTHORITY_PATH }}
+          INPUT_EBA_AUTHORITY_SHA256: ${{ env.TAKEOVER_EBA_AUTHORITY_SHA256 }}
+          INPUT_EBA_DECISION_PATH: ${{ env.TAKEOVER_EBA_DECISION_PATH }}
+          INPUT_EBA_DECISION_SHA256: ${{ env.TAKEOVER_EBA_DECISION_SHA256 }}
+          INPUT_EBA_RECEIPT_PATH: ${{ runner.temp }}/claimant-b-conflict.eba-receipt.json
+          INPUT_DECISION_EXPERIENCE_JSON: ${{ env.TAKEOVER_DECISION_EXPERIENCE_JSON }}
+          INPUT_EXECUTION_LEASE_PATH: ${{ runner.temp }}/claim-b/b.execution-lease.json
+          INPUT_EXECUTION_LEASE_REGISTRY_DIR: ${{ runner.temp }}/lease-registry
+          INPUT_EXECUTOR_ID: claimant-b
+        run: python3 effect_executor.py
+
+      - id: c-attempt
+        name: Claimant C attempts effect under conflicted epoch
+        shell: bash
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          INPUT_EFFECT_PLAN_PATH: ${{ env.TAKEOVER_EFFECT_PLAN_PATH }}
+          INPUT_EFFECT_PLAN_SHA256: ${{ env.TAKEOVER_EFFECT_PLAN_SHA256 }}
+          INPUT_DECISION_RECORD_PATH: ${{ env.TAKEOVER_DECISION_RECORD_PATH }}
+          INPUT_DECISION_RECORD_SHA256: ${{ env.TAKEOVER_DECISION_RECORD_SHA256 }}
+          INPUT_EBA_REQUEST_PATH: ${{ env.TAKEOVER_EBA_REQUEST_PATH }}
+          INPUT_EBA_REQUEST_SHA256: ${{ env.TAKEOVER_EBA_REQUEST_SHA256 }}
+          INPUT_EBA_ASSUMPTION_PATH: ${{ env.TAKEOVER_EBA_ASSUMPTION_PATH }}
+          INPUT_EBA_ASSUMPTION_SHA256: ${{ env.TAKEOVER_EBA_ASSUMPTION_SHA256 }}
+          INPUT_EBA_AUTHORITY_PATH: ${{ env.TAKEOVER_EBA_AUTHORITY_PATH }}
+          INPUT_EBA_AUTHORITY_SHA256: ${{ env.TAKEOVER_EBA_AUTHORITY_SHA256 }}
+          INPUT_EBA_DECISION_PATH: ${{ env.TAKEOVER_EBA_DECISION_PATH }}
+          INPUT_EBA_DECISION_SHA256: ${{ env.TAKEOVER_EBA_DECISION_SHA256 }}
+          INPUT_EBA_RECEIPT_PATH: ${{ runner.temp }}/claimant-c-conflict.eba-receipt.json
+          INPUT_DECISION_EXPERIENCE_JSON: ${{ env.TAKEOVER_DECISION_EXPERIENCE_JSON }}
+          INPUT_EXECUTION_LEASE_PATH: ${{ runner.temp }}/claim-c/c.execution-lease.json
+          INPUT_EXECUTION_LEASE_REGISTRY_DIR: ${{ runner.temp }}/lease-registry
+          INPUT_EXECUTOR_ID: claimant-c
+        run: python3 effect_executor.py
+
+      - name: Verify both contenders lost effect authority
+        shell: bash
+        env:
+          B_OUTCOME: ${{ steps.b-attempt.outputs.effect-outcome }}
+          B_TRIGGERED: ${{ steps.b-attempt.outputs.rerun-triggered }}
+          B_REASON: ${{ steps.b-attempt.outputs.effect-reason }}
+          C_OUTCOME: ${{ steps.c-attempt.outputs.effect-outcome }}
+          C_TRIGGERED: ${{ steps.c-attempt.outputs.rerun-triggered }}
+          C_REASON: ${{ steps.c-attempt.outputs.effect-reason }}
+        run: |
+          test "$B_OUTCOME" = "NOT_EXECUTED"
+          test "$B_TRIGGERED" = "false"
+          test "$C_OUTCOME" = "NOT_EXECUTED"
+          test "$C_TRIGGERED" = "false"
+          case "$B_REASON" in
+            "EXECUTION_LEASE_BLOCK: LEASE_EPOCH_CONFLICT:"*) ;;
+            *) echo "::error::unexpected B reason: $B_REASON"; exit 1 ;;
+          esac
+          case "$C_REASON" in
+            "EXECUTION_LEASE_BLOCK: LEASE_EPOCH_CONFLICT:"*) ;;
+            *) echo "::error::unexpected C reason: $C_REASON"; exit 1 ;;
+          esac
+
+      - name: Persist conflict evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: lease-contention-proof-${{ github.event.workflow_run.id }}
+          path: |
+            ${{ runner.temp }}/claimant-b-conflict.eba-receipt.json
+            ${{ runner.temp }}/claimant-c-conflict.eba-receipt.json
+          if-no-files-found: error
+
+  resolver-d:
+    name: Resolver D advances only after all epoch 2 claims expire
+    needs: contention-fence
+    if: ${{ github.event.workflow_run.run_attempt == 1 }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: lease-contention-state-${{ github.event.workflow_run.id }}
+          path: ${{ runner.temp }}/contention-state
+      - uses: actions/download-artifact@v4
+        with:
+          name: lease-contention-claim-b-${{ github.event.workflow_run.id }}
+          path: ${{ runner.temp }}/claim-b
+      - uses: actions/download-artifact@v4
+        with:
+          name: lease-contention-claim-c-${{ github.event.workflow_run.id }}
+          path: ${{ runner.temp }}/claim-c
+
+      - name: Restore deferred-effect manifest
+        shell: bash
+        run: |
+          python3 e2e/takeover_bundle_manifest.py export             --manifest "$RUNNER_TEMP/contention-state/manifest.json"             --bundle-dir "$RUNNER_TEMP/contention-state/bundle"
+
+      - id: lease-d
+        name: Wait for all contenders then resolve at epoch 3
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/resolver-d"
+          python3 e2e/execution_lease_cli.py resolve             --contender "$RUNNER_TEMP/claim-b/b.execution-lease.json"             --contender "$RUNNER_TEMP/claim-c/c.execution-lease.json"             --owner resolver-d             --ttl 120             --wait             --output "$RUNNER_TEMP/resolver-d/d.execution-lease.json"
+
+      - name: Build resolved registry
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/lease-registry"
+          cp "$RUNNER_TEMP/contention-state/leases/a.execution-lease.json" "$RUNNER_TEMP/lease-registry/"
+          cp "$RUNNER_TEMP/claim-b/b.execution-lease.json" "$RUNNER_TEMP/lease-registry/"
+          cp "$RUNNER_TEMP/claim-c/c.execution-lease.json" "$RUNNER_TEMP/lease-registry/"
+          cp "$RUNNER_TEMP/resolver-d/d.execution-lease.json" "$RUNNER_TEMP/lease-registry/"
+
+      - name: Verify resolver owns epoch 3
+        shell: bash
+        env:
+          OWNER: ${{ steps.lease-d.outputs.lease-owner }}
+          EPOCH: ${{ steps.lease-d.outputs.lease-epoch }}
+        run: |
+          test "$OWNER" = "resolver-d"
+          test "$EPOCH" = "3"
+
+      - id: effect
+        name: Execute once after contention resolution
+        shell: bash
+        env:
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          INPUT_EFFECT_PLAN_PATH: ${{ env.TAKEOVER_EFFECT_PLAN_PATH }}
+          INPUT_EFFECT_PLAN_SHA256: ${{ env.TAKEOVER_EFFECT_PLAN_SHA256 }}
+          INPUT_DECISION_RECORD_PATH: ${{ env.TAKEOVER_DECISION_RECORD_PATH }}
+          INPUT_DECISION_RECORD_SHA256: ${{ env.TAKEOVER_DECISION_RECORD_SHA256 }}
+          INPUT_EBA_REQUEST_PATH: ${{ env.TAKEOVER_EBA_REQUEST_PATH }}
+          INPUT_EBA_REQUEST_SHA256: ${{ env.TAKEOVER_EBA_REQUEST_SHA256 }}
+          INPUT_EBA_ASSUMPTION_PATH: ${{ env.TAKEOVER_EBA_ASSUMPTION_PATH }}
+          INPUT_EBA_ASSUMPTION_SHA256: ${{ env.TAKEOVER_EBA_ASSUMPTION_SHA256 }}
+          INPUT_EBA_AUTHORITY_PATH: ${{ env.TAKEOVER_EBA_AUTHORITY_PATH }}
+          INPUT_EBA_AUTHORITY_SHA256: ${{ env.TAKEOVER_EBA_AUTHORITY_SHA256 }}
+          INPUT_EBA_DECISION_PATH: ${{ env.TAKEOVER_EBA_DECISION_PATH }}
+          INPUT_EBA_DECISION_SHA256: ${{ env.TAKEOVER_EBA_DECISION_SHA256 }}
+          INPUT_EBA_RECEIPT_PATH: ${{ runner.temp }}/resolver-d.eba-receipt.json
+          INPUT_DECISION_EXPERIENCE_JSON: ${{ env.TAKEOVER_DECISION_EXPERIENCE_JSON }}
+          INPUT_EXECUTION_LEASE_PATH: ${{ runner.temp }}/resolver-d/d.execution-lease.json
+          INPUT_EXECUTION_LEASE_REGISTRY_DIR: ${{ runner.temp }}/lease-registry
+          INPUT_EXECUTOR_ID: resolver-d
+        run: python3 effect_executor.py
+
+      - name: Verify exactly the resolved epoch may execute
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.effect.outputs.effect-outcome }}
+          TRIGGERED: ${{ steps.effect.outputs.rerun-triggered }}
+          OWNER: ${{ steps.effect.outputs.execution-lease-owner }}
+          EPOCH: ${{ steps.effect.outputs.execution-lease-epoch }}
+        run: |
+          test "$OUTCOME" = "SUCCEEDED"
+          test "$TRIGGERED" = "true"
+          test "$OWNER" = "resolver-d"
+          test "$EPOCH" = "3"
+
+      - name: Persist authoritative resolved receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.TAKEOVER_DECISION_RECORD_ARTIFACT_NAME }}-receipt
+          path: |
+            ${{ runner.temp }}/resolver-d.eba-receipt.json
+            ${{ runner.temp }}/resolver-d/d.execution-lease.json
+          if-no-files-found: error
+
+  reconcile:
+    name: Reconcile lease-contention result
+    if: ${{ github.event.workflow_run.run_attempt == 2 && github.event.workflow_run.repository.full_name == github.repository && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: reconcile
+        uses: ./
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ github.event.workflow_run.id }}
+          repository: ${{ github.repository }}
+          auto-rerun: 'false'
+          selective-rerun: 'false'
+          history-runs: '1'
+
+      - name: Verify one resolved effect is attributable
+        shell: bash
+        env:
+          STATUS: ${{ steps.reconcile.outputs.previous-reconciliation-status }}
+        run: test "$STATUS" = "RECOVERED_AFTER_RERUN"
+
+  reject-extra-attempts:
+    name: Reject extra contention attempts
+    if: ${{ github.event.workflow_run.run_attempt > 2 }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: exit 1
