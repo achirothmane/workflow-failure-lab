@@ -162,3 +162,43 @@ def test_artifact_name_anchor_rejects_resealed_rewrite() -> None:
 
     with pytest.raises(DecisionHistoryError, match="artifact-name anchor"):
         download_prior_audit_trail(api, "owner/repo", ref)
+
+
+def test_separate_post_effect_receipt_artifact_is_discovered() -> None:
+    decision = _decision_record()
+    decision_name = (
+        decision_artifact_prefix(run_id=123, run_attempt=1)
+        + decision["record_sha256"]
+    )
+    receipt_name = decision_name + "-receipt"
+
+    decision_zip = _zip_payload(decision, None)
+    receipt_zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(receipt_zip_buffer, "w") as archive:
+        archive.writestr(
+            "owner-repo-run-123-attempt-1.eba-receipt.json",
+            json.dumps(_receipt()),
+        )
+
+    api = FakeAPI(
+        artifacts=[
+            {"id": 10, "name": decision_name, "expired": False},
+            {"id": 11, "name": receipt_name, "expired": False},
+        ],
+        payloads={
+            10: decision_zip,
+            11: receipt_zip_buffer.getvalue(),
+        },
+    )
+
+    ref = find_previous_decision_artifact(
+        api,
+        "owner/repo",
+        run_id=123,
+        current_attempt=2,
+    )
+    assert ref is not None
+
+    trail = download_prior_audit_trail(api, "owner/repo", ref)
+    assert trail.execution_receipt is not None
+    assert trail.execution_receipt["outcome"] == "SUCCEEDED"
