@@ -78,6 +78,7 @@ def build_execution_lease(
     issued_at: str,
     ttl_seconds: int,
     previous_lease_sha256: str | None = None,
+    previous_lease_set_sha256: str | None = None,
 ) -> dict[str, Any]:
     owner = str(owner_id).strip()
     if not owner:
@@ -104,6 +105,18 @@ def build_execution_lease(
         if len(previous) != 64 or any(ch not in "0123456789abcdef" for ch in previous):
             raise ExecutionLeaseError("previous_lease_sha256 must be a SHA-256 hex digest")
 
+    previous_set = None
+    if previous_lease_set_sha256 is not None:
+        previous_set = str(previous_lease_set_sha256).strip().lower()
+        if len(previous_set) != 64 or any(ch not in "0123456789abcdef" for ch in previous_set):
+            raise ExecutionLeaseError(
+                "previous_lease_set_sha256 must be a SHA-256 hex digest"
+            )
+    if previous is not None and previous_set is not None:
+        raise ExecutionLeaseError(
+            "execution lease cannot bind both a single predecessor and a predecessor set"
+        )
+
     lease = {
         "schema_version": EXECUTION_LEASE_SCHEMA,
         "lease_id": f"lease_{uuid.uuid4().hex}",
@@ -116,6 +129,7 @@ def build_execution_lease(
         "decision_record_sha256": str(decision_record_sha256).lower(),
         "effect_plan_sha256": str(effect_plan_sha256).lower(),
         "previous_lease_sha256": previous,
+        "previous_lease_set_sha256": previous_set,
     }
     return seal_execution_lease(lease)
 
@@ -181,11 +195,97 @@ def verify_execution_lease(lease: dict[str, Any]) -> None:
         if len(previous) != 64 or any(ch not in "0123456789abcdef" for ch in previous):
             raise ExecutionLeaseError("previous_lease_sha256 must be a SHA-256 hex digest")
 
+    previous_set = lease.get("previous_lease_set_sha256")
+    if previous_set is not None:
+        previous_set = str(previous_set).strip().lower()
+        if len(previous_set) != 64 or any(ch not in "0123456789abcdef" for ch in previous_set):
+            raise ExecutionLeaseError(
+                "previous_lease_set_sha256 must be a SHA-256 hex digest"
+            )
+    if previous is not None and previous_set is not None:
+        raise ExecutionLeaseError(
+            "execution lease cannot bind both a single predecessor and a predecessor set"
+        )
+
     integrity = lease.get("integrity")
     if not isinstance(integrity, dict) or integrity.get("algorithm") != "sha256":
         raise ExecutionLeaseError("execution lease integrity metadata is invalid")
     if integrity.get("digest") != lease_digest(lease):
         raise ExecutionLeaseError("execution lease SHA-256 mismatch")
+
+
+
+
+def _lease_set_digest(leases: list[dict[str, Any]]) -> str:
+    if not leases:
+        raise ExecutionLeaseError("lease set is empty")
+    digests = sorted(lease_digest(item) for item in leases)
+    return hashlib.sha256("\n".join(digests).encode("ascii")).hexdigest()
+
+
+def build_contention_resolution_lease(
+    *,
+    contending_leases: list[dict[str, Any]],
+    owner_id: str,
+    issued_at: str,
+    ttl_seconds: int,
+) -> dict[str, Any]:
+    if len(contending_leases) < 2:
+        raise ExecutionLeaseError(
+            "LEASE_CONTENTION_REQUIRED: at least two competing leases are required"
+        )
+    for lease in contending_leases:
+        verify_execution_lease(lease)
+
+    epochs = {int(item["epoch"]) for item in contending_leases}
+    if len(epochs) != 1:
+        raise ExecutionLeaseError(
+            "LEASE_CONTENTION_EPOCH_MISMATCH: contenders must share one epoch"
+        )
+
+    bindings = {
+        (
+            str(item["decision_record_sha256"]),
+            str(item["effect_plan_sha256"]),
+            str(item["repository"]),
+            int(item["run_id"]),
+        )
+        for item in contending_leases
+    }
+    if len(bindings) != 1:
+        raise ExecutionLeaseError(
+            "LEASE_CONTENTION_BINDING_MISMATCH: contenders do not govern the same effect"
+        )
+
+    unique = {lease_digest(item) for item in contending_leases}
+    if len(unique) < 2:
+        raise ExecutionLeaseError(
+            "LEASE_CONTENTION_REQUIRED: contenders are not distinct"
+        )
+
+    resolution_time = _parse_timestamp(issued_at, field="issued_at")
+    latest_expiry = max(
+        _parse_timestamp(item["expires_at"], field="expires_at")
+        for item in contending_leases
+    )
+    if resolution_time < latest_expiry:
+        raise ExecutionLeaseError(
+            "LEASE_CONTENTION_ACTIVE: all contending leases must expire before resolution"
+        )
+
+    decision_sha, plan_sha, repository, run_id = next(iter(bindings))
+    epoch = next(iter(epochs)) + 1
+    return build_execution_lease(
+        owner_id=owner_id,
+        epoch=epoch,
+        decision_record_sha256=decision_sha,
+        effect_plan_sha256=plan_sha,
+        repository=repository,
+        run_id=run_id,
+        issued_at=issued_at,
+        ttl_seconds=ttl_seconds,
+        previous_lease_set_sha256=_lease_set_digest(contending_leases),
+    )
 
 
 def write_execution_lease(path: str | Path, lease: dict[str, Any]) -> str:
