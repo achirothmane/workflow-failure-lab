@@ -37,6 +37,7 @@ from decision_record import (
     decision_parent_ref,
     write_decision_record,
 )
+from effect_plan import build_effect_plan, write_effect_plan
 from outcome_record import (
     bind_parent_decision_to_attempt,
     build_outcome_record,
@@ -1052,6 +1053,12 @@ def _reconciliation_record_path(evidence_path: Path) -> Path:
     )
 
 
+def _effect_plan_path(evidence_path: Path) -> Path:
+    return evidence_path.with_name(
+        evidence_path.name.replace(".evidence.json", ".effect-plan.json")
+    )
+
+
 def _run_evidence_gate_process(
     evidence_path: Path,
     evidence_sha256: str,
@@ -1686,6 +1693,7 @@ def main() -> int:
 
     max_attempts = int(os.environ.get("INPUT_MAX_ATTEMPTS", "2"))
     auto_rerun = _bool_env("INPUT_AUTO_RERUN", False)
+    defer_effect = _bool_env("INPUT_DEFER_EFFECT", False)
     comment_on_pr = _bool_env("INPUT_COMMENT_ON_PR", False)
     if public_read_only and (auto_rerun or comment_on_pr):
         print("::error::public-read-only mode cannot rerun jobs or post into the target repository")
@@ -2008,8 +2016,19 @@ def main() -> int:
         f"{decision_record_sha256}"
     )
 
+    effect_plan = build_effect_plan(
+        mutation_admitted=bool(mutation_admitted),
+        repository=repo,
+        run_id=run_id,
+        evidence_decision=evidence_decision,
+        failed_jobs=failed_jobs,
+        decision_record_sha256=decision_record_sha256,
+    )
+    effect_plan_path = _effect_plan_path(evidence_path)
+    effect_plan_sha256 = write_effect_plan(effect_plan_path, effect_plan)
+
     rerun_triggered = False
-    if mutation_admitted:
+    if mutation_admitted and not defer_effect:
         api.rerun_failed_jobs(repo, run_id)
         rerun_triggered = True
 
@@ -2149,6 +2168,13 @@ def main() -> int:
     _write_output("decision-event-id", str(decision_record["event_id"]))
     _write_output("authorization-path", str(decision_record["authorization_path"]))
     _write_output("decision-record-artifact-name", decision_record_artifact_name)
+    _write_output("mutation-admitted", "true" if mutation_admitted else "false")
+    _write_output("effect-plan-path", str(effect_plan_path))
+    _write_output("effect-plan-sha256", effect_plan_sha256)
+    _write_output("eba-request-path", str(request_path))
+    _write_output("eba-assumption-path", str(assumption_path))
+    _write_output("eba-authority-path", str(authority_path))
+    _write_output("eba-decision-path", str(decision_path))
     _write_output("eba-receipt-path", str(receipt_path))
     _write_output(
         "outcome-record-path",
