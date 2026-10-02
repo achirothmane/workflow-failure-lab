@@ -13,6 +13,7 @@ UNKNOWN = ROOT / ".github" / "workflows" / "live-ambiguous-transport-fixture.yml
 def test_fault_injector_has_all_three_effect_windows():
     text = HARNESS.read_text(encoding="utf-8")
 
+    assert 'sys.path.insert(0, str(ROOT))' in text
     assert 'mode == "crash-before-dispatch"' in text
     assert 'mode == "crash-after-dispatch"' in text
     assert 'mode == "timeout-after-dispatch"' in text
