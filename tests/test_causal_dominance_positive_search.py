@@ -1,4 +1,4 @@
-from causal_dominance_positive_search import (
+from research.causal_dominance.causal_dominance_positive_search import (
     SEARCH_SHARDS,
     render_positive_search,
     search_positive_controls,
