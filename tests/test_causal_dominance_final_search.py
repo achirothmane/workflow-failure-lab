@@ -1,4 +1,4 @@
-from causal_dominance_final_search import (
+from research.causal_dominance.causal_dominance_final_search import (
     FINAL_SEARCH_SHARDS,
     validate_final_search_corpus,
 )

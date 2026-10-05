@@ -179,7 +179,7 @@ def main() -> int:
         for symbol in forbidden:
             require(symbol not in source, f"{path} imports or uses research-only {symbol}")
 
-    evidence = text("causal_dominance_evidence.py")
+    evidence = text("research/causal_dominance/causal_dominance_evidence.py")
     require(
         '("swc-project/swc", 34857087636' in evidence,
         "SWC independent positive control is not pinned",

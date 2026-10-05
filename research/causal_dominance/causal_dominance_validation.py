@@ -6,7 +6,7 @@ from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
-from causal_dominance_evidence import (
+from research.causal_dominance.causal_dominance_evidence import (
     INDEPENDENT_CAUSAL_DOMINANCE_POSITIVE_RUNS,
     VALIDATED_SERVER5XX_EVIDENCE,
 )

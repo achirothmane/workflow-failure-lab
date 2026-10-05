@@ -1,8 +1,8 @@
-from causal_dominance_shadow import (
+from research.causal_dominance.causal_dominance_shadow import (
     CausalDominanceShadowSummary,
     shadow_summary_payload,
 )
-from causal_dominance_validation import (
+from research.causal_dominance.causal_dominance_validation import (
     MIN_INDEPENDENT_REAL_POSITIVE_CONTROLS_FOR_PRODUCTION,
     evaluate_validation,
     render_validation,

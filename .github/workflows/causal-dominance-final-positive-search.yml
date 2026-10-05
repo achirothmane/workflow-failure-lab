@@ -26,7 +26,7 @@ jobs:
           INPUT_FINAL_SEARCH_HISTORY_RUNS: '500'
           INPUT_FINAL_SEARCH_WORKERS: '5'
         run: |
-          python3 causal_dominance_final_search.py \
+          python3 -m research.causal_dominance.causal_dominance_final_search \
             --shard ${{ matrix.shard }} \
             --result-json /tmp/causal-dominance-final-shard-${{ matrix.shard }}.json
 

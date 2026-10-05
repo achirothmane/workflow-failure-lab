@@ -7,12 +7,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from benchmark_mode import collect_repository_samples
-from causal_dominance_positive_search import (
+from research.causal_dominance.causal_dominance_positive_search import (
     render_positive_search,
     search_positive_controls,
     summary_payload,
 )
-from causal_dominance_shadow import DEFAULT_REPOSITORIES
+from research.causal_dominance.causal_dominance_shadow import DEFAULT_REPOSITORIES
 from ci_retry_gate import GitHubAPI
 from history_ci_waste import HistoricalFailure
 
@@ -158,7 +158,7 @@ def validate_final_search_corpus() -> tuple[bool, str]:
     if len(set(all_repositories)) != 100:
         return False, "final search repositories must be unique"
 
-    from causal_dominance_positive_search import SEARCH_SHARDS
+    from research.causal_dominance.causal_dominance_positive_search import SEARCH_SHARDS
 
     prior = {
         repository
