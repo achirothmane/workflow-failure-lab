@@ -110,8 +110,16 @@ docs/                      user and technical documentation
 examples/                  copy-ready adoption examples
 src/                       packaged product code
 tests/                     automated verification
-research/                  research-only falsification and validation
+research/                  research-only falsification and hypothesis work
+validation/                release and regression validation assets
 benchmarks / experiments   evidence and engineering evaluation
 ```
 
 The first isolated research family is `research/causal_dominance/`. Moving research behind this boundary reduces root-level noise without changing the stable `@v1` action contract.
+
+
+## Validation boundary
+
+Release and regression fixtures that exercise the product but are not part of its runtime API live under `validation/`.
+
+The first isolated family is `validation/public_incidents/`, which contains the source-backed incident corpus and replay gate used by CI. This keeps release confidence visible while removing validation internals from the repository root.

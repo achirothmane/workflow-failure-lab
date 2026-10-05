@@ -1,11 +1,11 @@
-from public_incident_corpus import (
+from validation.public_incidents.public_incident_corpus import (
     PUBLIC_INCIDENT_CORPUS_V1,
     PUBLIC_INCIDENT_CORPUS_V2,
     PUBLIC_INCIDENT_CORPUS_V3,
     PUBLIC_INCIDENT_CORPUS_V4,
     PUBLIC_INCIDENT_CORPUS_V5,
 )
-from public_incident_replay import (
+from validation.public_incidents.public_incident_replay import (
     EXPECTED_ALLOW,
     EXPECTED_BLOCK,
     PUBLIC_INCIDENT_REPLAY_FIXTURES_V1,

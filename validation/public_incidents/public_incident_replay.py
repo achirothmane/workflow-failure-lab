@@ -6,7 +6,7 @@ from dataclasses import dataclass, replace
 from ci_retry_gate import assess_authenticated_runner_annotations, assess_job
 from evidence_gate import build_ci_retry_decision
 from evidence_producer import produce_ci_evidence_bundle
-from public_incident_corpus import (
+from validation.public_incidents.public_incident_corpus import (
     PUBLIC_INCIDENT_CORPUS_V3,
     PUBLIC_INCIDENT_CORPUS_V4,
     PUBLIC_INCIDENT_CORPUS_V5,
