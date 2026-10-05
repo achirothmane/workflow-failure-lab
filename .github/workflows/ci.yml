@@ -21,7 +21,7 @@ jobs:
           python-version: "3.12"
       - run: python -m pip install -e ".[test]"
       - name: Public Incident Replay Gate
-        run: python public_incident_replay.py --check
+        run: python -m validation.public_incidents.public_incident_replay --check
       - run: pytest
       - run: python3 scripts/verify_clean_install.py
       - run: python3 scripts/verify_release_readiness.py
