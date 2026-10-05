@@ -1,4 +1,4 @@
-from public_incident_corpus import (
+from validation.public_incidents.public_incident_corpus import (
     PUBLIC_INCIDENT_CORPUS_V1,
     PUBLIC_INCIDENT_CORPUS_V2,
     PUBLIC_INCIDENT_CORPUS_V3,
