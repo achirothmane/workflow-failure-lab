@@ -4,6 +4,8 @@
 [![Latest release](https://img.shields.io/github/v/release/achirothmane/workflow-failure-lab)](https://github.com/achirothmane/workflow-failure-lab/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+**[5-minute quickstart](docs/quickstart.md) · [Examples](examples/README.md) · [Product architecture](docs/product-architecture.md) · [Technical reference](docs/technical-reference.md)**
+
 ![CI Retry Gate product flow](docs/ci-retry-gate-hero.png)
 
 ## Know when a failed GitHub Actions job is safe to retry.
@@ -13,6 +15,17 @@ CI Retry Gate examines a failed workflow **before** a retry happens.
 It returns an evidence-backed `ALLOW` or `BLOCK` decision, explains why, and gives the operator a deterministic next action. Missing, stale, contradictory, or risky evidence fails closed.
 
 **Read-only by default. Write behavior is explicit opt-in.**
+
+### Start here
+
+| If you want to... | Start with |
+|---|---|
+| See a decision without installing | **[Public-run analyzer](https://github.com/achirothmane/workflow-failure-lab/issues/new?template=public-run-analysis.yml)** |
+| Add the gate safely | **[5-minute quickstart](docs/quickstart.md)** |
+| Copy a workflow | **[Examples](examples/README.md)** |
+| Understand the system shape | **[Product architecture](docs/product-architecture.md)** |
+
+The product surface is intentionally smaller than the repository's research and validation internals. A new user should not need to understand the full engineering history to get a useful result.
 
 ### Why use it?
 

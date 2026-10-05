@@ -1,0 +1,21 @@
+name: CI Retry Gate
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  actions: read
+  checks: read
+
+jobs:
+  retry-gate:
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: achirothmane/workflow-failure-lab@v1
+        with:
+          github-token: ${{ github.token }}
+          auto-rerun: 'false'
+          selective-rerun: 'false'
