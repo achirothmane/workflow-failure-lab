@@ -8,7 +8,7 @@ from root_cause_precedence import (
 )
 from transient_mechanism_gate import REASON_SERVER_5XX
 
-from causal_dominance_shadow import (
+from research.causal_dominance.causal_dominance_shadow import (
     CausalDominanceShadowSummary,
     collect_causal_dominance_shadow,
     render_causal_dominance_shadow,
