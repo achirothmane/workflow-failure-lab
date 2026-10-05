@@ -1,4 +1,4 @@
-from causal_dominance_direct_verifier import (
+from research.causal_dominance.causal_dominance_direct_verifier import (
     DIRECT_REJECTED,
     DIRECT_UNRESOLVED,
     DIRECT_VERIFIED,
