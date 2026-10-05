@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Validate pinned positive and deterministic negative controls
-        run: python3 causal_dominance_validation.py
+        run: python3 -m research.causal_dominance.causal_dominance_validation
 
       - name: Run 50-repository holdout shadow
         env:
@@ -24,10 +24,10 @@ jobs:
           INPUT_DOMINANCE_SEARCH_RUNS: '500'
           INPUT_DOMINANCE_WORKERS: '5'
           INPUT_DOMINANCE_RESULT_PATH: /tmp/causal-dominance-holdout.json
-        run: python3 causal_dominance_shadow.py
+        run: python3 -m research.causal_dominance.causal_dominance_shadow
 
       - name: Evaluate combined positive-control and holdout gate
         run: |
-          python3 causal_dominance_validation.py \
+          python3 -m research.causal_dominance.causal_dominance_validation \
             --holdout-json /tmp/causal-dominance-holdout.json \
             --require-clean-holdout
