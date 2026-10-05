@@ -8,24 +8,30 @@
 
 ![CI Retry Gate product flow](docs/ci-retry-gate-hero.png)
 
-## Know when a failed GitHub Actions job is safe to retry.
+## Your GitHub Action failed. Before you rerun it, check whether retrying is justified.
 
-CI Retry Gate examines a failed workflow **before** a retry happens.
+**Paste the public repository and failed run ID. No install. No target-repository token. No rerun.**
 
-It returns an evidence-backed `ALLOW` or `BLOCK` decision, explains why, and gives the operator a deterministic next action. Missing, stale, contradictory, or risky evidence fails closed.
+**[Get a RETRY / INVESTIGATE decision →](https://github.com/achirothmane/workflow-failure-lab/issues/new?template=public-run-analysis.yml)**
 
-**Read-only by default. Write behavior is explicit opt-in.**
+CI Retry Gate inspects the failed run and returns an evidence-backed decision with a concrete next action:
+
+- `ALLOW` → the observed evidence supports a bounded retry;
+- `BLOCK` → investigate instead of hiding the failure behind another run;
+- `UNKNOWN` → the available evidence is not strong enough to justify retry.
+
+The zero-install trial is read-only and does not modify the target repository. Write behavior remains explicit opt-in.
 
 ### Start here
 
-| If you want to... | Start with |
+| Your situation | Do this |
 |---|---|
-| See a decision without installing | **[Public-run analyzer](https://github.com/achirothmane/workflow-failure-lab/issues/new?template=public-run-analysis.yml)** |
-| Add the gate safely | **[5-minute quickstart](docs/quickstart.md)** |
-| Copy a workflow | **[Examples](examples/README.md)** |
-| Understand the system shape | **[Product architecture](docs/product-architecture.md)** |
+| A GitHub Actions run just failed | **[Paste the run ID and check it](https://github.com/achirothmane/workflow-failure-lab/issues/new?template=public-run-analysis.yml)** |
+| The result is useful and you want it on future failures | **[Install report-only mode](docs/quickstart.md)** |
+| You want a copy-ready workflow | **[See examples](examples/README.md)** |
+| You need implementation details | **[Technical reference](docs/technical-reference.md)** |
 
-The product surface is intentionally smaller than the repository's research and validation internals. A new user should not need to understand the full engineering history to get a useful result.
+You should not need to understand the repository's research history to answer the first question: **retry, or investigate?**
 
 ### Why use it?
 
@@ -37,16 +43,18 @@ The product surface is intentionally smaller than the repository's research and 
 | A failed job may have side effects | Blocks retry authority independently of failure classification |
 | Several jobs fail | Can distinguish individually eligible jobs from jobs that must stay blocked |
 
-## Try it before installing
+## Try it on the failure you already have
 
-**[Analyze one public GitHub Actions failure](https://github.com/achirothmane/workflow-failure-lab/issues/new?template=public-run-analysis.yml)**
+Do not install anything yet.
 
-Paste:
+**[Paste one failed public GitHub Actions run →](https://github.com/achirothmane/workflow-failure-lab/issues/new?template=public-run-analysis.yml)**
 
-- a public repository in `owner/repo` form;
-- a failed GitHub Actions run ID.
+You only need:
 
-CI Retry Gate analyzes that historical run without changing the target repository.
+- the public repository in `owner/repo` form;
+- the failed GitHub Actions run ID.
+
+The analyzer reads public evidence and answers the immediate operator question: **retry this failure, or investigate it?** It does not change the target repository.
 
 A result looks like this:
 
