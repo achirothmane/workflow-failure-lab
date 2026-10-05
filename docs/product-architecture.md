@@ -98,3 +98,20 @@ The product is exercised through:
 - release smoke tests.
 
 See the main [README](../README.md) for the current release-facing claims and [technical-reference.md](technical-reference.md) for implementation detail.
+
+
+## Repository layout
+
+The repository is being organized around a visible product boundary:
+
+```text
+README.md / action.yml     product entry points
+docs/                      user and technical documentation
+examples/                  copy-ready adoption examples
+src/                       packaged product code
+tests/                     automated verification
+research/                  research-only falsification and validation
+benchmarks / experiments   evidence and engineering evaluation
+```
+
+The first isolated research family is `research/causal_dominance/`. Moving research behind this boundary reduces root-level noise without changing the stable `@v1` action contract.
