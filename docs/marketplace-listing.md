@@ -6,11 +6,11 @@
 
 ## One-line promise
 
-Know whether a failed GitHub Actions job is safe to retry before you rerun it.
+Your GitHub Action failed. Check whether to retry or investigate before you spend another run.
 
 ## Short description
 
-CI Retry Gate checks a failed GitHub Actions run before retry, returns an evidence-backed `ALLOW` or `BLOCK`, and explains the next action. Missing, contradictory, or risky evidence fails closed.
+Paste a failed public GitHub Actions run ID and get a read-only RETRY / INVESTIGATE decision before rerunning. No install is required for the first check.
 
 ## Long description
 
@@ -38,7 +38,9 @@ When write behavior is enabled explicitly, retry authority remains bounded to th
 
 ### Start without installing
 
-Use the repository's **Analyze a public GitHub Actions failure** flow to inspect one public workflow run with zero target-repository writes.
+A run failed and you are deciding whether to click rerun.
+
+Use **Should I retry this failed GitHub Action?** and paste the public repository plus run ID. CI Retry Gate returns the decision and reason with zero target-repository writes.
 
 ### Install
 
@@ -108,8 +110,8 @@ Confirm the exact category labels in the Marketplace publishing UI before public
 
 ## Primary CTA
 
-**Analyze one real public failure before installing.**
+**Paste the failed run ID. Check RETRY vs INVESTIGATE before rerunning.**
 
 Secondary CTA:
 
-**Run Setup Doctor before enabling write behavior.**
+**If the decision helps, install report-only mode for future failures.**

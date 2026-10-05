@@ -1,5 +1,5 @@
 name: 'CI Retry Gate'
-description: 'Classify failed GitHub Actions jobs and safely gate reruns with provenance, side-effect checks, and retry limits.'
+description: 'A GitHub Action failed. Get a RETRY or INVESTIGATE decision before rerunning it.'
 author: 'achirothmane'
 
 
