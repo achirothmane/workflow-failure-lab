@@ -155,6 +155,8 @@ The public Action still invokes `benchmark_mode.py` as a stable root entry point
 
 This keeps the entry point obvious while moving implementation detail out of the product root. The moved modules remain product runtime because the opt-in `benchmark-mode` path executes them indirectly; they are not reclassified as research merely because some of their functions are shadow/read-only.
 
+Unknown-failure decomposition, promotion checks, and independent-replication analysis also live in `runtime/benchmark/` because they are implementation details of Benchmark Mode rather than standalone public entry points.
+
 
 ## Flaky-test runtime package
 
