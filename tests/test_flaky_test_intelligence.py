@@ -1,6 +1,6 @@
 import pytest
 
-from flaky_test_intelligence import (
+from runtime.flaky.flaky_test_intelligence import (
     DO_NOT_QUARANTINE,
     FAIL,
     INVESTIGATE,
