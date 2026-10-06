@@ -9,7 +9,7 @@ from recovery_ground_truth import (
     is_ground_truth_evaluable,
     is_validated_recovery,
 )
-from unknown_failure_intelligence import unknown_pattern_id
+from runtime.benchmark.unknown_failure_intelligence import unknown_pattern_id
 
 
 @dataclass(frozen=True)
