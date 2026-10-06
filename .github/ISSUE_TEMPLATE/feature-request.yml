@@ -1,0 +1,59 @@
+name: Feature request
+description: Propose a product capability or adoption improvement for CI Retry Gate.
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Describe the CI reliability or adoption problem before proposing implementation details.
+      placeholder: What recurring problem should CI Retry Gate solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: current_workaround
+    attributes:
+      label: Current workaround
+      description: How do you handle this today, and what does it cost in time, CI usage, or risk?
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: What should become easier, safer, or more measurable?
+      placeholder: A user should be able to...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Product surface
+      options:
+        - Retry decision
+        - Selective rerun
+        - Flaky-test intelligence
+        - Setup Doctor / onboarding
+        - Adapters
+        - Benchmark / diagnostics
+        - Documentation / examples
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence or examples
+      description: Link public incidents, workflows, or comparable behavior when available.
+
+  - type: checkboxes
+    id: contract
+    attributes:
+      label: Compatibility awareness
+      options:
+        - label: I understand changes to stable @v1 behavior or write authority require explicit compatibility and safety review.
+          required: true
