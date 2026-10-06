@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from urllib.parse import quote
 
 from ci_retry_gate import GitHubAPI
-from flaky_test_intelligence import (
+from runtime.flaky.flaky_test_intelligence import (
     DO_NOT_QUARANTINE,
     PASS,
     QUARANTINE_CANDIDATE,

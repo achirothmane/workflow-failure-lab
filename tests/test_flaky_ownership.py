@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from flaky_ownership import (
+from runtime.flaky.flaky_ownership import (
     CodeownersRule,
     OwnershipRule,
     codeowners_matches,
@@ -11,7 +11,7 @@ from flaky_ownership import (
     resolve_codeowners,
     resolve_ownership,
 )
-from flaky_test_intelligence import (
+from runtime.flaky.flaky_test_intelligence import (
     CaseObservation,
     FlakyTestSummary,
     QUARANTINE_CANDIDATE,

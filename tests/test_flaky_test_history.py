@@ -8,7 +8,7 @@ from flaky_test_history import (
     collect_flaky_history,
     render_flaky_history_report,
 )
-from flaky_test_intelligence import DO_NOT_QUARANTINE, QUARANTINE_CANDIDATE
+from runtime.flaky.flaky_test_intelligence import DO_NOT_QUARANTINE, QUARANTINE_CANDIDATE
 
 
 def junit(status="pass", seconds=1.0):

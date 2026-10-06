@@ -8,7 +8,7 @@ from fnmatch import fnmatchcase
 from urllib.parse import quote
 
 from ci_retry_gate import GitHubAPI
-from flaky_test_intelligence import CaseObservation, FlakyTestSummary
+from runtime.flaky.flaky_test_intelligence import CaseObservation, FlakyTestSummary
 
 
 @dataclass(frozen=True)

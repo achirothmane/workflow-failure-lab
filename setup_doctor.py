@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ci_retry_gate import GitHubAPI
-from flaky_ownership import load_ownership_map, parse_codeowners
-from flaky_quarantine_lifecycle import load_manifest
+from runtime.flaky.flaky_ownership import load_ownership_map, parse_codeowners
+from runtime.flaky.flaky_quarantine_lifecycle import load_manifest
 
 PASS = "PASS"
 WARN = "WARN"

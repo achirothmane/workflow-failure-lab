@@ -1,6 +1,6 @@
 import pytest
 
-from flaky_issue_lifecycle import (
+from runtime.flaky.flaky_issue_lifecycle import (
     ISSUE_MARKER_PREFIX,
     issue_fingerprint,
     issue_marker,
@@ -9,12 +9,12 @@ from flaky_issue_lifecycle import (
     manage_issue_lifecycle,
     render_issue_body,
 )
-from flaky_quarantine_lifecycle import (
+from runtime.flaky.flaky_quarantine_lifecycle import (
     BLOCKED_REGRESSION,
     RELEASED_HEALTHY,
 )
-from flaky_test_intelligence import DO_NOT_QUARANTINE, QUARANTINE_CANDIDATE
-from flaky_triage import TriageItem
+from runtime.flaky.flaky_test_intelligence import DO_NOT_QUARANTINE, QUARANTINE_CANDIDATE
+from runtime.flaky.flaky_triage import TriageItem
 
 
 def item(test_id="pkg::test", status=QUARANTINE_CANDIDATE):

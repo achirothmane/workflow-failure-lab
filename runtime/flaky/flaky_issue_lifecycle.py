@@ -5,19 +5,19 @@ from dataclasses import dataclass
 from urllib.parse import quote_plus
 
 from ci_retry_gate import GitHubAPI
-from flaky_quarantine_lifecycle import (
+from runtime.flaky.flaky_quarantine_lifecycle import (
     ACTIVE,
     BLOCKED_REGRESSION,
     BLOCKED_UNVERIFIED,
     EXPIRED,
     RELEASED_HEALTHY,
 )
-from flaky_test_intelligence import (
+from runtime.flaky.flaky_test_intelligence import (
     DO_NOT_QUARANTINE,
     INVESTIGATE,
     QUARANTINE_CANDIDATE,
 )
-from flaky_triage import TriageItem
+from runtime.flaky.flaky_triage import TriageItem
 
 ISSUE_MARKER_PREFIX = "<!-- ci-retry-gate-flaky-issue:"
 DEFAULT_MAX_ISSUE_CHANGES = 10

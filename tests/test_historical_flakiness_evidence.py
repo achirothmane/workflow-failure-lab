@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from flaky_test_history import FlakyHistoryResult
-from flaky_test_intelligence import (
+from runtime.flaky.flaky_test_intelligence import (
     FAIL,
     PASS,
     CaseObservation,

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ci_retry_gate import GitHubAPI
-from flaky_quarantine_lifecycle import (
+from runtime.flaky.flaky_quarantine_lifecycle import (
     ACTIVE,
     BLOCKED_REGRESSION,
     BLOCKED_UNVERIFIED,
@@ -11,13 +11,13 @@ from flaky_quarantine_lifecycle import (
     RELEASED_HEALTHY,
     LifecycleSummary,
 )
-from flaky_test_intelligence import (
+from runtime.flaky.flaky_test_intelligence import (
     DO_NOT_QUARANTINE,
     INVESTIGATE,
     QUARANTINE_CANDIDATE,
     FlakyTestSummary,
 )
-from flaky_ownership import OwnershipResolution
+from runtime.flaky.flaky_ownership import OwnershipResolution
 
 TRIAGE_COMMENT_MARKER = "<!-- ci-retry-gate-flaky-triage -->"
 MAX_TRIAGE_ROWS = 20

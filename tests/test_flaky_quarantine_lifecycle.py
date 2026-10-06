@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from flaky_quarantine_lifecycle import (
+from runtime.flaky.flaky_quarantine_lifecycle import (
     ACTIVE,
     BLOCKED_REGRESSION,
     EXPIRED,
@@ -12,7 +12,7 @@ from flaky_quarantine_lifecycle import (
     evaluate_lifecycle,
     load_manifest,
 )
-from flaky_test_intelligence import (
+from runtime.flaky.flaky_test_intelligence import (
     FAIL,
     PASS,
     QUARANTINE_CANDIDATE,
