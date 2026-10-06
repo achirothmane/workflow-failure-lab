@@ -8,7 +8,7 @@ from recovery_ground_truth import (
     RECOVERY_NOT_RECOVERED,
     RECOVERY_VALIDATED,
 )
-from server5xx_counterexample_search import (
+from runtime.benchmark.server5xx_counterexample_search import (
     render_server5xx_counterexample_report,
     search_server5xx_counterexamples,
 )
