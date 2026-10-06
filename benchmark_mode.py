@@ -5,12 +5,12 @@ import re
 from collections import Counter
 from dataclasses import dataclass
 
-from classifier_rule_research import (
+from runtime.benchmark.classifier_rule_research import (
     RULE_SERVER_5XX_CAUSAL_UNKNOWN,
     evaluate_server5xx_shadow_rule,
     render_server5xx_rule_research,
 )
-from server5xx_counterexample_search import (
+from runtime.benchmark.server5xx_counterexample_search import (
     render_server5xx_counterexample_report,
     search_server5xx_counterexamples,
 )
@@ -57,7 +57,7 @@ from coverage_attribution import (
     summarize_coverage_attribution,
 )
 from policy_shadow import simulate_shadow
-from targeted_replication_search import (
+from runtime.benchmark.targeted_replication_search import (
     render_targeted_replication_report,
     search_targeted_replication,
 )
