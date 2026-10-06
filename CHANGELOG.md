@@ -4,6 +4,37 @@ All notable changes to CI Retry Gate are documented here.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-06
+
+### Added
+
+- Durable decision/effect audit artifacts for the installed Action path, including decision-record and outcome/reconciliation surfaces that keep pre-effect authorization distinct from later observed outcome.
+- Deferred effect execution so admitted reruns can be durably recorded before the mutation path proceeds.
+- Live verification fixtures for crash windows, lease contention, executor takeover, audit-chain replay/receipt loss, ABA-style token resurrection, and external monotonic-root behavior.
+- A first-class product adoption surface: 5-minute quickstart, copy-ready examples, product architecture, technical reference, support guidance, contributor guide, pull-request template, and structured bug/feature intake.
+
+### Changed
+
+- Repository structure now separates product runtime, research, and release/regression validation behind explicit boundaries.
+- Benchmark and flaky-test implementation detail moved under `runtime/` while stable root entry points remain reachable by the Action and adapters.
+- CI now enforces that product runtime cannot depend on `research/` or `validation/`.
+- Public Incident Replay assets now live under `validation/public_incidents/`, and the current replay gate covers 11 admitted public incidents.
+- Causal-dominance falsification assets and pinned research corpora now live under `research/`.
+
+### Safety
+
+- Automatic rerun and selective rerun remain explicit opt-in.
+- Missing, stale, contradictory, or insufficient evidence still fails closed.
+- Side-effect boundaries remain independent blockers.
+- Research, validation, benchmark, and historical-flakiness evidence do not silently grant production retry authority.
+- Causal Dominance remains research-only and is not imported by production retry entry points.
+
+### Verification
+
+- The release candidate must pass repository CI, Compatibility Matrix, Remote v1 Consumer E2E, Public Incident Replay, clean-install verification, and release-readiness verification.
+- Repository-boundary tests protect the product/runtime -> research/validation dependency direction.
+- The published `@v1` consumer path remains covered separately from source-tree tests.
+
 ## [1.4.1] - 2026-10-01
 
 ### Changed
