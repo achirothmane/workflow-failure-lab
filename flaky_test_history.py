@@ -9,19 +9,19 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from ci_retry_gate import GitHubAPI, _bool_env, _event_payload
-from flaky_issue_lifecycle import MAX_ISSUE_CHANGES, manage_issue_lifecycle
-from flaky_ownership import (
+from runtime.flaky.flaky_issue_lifecycle import MAX_ISSUE_CHANGES, manage_issue_lifecycle
+from runtime.flaky.flaky_ownership import (
     load_codeowners_from_github,
     load_ownership_map_from_github,
     resolve_ownership,
 )
-from flaky_quarantine_lifecycle import (
+from runtime.flaky.flaky_quarantine_lifecycle import (
     active_test_ids_json,
     evaluate_lifecycle,
     load_manifest_from_github,
     render_lifecycle_report,
 )
-from flaky_test_intelligence import (
+from runtime.flaky.flaky_test_intelligence import (
     CaseObservation,
     FlakyTestSummary,
     observations_from_junit,
@@ -32,7 +32,7 @@ from runtime.flaky.historical_flakiness_shadow import (
     compare_historical_flakiness_shadow,
     render_historical_flakiness_shadow,
 )
-from flaky_triage import (
+from runtime.flaky.flaky_triage import (
     build_triage_items,
     emit_triage_annotations,
     render_triage_report,
