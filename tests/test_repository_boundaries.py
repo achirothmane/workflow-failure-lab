@@ -17,7 +17,8 @@ FORBIDDEN_PREFIXES = ("research", "validation")
 def _python_product_files() -> tuple[Path, ...]:
     root_modules = tuple(sorted(ROOT.glob("*.py")))
     package_modules = tuple(sorted((ROOT / "src").rglob("*.py")))
-    return root_modules + package_modules
+    runtime_modules = tuple(sorted((ROOT / "runtime").rglob("*.py")))
+    return root_modules + package_modules + runtime_modules
 
 
 def _forbidden_imports(path: Path) -> tuple[str, ...]:
@@ -54,3 +55,4 @@ def test_boundary_guard_covers_root_and_packaged_product_code() -> None:
     assert "benchmark_mode.py" in files
     assert "flaky_test_history.py" in files
     assert "src/workflow_failure_lab/__main__.py" in files
+    assert "runtime/benchmark/classifier_rule_research.py" in files
