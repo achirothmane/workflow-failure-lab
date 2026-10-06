@@ -56,3 +56,4 @@ def test_boundary_guard_covers_root_and_packaged_product_code() -> None:
     assert "flaky_test_history.py" in files
     assert "src/workflow_failure_lab/__main__.py" in files
     assert "runtime/benchmark/classifier_rule_research.py" in files
+    assert "runtime/flaky/historical_flakiness_evidence.py" in files
