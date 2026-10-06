@@ -7,7 +7,7 @@ from flaky_test_intelligence import (
     CaseObservation,
     summarize_flaky_tests,
 )
-from historical_flakiness_evidence import (
+from runtime.flaky.historical_flakiness_evidence import (
     HISTORICAL_FLAKINESS_EVIDENCE_SCHEMA,
     produce_historical_flakiness_evidence,
 )
