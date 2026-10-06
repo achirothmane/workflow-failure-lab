@@ -1,4 +1,4 @@
-from unknown_cause_decomposition import (
+from runtime.benchmark.unknown_cause_decomposition import (
     CAUSE_AMBIGUOUS_OPERATIONAL,
     CAUSE_AUTH_PERMISSION,
     CAUSE_COMMAND_CONFIG,

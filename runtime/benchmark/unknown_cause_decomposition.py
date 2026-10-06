@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from unknown_failure_intelligence import extract_unknown_evidence
+from runtime.benchmark.unknown_failure_intelligence import extract_unknown_evidence
 
 
 CAUSE_NO_STABLE_ERROR_EVIDENCE = "NO_STABLE_ERROR_EVIDENCE"

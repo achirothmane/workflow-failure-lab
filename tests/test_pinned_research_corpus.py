@@ -19,9 +19,9 @@ from transient_mechanism_gate import (
     REASON_SERVER_5XX,
     assess_transient_mechanism,
 )
-from unknown_cause_decomposition import decompose_unknown_cause
+from runtime.benchmark.unknown_cause_decomposition import decompose_unknown_cause
 from runtime.benchmark.targeted_replication_search import search_targeted_replication
-from unknown_failure_intelligence import (
+from runtime.benchmark.unknown_failure_intelligence import (
     PROMOTION_BLOCKER_INDEPENDENT_REPLICATION,
     PROMOTION_BLOCKER_INSUFFICIENT_GT_RERUNS,
     PROMOTION_BLOCKER_INSUFFICIENT_OCCURRENCES,

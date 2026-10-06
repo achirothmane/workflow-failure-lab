@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from ci_retry_gate import redact
 from history_ci_waste import HistoricalFailure, normalize_signature_line
-from independent_replication_gate import (
+from runtime.benchmark.independent_replication_gate import (
     MIN_INDEPENDENT_RUNS,
     REPLICATION_CONFIRMED,
     assess_independent_replication,
@@ -18,7 +18,7 @@ from recovery_ground_truth import (
     is_ground_truth_evaluable,
     is_validated_recovery,
 )
-from semantic_promotion_gate import (
+from runtime.benchmark.semantic_promotion_gate import (
     SEMANTIC_PROMOTION_ELIGIBLE,
     assess_semantic_promotion_signature,
 )

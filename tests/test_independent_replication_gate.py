@@ -1,4 +1,4 @@
-from independent_replication_gate import (
+from runtime.benchmark.independent_replication_gate import (
     MIN_INDEPENDENT_RUNS,
     REPLICATION_CONFIRMED,
     REPLICATION_INSUFFICIENT,
