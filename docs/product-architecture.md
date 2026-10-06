@@ -123,3 +123,26 @@ The first isolated research family is `research/causal_dominance/`. Moving resea
 Release and regression fixtures that exercise the product but are not part of its runtime API live under `validation/`.
 
 The first isolated family is `validation/public_incidents/`, which contains the source-backed incident corpus and replay gate used by CI. This keeps release confidence visible while removing validation internals from the repository root.
+
+
+## Dependency direction
+
+The repository boundary is directional:
+
+```text
+research/   ─┐
+             ├──> product runtime
+validation/ ─┘
+
+product runtime -X-> research/
+product runtime -X-> validation/
+```
+
+Research and validation are allowed to exercise product modules. Product runtime must not import either internal layer. CI enforces this rule with an AST-based repository-boundary test.
+
+Some root modules have research-oriented names but are currently part of an opt-in product execution path and therefore are **not safe to move merely by name**:
+
+- `benchmark_mode.py` is invoked by the public `benchmark-mode` action input and imports `classifier_rule_research.py`, `server5xx_counterexample_search.py`, and `targeted_replication_search.py`.
+- `flaky_test_history.py` is an action runtime entry point and imports `historical_flakiness_evidence.py` and `historical_flakiness_shadow.py`.
+
+Those modules stay on the product side of the boundary until their public feature path is deliberately extracted, renamed, or retired.
