@@ -7,7 +7,7 @@ from ci_retry_gate import (
     detect_side_effect_risk,
 )
 from history_ci_waste import HistoricalFailure
-from pinned_research_corpus import SERDE_ATTESTATION_HTTP_500, TRAEFIK_GOLANGCI_HTTP_504
+from research.corpora.pinned_research_corpus import SERDE_ATTESTATION_HTTP_500, TRAEFIK_GOLANGCI_HTTP_504
 from mechanism_causality_gate import (
     MECHANISM_CAUSAL_CONFIRMED,
     assess_mechanism_causality,

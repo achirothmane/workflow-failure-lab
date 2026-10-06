@@ -12,7 +12,7 @@ from research.causal_dominance.causal_dominance_evidence import (
 )
 from ci_retry_gate import assess_failure_step_provenance, classify_log, detect_side_effect_risk
 from mechanism_causality_gate import MECHANISM_CAUSAL_CONFIRMED, assess_mechanism_causality
-from pinned_research_corpus import SWC_DPRINT_HTTP_504
+from research.corpora.pinned_research_corpus import SWC_DPRINT_HTTP_504
 from recovery_ground_truth import RECOVERY_VALIDATED, assess_recovery_ground_truth
 from root_cause_precedence import (
     DOMINANCE_CANDIDATE,

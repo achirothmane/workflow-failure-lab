@@ -6,7 +6,7 @@ from research.causal_dominance.causal_dominance_positive_search import (
 )
 from history_ci_waste import HistoricalFailure
 from mechanism_causality_gate import MECHANISM_CAUSAL_CONFIRMED
-from pinned_research_corpus import SWC_DPRINT_HTTP_504
+from research.corpora.pinned_research_corpus import SWC_DPRINT_HTTP_504
 from recovery_ground_truth import (
     RECOVERY_NOT_OBSERVED,
     RECOVERY_NOT_RECOVERED,
