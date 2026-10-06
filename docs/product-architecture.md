@@ -144,9 +144,9 @@ Research and validation are allowed to exercise product modules. Product runtime
 Some root modules have research-oriented names but are currently part of an opt-in product execution path and therefore are **not safe to move merely by name**:
 
 - `benchmark_mode.py` is invoked by the public `benchmark-mode` action input and imports `classifier_rule_research.py`, `server5xx_counterexample_search.py`, and `targeted_replication_search.py`.
-- `flaky_test_history.py` is an action runtime entry point and imports `historical_flakiness_evidence.py` and `historical_flakiness_shadow.py`.
+- `flaky_test_history.py` is an Action runtime entry point; its historical-evidence and shadow support now live under `runtime/flaky/`.
 
-Those modules stay on the product side of the boundary until their public feature path is deliberately extracted, renamed, or retired.
+Root entry points stay visible when `action.yml` invokes them directly, while their implementation detail moves into `runtime/`.
 
 
 ## Benchmark runtime package
@@ -154,3 +154,10 @@ Those modules stay on the product side of the boundary until their public featur
 The public Action still invokes `benchmark_mode.py` as a stable root entry point, but its benchmark-specific support modules live under `runtime/benchmark/`.
 
 This keeps the entry point obvious while moving implementation detail out of the product root. The moved modules remain product runtime because the opt-in `benchmark-mode` path executes them indirectly; they are not reclassified as research merely because some of their functions are shadow/read-only.
+
+
+## Flaky-test runtime package
+
+The public Action continues to invoke `flaky_test_history.py` as its stable entry point. Historical flaky-test evidence and read-only shadow evaluation live under `runtime/flaky/`.
+
+This mirrors the benchmark structure: stable root entry point, internal runtime package behind it.
