@@ -27,8 +27,8 @@ from flaky_test_intelligence import (
     observations_from_junit,
     summarize_flaky_tests,
 )
-from historical_flakiness_evidence import produce_historical_flakiness_evidence
-from historical_flakiness_shadow import (
+from runtime.flaky.historical_flakiness_evidence import produce_historical_flakiness_evidence
+from runtime.flaky.historical_flakiness_shadow import (
     compare_historical_flakiness_shadow,
     render_historical_flakiness_shadow,
 )

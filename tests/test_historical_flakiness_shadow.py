@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from flaky_test_intelligence import FAIL, PASS, CaseObservation
-from historical_flakiness_shadow import (
+from runtime.flaky.historical_flakiness_shadow import (
     CONTRADICTION,
     NOT_APPLICABLE,
     ORDERING_UNAVAILABLE,
