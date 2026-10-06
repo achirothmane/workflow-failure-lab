@@ -1,0 +1,66 @@
+name: Bug report
+description: Report incorrect CI Retry Gate behavior, setup problems, or a regression.
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Do not include secrets, tokens, credentials, or private CI logs.
+
+        If you only want a decision for one failed **public** workflow run, use the dedicated public-run analysis template instead.
+
+  - type: input
+    id: version
+    attributes:
+      label: CI Retry Gate version or ref
+      description: For example v1, v1.4.1, or a commit SHA.
+      placeholder: v1
+    validations:
+      required: true
+
+  - type: textarea
+    id: observed
+    attributes:
+      label: What happened?
+      description: Include the observed ALLOW, BLOCK, or UNKNOWN result when relevant.
+      placeholder: Describe the behavior you observed.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      placeholder: Describe the expected behavior.
+    validations:
+      required: true
+
+  - type: input
+    id: workflow
+    attributes:
+      label: Workflow name
+      placeholder: CI
+
+  - type: input
+    id: run
+    attributes:
+      label: Workflow run ID and attempt
+      description: Optional. Share only when safe and public or suitably redacted.
+      placeholder: "123456789 attempt 1"
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction or configuration
+      description: Include the smallest safe workflow/configuration that reproduces the issue.
+      render: yaml
+
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I have removed secrets, tokens, credentials, and private logs.
+          required: true
