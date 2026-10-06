@@ -158,6 +158,6 @@ This keeps the entry point obvious while moving implementation detail out of the
 
 ## Flaky-test runtime package
 
-The public Action continues to invoke `flaky_test_history.py` as its stable entry point. Historical flaky-test evidence and read-only shadow evaluation live under `runtime/flaky/`.
+The public Action continues to invoke `flaky_test_history.py` as its stable entry point. Its analysis, ownership, quarantine lifecycle, triage, issue lifecycle, historical evidence, and read-only shadow support live under `runtime/flaky/`.
 
-This mirrors the benchmark structure: stable root entry point, internal runtime package behind it.
+The adapter-facing `quarantine_enforcement.py` remains a root entry point because the pytest/Jest/Vitest composite actions invoke it directly. This mirrors the benchmark structure: stable root entry points, internal runtime packages behind them.
