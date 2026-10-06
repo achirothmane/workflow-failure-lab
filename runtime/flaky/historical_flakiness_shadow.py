@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from flaky_test_intelligence import FAIL, CaseObservation, summarize_flaky_tests
+from runtime.flaky.flaky_test_intelligence import FAIL, CaseObservation, summarize_flaky_tests
 
 SHADOW_SCHEMA = "historical-flakiness-shadow.ci.v1"
 SUPPORT = "HISTORICAL_SUPPORT_PRESENT"
