@@ -224,6 +224,8 @@ For setup help, bug reports, public-run analysis, and security-reporting guidanc
 
 For security vulnerabilities, follow [SECURITY.md](SECURITY.md) rather than opening a public issue.
 
+For local development, repository boundaries, verification expectations, and pull-request guidance, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## License
 
 CI Retry Gate is released under the MIT License. See [LICENSE](LICENSE).
