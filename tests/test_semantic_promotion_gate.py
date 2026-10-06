@@ -1,4 +1,4 @@
-from semantic_promotion_gate import (
+from runtime.benchmark.semantic_promotion_gate import (
     REASON_COMMAND_SOURCE_TEXT,
     REASON_GENERIC_CANCELLATION,
     REASON_GENERIC_RUNNER_WRAPPER,
