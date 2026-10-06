@@ -12,7 +12,7 @@ from recovery_ground_truth import (
     RECOVERY_UNVERIFIED,
     RECOVERY_VALIDATED,
 )
-from unknown_failure_intelligence import (
+from runtime.benchmark.unknown_failure_intelligence import (
     PROMOTION_BLOCKER_INSUFFICIENT_GT_RERUNS,
     PROMOTION_BLOCKER_INDEPENDENT_REPLICATION,
     PROMOTION_BLOCKER_INSUFFICIENT_OCCURRENCES,
