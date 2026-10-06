@@ -1,16 +1,16 @@
-from flaky_ownership import OwnershipResolution
-from flaky_quarantine_lifecycle import (
+from runtime.flaky.flaky_ownership import OwnershipResolution
+from runtime.flaky.flaky_quarantine_lifecycle import (
     ACTIVE,
     BLOCKED_REGRESSION,
     LifecycleDecision,
     LifecycleSummary,
 )
-from flaky_test_intelligence import (
+from runtime.flaky.flaky_test_intelligence import (
     INVESTIGATE,
     QUARANTINE_CANDIDATE,
     FlakyTestSummary,
 )
-from flaky_triage import (
+from runtime.flaky.flaky_triage import (
     TRIAGE_COMMENT_MARKER,
     build_triage_items,
     emit_triage_annotations,
