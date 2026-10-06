@@ -1,5 +1,5 @@
-from server5xx_counterexample_search import search_server5xx_counterexamples
-from classifier_rule_research import evaluate_server5xx_shadow_rule
+from runtime.benchmark.server5xx_counterexample_search import search_server5xx_counterexamples
+from runtime.benchmark.classifier_rule_research import evaluate_server5xx_shadow_rule
 from ci_retry_gate import (
     FAILURE_STEP_CONFIRMED,
     assess_failure_step_provenance,
@@ -20,7 +20,7 @@ from transient_mechanism_gate import (
     assess_transient_mechanism,
 )
 from unknown_cause_decomposition import decompose_unknown_cause
-from targeted_replication_search import search_targeted_replication
+from runtime.benchmark.targeted_replication_search import search_targeted_replication
 from unknown_failure_intelligence import (
     PROMOTION_BLOCKER_INDEPENDENT_REPLICATION,
     PROMOTION_BLOCKER_INSUFFICIENT_GT_RERUNS,

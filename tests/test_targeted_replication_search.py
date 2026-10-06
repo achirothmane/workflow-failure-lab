@@ -1,7 +1,7 @@
 from history_ci_waste import HistoricalFailure
 from mechanism_causality_gate import MECHANISM_CAUSAL_CONFIRMED, MECHANISM_CAUSAL_UNCONFIRMED
 from recovery_ground_truth import RECOVERY_NOT_RECOVERED, RECOVERY_VALIDATED
-from targeted_replication_search import render_targeted_replication_report, search_targeted_replication
+from runtime.benchmark.targeted_replication_search import render_targeted_replication_report, search_targeted_replication
 
 
 def failure(

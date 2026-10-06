@@ -110,6 +110,7 @@ docs/                      user and technical documentation
 examples/                  copy-ready adoption examples
 src/                       packaged product code
 tests/                     automated verification
+runtime/                   internal product runtime support
 research/                  research-only falsification and hypothesis work
 validation/                release and regression validation assets
 benchmarks / experiments   evidence and engineering evaluation
@@ -146,3 +147,10 @@ Some root modules have research-oriented names but are currently part of an opt-
 - `flaky_test_history.py` is an action runtime entry point and imports `historical_flakiness_evidence.py` and `historical_flakiness_shadow.py`.
 
 Those modules stay on the product side of the boundary until their public feature path is deliberately extracted, renamed, or retired.
+
+
+## Benchmark runtime package
+
+The public Action still invokes `benchmark_mode.py` as a stable root entry point, but its benchmark-specific support modules live under `runtime/benchmark/`.
+
+This keeps the entry point obvious while moving implementation detail out of the product root. The moved modules remain product runtime because the opt-in `benchmark-mode` path executes them indirectly; they are not reclassified as research merely because some of their functions are shadow/read-only.
