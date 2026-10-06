@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import Protocol
 
-from flaky_test_intelligence import (
+from runtime.flaky.flaky_test_intelligence import (
     FAIL,
     CaseObservation,
     FlakyTestSummary,
