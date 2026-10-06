@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
-from flaky_test_intelligence import FAIL, observations_from_junit
+from runtime.flaky.flaky_test_intelligence import FAIL, observations_from_junit
 
 SUPPORTED_FRAMEWORKS = {"pytest", "jest", "vitest"}
 
